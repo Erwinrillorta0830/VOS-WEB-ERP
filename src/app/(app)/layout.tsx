@@ -1,24 +1,63 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+type Session = {
+    user: unknown;
+    expiresAt: number;
+};
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-    return (
-        <div className="min-h-screen bg-slate-100 flex">
-            {/* Simple top bar / shell for now – later we’ll put sidebar, user menu, etc. */}
-            <div className="flex-1 flex flex-col">
-                <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4">
-                    <span className="font-semibold text-slate-800">VOS ERP</span>
-                    <nav className="flex items-center gap-4 text-sm text-slate-600">
-                        <a href="/app" className="hover:text-slate-900">
-                            Apps
-                        </a>
-                        <a href="/logout" className="hover:text-slate-900">
-                            Logout
-                        </a>
-                    </nav>
-                </header>
+    const router = useRouter();
+    const [ready, setReady] = useState(false);
 
-                <main className="flex-1 p-6">{children}</main>
+    useEffect(() => {
+        function checkSession() {
+            if (typeof window === "undefined") return;
+
+            const raw = window.localStorage.getItem("vosSession");
+            if (!raw) {
+                router.replace("/login");
+                return;
+            }
+
+            let session: Session | null = null;
+            try {
+                session = JSON.parse(raw) as Session;
+            } catch {
+                window.localStorage.removeItem("vosSession");
+                router.replace("/login");
+                return;
+            }
+
+            const now = Date.now();
+            if (!session.expiresAt || now > session.expiresAt) {
+                // expired
+                window.localStorage.removeItem("vosSession");
+                router.replace("/login");
+                return;
+            }
+
+            setReady(true);
+        }
+
+        checkSession();
+
+        // optional: re-check every minute while user stays on page
+        const intervalId = window.setInterval(checkSession, 60 * 1000);
+        return () => window.clearInterval(intervalId);
+    }, [router]);
+
+    if (!ready) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-[#020817] text-slate-100 text-sm">
+                Checking session…
             </div>
-        </div>
-    );
+        );
+    }
+
+    // no extra UI; each page controls its own layout
+    return <>{children}</>;
 }

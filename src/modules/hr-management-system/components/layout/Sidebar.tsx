@@ -3,8 +3,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { useSidebar } from "@/providers/SidebarProvider";
+import { cn } from "../../lib/utils";
+import { useSidebar } from "../../providers/SidebarProvider";
 import {
   Menu,
   ChevronLeft,
@@ -24,7 +24,7 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-} from "@/components/ui/tooltip";
+} from "../../components/ui/tooltip";
 
 export default function Sidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
@@ -34,7 +34,7 @@ export default function Sidebar() {
     {
       panel: "Dashboard",
       items: [
-        { title: "Dashboard", href: "/dashboard", icon: <Home size={20} /> },
+        { title: "Dashboard", href: "/hrms", icon: <Home size={20} /> },
       ],
     },
     {
@@ -42,12 +42,12 @@ export default function Sidebar() {
       items: [
         {
           title: "Wage Management",
-          href: "/dashboard/wage",
+          href: "/hrms/wage",
           icon: <PhilippinePeso size={20} />,
         },
         {
           title: "Payroll System",
-          href: "/dashboard/payroll",
+          href: "/hrms/payroll",
           icon: <Calculator size={20} />,
         },
 
@@ -56,41 +56,32 @@ export default function Sidebar() {
         // ==================================================
         {
           title: "COOP",
-          href: "/dashboard/coop",
+          href: "/hrms/coop",
           icon: <PiggyBank size={20} />,
         },
         {
           title: "Benefit Settings",
-          href: "/dashboard/benefit-settings",
+          href: "/hrms/benefit-settings",
           icon: <HandCoins size={20} />,
         },
         {
           title: "Retro Pay",
-          href: "/dashboard/retro",
+          href: "/hrms/retro",
           icon: <BanknoteArrowDown size={20} />,
         },
         {
           title: "Allowance Management",
-          href: "/dashboard/allowance-management",
+          href: "/hrms/allowance-management",
           icon: <Wallet size={20} />,
         },
         {
           title: "Holiday Calendar",
-          href: "/dashboard/calendar-management",
+          href: "/hrms/calendar-management",
           icon: <Calendar size={20} />,
         },
       ],
     },
-    {
-      panel: "Employees",
-      items: [
-        {
-          title: "Employee List",
-          href: "/dashboard/employees",
-          icon: <Users size={20} />,
-        },
-      ],
-    },
+
   ];
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
+import { Input } from "../../components/ui/input";
 import { BenefitSetting } from "../types";
 
 export default function BenefitDates({

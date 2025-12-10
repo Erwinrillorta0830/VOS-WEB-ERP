@@ -1,6 +1,6 @@
 "use client";
 
-import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox } from "../../components/ui/checkbox";
 import { BenefitCode, CutoffType } from "../types";
 
 export default function BenefitCutoff({
