@@ -52,8 +52,6 @@ interface DeliveryStatusCount {
   name: string;
   value: number;
   color: string;
-    [key: string]: string | number; // ⬅ add this line
-
 }
 
 const COLORS = ['#10b981', '#f59e0b', '#facc15', '#ef4444']; 
