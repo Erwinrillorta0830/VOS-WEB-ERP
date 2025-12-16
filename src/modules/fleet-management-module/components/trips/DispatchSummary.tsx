@@ -37,7 +37,7 @@ const CreateDispatchPlanModal = ({ onClose, onCreatePlan }: any) => <div classNa
 const ViewDispatchPlanModal = ({ plan, onClose, onUpdatePlan }: any) => <div className="p-4 bg-white shadow-xl rounded-lg fixed inset-0 m-auto w-96 h-40">View Plan: {plan.dpNumber}</div>;
 
 // --- API Endpoints ---
-const BASE_URL = 'http://100.126.246.124:8060/items/';
+const BASE_URL = 'http://100.110.197.61:8091/items/';
 
 const API_ENDPOINTS = {
   PLANS: `${BASE_URL}post_dispatch_plan?limit=-1`,

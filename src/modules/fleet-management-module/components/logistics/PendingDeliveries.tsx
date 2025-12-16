@@ -177,11 +177,11 @@ export function PendingDeliveries() {
       setLoading(true);
       try {
         const [clustersRes, customersRes, ordersRes, salesmanRes, areaRes] = await Promise.all([
-            fetch('http://100.126.246.124:8060/items/cluster?limit=-1'),
-            fetch('http://100.126.246.124:8060/items/customer?limit=-1'),
-            fetch('http://100.126.246.124:8060/items/sales_order?limit=-1'),
-            fetch('http://100.126.246.124:8060/items/salesman?limit=-1'),
-            fetch('http://100.126.246.124:8060/items/area_per_cluster?limit=-1')
+            fetch('http:// 100.110.197.61:8091/items/cluster?limit=-1'),
+            fetch('http:// 100.110.197.61:8091/items/customer?limit=-1'),
+            fetch('http:// 100.110.197.61:8091/items/sales_order?limit=-1'),
+            fetch('http:// 100.110.197.61:8091/items/salesman?limit=-1'),
+            fetch('http:// 100.110.197.61:8091/items/area_per_cluster?limit=-1')
         ]);
 
         const clustersData: { data: ApiCluster[] } = await clustersRes.json();
