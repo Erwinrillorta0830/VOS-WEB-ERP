@@ -102,8 +102,8 @@ export function StatisticsDashboard() {
 
         // Run both waterfalls in parallel
         const [deliveries, sales] = await Promise.all([
-          fetchFullList<DeliveryItem>('http://100.126.246.124:8060/items/post_dispatch_invoices?fields=*', 'Deliveries', setLoadingStatus),
-          fetchFullList<SalesItem>('http://100.126.246.124:8060/items/sales_invoice?fields=*', 'Sales', setLoadingStatus)
+          fetchFullList<DeliveryItem>('http://100.110.197.61:8091/items/post_dispatch_invoices?fields=*', 'Deliveries', setLoadingStatus),
+          fetchFullList<SalesItem>('http://100.110.197.61:8091/items/sales_invoice?fields=*', 'Sales', setLoadingStatus)
         ]);
 
         setRawDeliveryItems(deliveries);

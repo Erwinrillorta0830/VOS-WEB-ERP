@@ -119,7 +119,8 @@ export function LogisticsSummary() {
         };
 
         // --- STEP 1: Fetch Dispatch Invoices (Primary List) ---
-        let invoicesUrl = `http://100.126.246.124:8060/items/post_dispatch_invoices?limit=${ITEMS_PER_PAGE}&page=${currentPage}&meta=*`;
+        let invoicesUrl = `http://100.110.197.61:8091
+/items/post_dispatch_invoices?limit=${ITEMS_PER_PAGE}&page=${currentPage}&meta=*`;
         
         if (searchTerm) {
           invoicesUrl += `&filter[post_dispatch_plan_id][vehicle_id][vehicle_plate][_contains]=${searchTerm}`;
@@ -152,9 +153,11 @@ export function LogisticsSummary() {
 
         // --- STEP 2: Fetch Plans & Invoice Details ---
         const [plansRes, invoicesRes] = await Promise.all([
-             fetchJson(`http://100.126.246.124:8060/items/post_dispatch_plan?filter[id][_in]=${planIds}&limit=-1`),
+             fetchJson(`http://100.110.197.61:8091
+/items/post_dispatch_plan?filter[id][_in]=${planIds}&limit=-1`),
              invoiceIds.length > 0 
-                ? fetchJson(`http://100.126.246.124:8060/items/sales_invoice?filter[invoice_id][_in]=${invoiceIds.join(',')}&limit=-1`) 
+                ? fetchJson(`http://100.110.197.61:8091
+/items/sales_invoice?filter[invoice_id][_in]=${invoiceIds.join(',')}&limit=-1`) 
                 : Promise.resolve({ data: [] })
         ]);
 
@@ -169,22 +172,27 @@ export function LogisticsSummary() {
 
         // --- STEP 3: Tertiary Fetches ---
         const tertiaryPromises = [
-            driverIds ? fetchJson(`http://100.126.246.124:8060/items/user?filter[user_id][_in]=${driverIds}&limit=-1`) : Promise.resolve({ data: [] }),
-            vehicleIds ? fetchJson(`http://100.126.246.124:8060/items/vehicles?filter[vehicle_id][_in]=${vehicleIds}&limit=-1`) : Promise.resolve({ data: [] }),
+            driverIds ? fetchJson(`http://100.110.197.61:8091
+/items/user?filter[user_id][_in]=${driverIds}&limit=-1`) : Promise.resolve({ data: [] }),
+            vehicleIds ? fetchJson(`http://100.110.197.61:8091
+/items/vehicles?filter[vehicle_id][_in]=${vehicleIds}&limit=-1`) : Promise.resolve({ data: [] }),
         ];
 
         if (invoiceNos.length > 0) {
             const invNoStr = invoiceNos.map(n => encodeURIComponent(n)).join(',');
-            tertiaryPromises.push(fetchJson(`http://100.126.246.124:8060/items/sales_return?filter[invoice_no][_in]=${invNoStr}&limit=-1`));
+            tertiaryPromises.push(fetchJson(`http://100.110.197.61:8091
+/items/sales_return?filter[invoice_no][_in]=${invNoStr}&limit=-1`));
         } else { tertiaryPromises.push(Promise.resolve({ data: [] })); }
 
         if (invoiceIdsStr) {
-            tertiaryPromises.push(fetchJson(`http://100.126.246.124:8060/items/unfulfilled_sales_transaction?filter[sales_invoice_id][_in]=${invoiceIdsStr}&limit=-1`));
+            tertiaryPromises.push(fetchJson(`http://100.110.197.61:8091
+/items/unfulfilled_sales_transaction?filter[sales_invoice_id][_in]=${invoiceIdsStr}&limit=-1`));
         } else { tertiaryPromises.push(Promise.resolve({ data: [] })); }
         
         if (customerCodes.length > 0) {
             const custCodeStr = customerCodes.map(c => encodeURIComponent(c)).join(',');
-            tertiaryPromises.push(fetchJson(`http://100.126.246.124:8060/items/customer?filter[customer_code][_in]=${custCodeStr}&limit=-1`));
+            tertiaryPromises.push(fetchJson(`http://100.110.197.61:8091
+/items/customer?filter[customer_code][_in]=${custCodeStr}&limit=-1`));
         } else { tertiaryPromises.push(Promise.resolve({ data: [] })); }
 
         const [usersRes, vehiclesRes, returnsRes, concernsRes, customersRes] = await Promise.all(tertiaryPromises);
@@ -200,12 +208,14 @@ export function LogisticsSummary() {
         
         if (uniqueCities.length > 0) {
             const cityFilter = uniqueCities.map(c => encodeURIComponent(c)).join(',');
-            const areasRes = await fetchJson(`http://100.126.246.124:8060/items/area_per_cluster?filter[city][_in]=${cityFilter}&limit=-1`);
+            const areasRes = await fetchJson(`http://100.110.197.61:8091
+/items/area_per_cluster?filter[city][_in]=${cityFilter}&limit=-1`);
             areaClusters = areasRes.data;
 
             const clusterIds = [...new Set(areaClusters.map(a => a.cluster_id))];
             if (clusterIds.length > 0) {
-                const clusterRes = await fetchJson(`http://100.126.246.124:8060/items/cluster?filter[id][_in]=${clusterIds.join(',')}&limit=-1`);
+                const clusterRes = await fetchJson(`http://100.110.197.61:8091
+/items/cluster?filter[id][_in]=${clusterIds.join(',')}&limit=-1`);
                 clusters = clusterRes.data;
             }
         }
