@@ -1,7 +1,7 @@
 // src/app/api/login/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const REMOTE_USER_API = "http://100.126.246.124:8060/items/user";
+const REMOTE_USER_API = "http://100.110.197.61:8091/items/user";
 
 type ApiUser = {
     user_id: number;
