@@ -1,24 +1,23 @@
 import { NextResponse } from "next/server";
 
-// --- Configuration ---
-const BASE_URL = 'http://100.110.197.61:8091/items/';
+// Use environment variable
+const BASE_URL = process.env.REMOTE_API_BASE;
 
 const API_ENDPOINTS = {
-  PLANS: `${BASE_URL}post_dispatch_plan?limit=-1`,
-  STAFF: `${BASE_URL}post_dispatch_plan_staff?limit=-1`,
-  INVOICES: `${BASE_URL}post_dispatch_invoices?limit=-1`,
-  SALES_INVOICES: `${BASE_URL}sales_invoice?limit=-1`,
-  VEHICLES: `${BASE_URL}vehicles?limit=-1`,
-  USERS: `${BASE_URL}user?limit=-1`,
-  CUSTOMERS: `${BASE_URL}customer?limit=-1`,
-  SALESMEN: `${BASE_URL}salesman?limit=-1`,
+  PLANS: `${BASE_URL}/post_dispatch_plan?limit=-1`,
+  STAFF: `${BASE_URL}/post_dispatch_plan_staff?limit=-1`,
+  INVOICES: `${BASE_URL}/post_dispatch_invoices?limit=-1`,
+  SALES_INVOICES: `${BASE_URL}/sales_invoice?limit=-1`,
+  VEHICLES: `${BASE_URL}/vehicles?limit=-1`,
+  USERS: `${BASE_URL}/user?limit=-1`,
+  CUSTOMERS: `${BASE_URL}/customer?limit=-1`,
+  SALESMEN: `${BASE_URL}/salesman?limit=-1`,
 };
 
 const normalizeCode = (code: string) => code ? code.replace(/\s+/g, '') : '';
 
 export async function GET() {
   try {
-    // 1. Fetch all upstream data in parallel
     const [
         plansRes, staffRes, dispatchInvoicesRes, salesInvoicesRes, 
         vehiclesRes, usersRes, customersRes, salesmenRes
@@ -33,10 +32,8 @@ export async function GET() {
         fetch(API_ENDPOINTS.SALESMEN, { cache: 'no-store' })
     ]);
 
-    // Check if any critical fetch failed
     if (!plansRes.ok) throw new Error("Failed to fetch Dispatch Plans");
 
-    // 2. Parse JSON
     const plansData = await plansRes.json();
     const staffData = await staffRes.json();
     const dispatchInvoicesData = await dispatchInvoicesRes.json();
@@ -48,7 +45,6 @@ export async function GET() {
 
     const rawPlans = plansData.data || [];
 
-    // --- 3. Build Lookup Maps (Optimization) ---
     const userMap = new Map();
     (usersData.data || []).forEach((u: any) => userMap.set(String(u.user_id), `${u.user_fname} ${u.user_lname}`.trim()));
 
@@ -82,7 +78,6 @@ export async function GET() {
         if (s.role === 'Driver') driverByPlan.set(String(s.post_dispatch_plan_id), String(s.user_id));
     });
 
-    // --- 4. Map & Join Data ---
     const mappedPlans = rawPlans.map((plan: any) => {
         const planIdStr = String(plan.id);
         const driverUserId = driverByPlan.get(planIdStr) || String(plan.driver_id);
@@ -94,7 +89,6 @@ export async function GET() {
         let foundSalesmanName = 'Unknown Salesman';
         let foundSalesmanId = 'N/A';
 
-        // Attempt to find salesman from the linked invoices
         for (const inv of planInvoices) {
             const salesInv = salesInvoiceMap.get(String(inv.invoice_id));
             if (salesInv && salesInv.salesman_id) {
