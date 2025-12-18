@@ -2,24 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, Loader2, ArrowUpDown } from 'lucide-react';
 
 // --- Interfaces ---
-interface ApiPlan { 
-  id: number; 
-  driver_id: number; 
-  vehicle_id: number; 
-  status: string; 
-  date_encoded: string; 
-  estimated_time_of_dispatch: string;
-  estimated_time_of_arrival: string;
-}
-interface ApiDispatchInvoice { id: number; post_dispatch_plan_id: number; invoice_id: number; status: string; }
-interface ApiInvoice { invoice_id: number; invoice_no: string; customer_code: string; total_amount: number | string; }
-interface ApiCustomer { customer_code: string; customer_name: string; city: string; }
-interface ApiReturn { invoice_no: string; total_amount: string; }
-interface ApiConcern { sales_invoice_id: number; variance_amount: number; }
-interface ApiUser { user_id: number; user_fname: string; user_lname: string; }
-interface ApiVehicle { vehicle_id: number; vehicle_plate: string; }
-interface ApiAreaCluster { id: number; cluster_id: number; city: string; province: string; }
-interface ApiCluster { id: number; cluster_name: string; }
+// We can remove the raw API interfaces (ApiPlan, ApiDispatchInvoice, etc.) 
+// because the server now handles those. We only need the shape the UI uses.
 
 interface DeliveryDetail {
   clusterName: string; 
@@ -27,8 +11,12 @@ interface DeliveryDetail {
   fulfilled: number; notFulfilled: number;
   fulfilledWithReturns: number; fulfilledWithConcerns: number;
 }
+
 interface LogisticsRecord {
-  id: string; truckPlate: string; driver: string; deliveries: DeliveryDetail[];
+  id: string; 
+  truckPlate: string; 
+  driver: string; 
+  deliveries: DeliveryDetail[];
 }
 
 type DateRange = 'yesterday' | 'today' | 'tomorrow' | 'this-week' | 'this-month' | 'this-year' | 'custom';
@@ -106,193 +94,56 @@ export function LogisticsSummary() {
     return `${formatDate(start)}${T_START},${formatDate(end)}${T_END}`;
   };
 
+  // --- REPLACED: New useEffect calling local API Route ---
   useEffect(() => {
-    const fetchWaterfallData = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         setError('');
 
-        const fetchJson = async (url: string) => {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Fetch failed: ${url}`);
-          return await res.json();
-        };
-
-        // --- STEP 1: Fetch Dispatch Invoices (Primary List) ---
-        let invoicesUrl = `http://100.110.197.61:8091/items/post_dispatch_invoices?limit=${ITEMS_PER_PAGE}&page=${currentPage}&meta=*`;
-        
-        if (searchTerm) {
-          invoicesUrl += `&filter[post_dispatch_plan_id][vehicle_id][vehicle_plate][_contains]=${searchTerm}`;
-        }
-        
         const dateFilter = getDateFilterString();
-        if (dateFilter) {
-          invoicesUrl += `&filter[post_dispatch_plan_id][estimated_time_of_dispatch][_between]=${dateFilter}`;
+
+        // Construct query parameters
+        const params = new URLSearchParams();
+        params.append('page', currentPage.toString());
+        if (searchTerm) params.append('search', searchTerm);
+        if (dateFilter) params.append('dateFilter', dateFilter);
+
+        // Fetch from your Next.js API route
+        const res = await fetch(`/api/logistics-summary?${params.toString()}`);
+
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'Failed to fetch data');
         }
 
-        invoicesUrl += `&sort=-post_dispatch_plan_id.estimated_time_of_dispatch`;
+        const result = await res.json();
+        
+        // The server returns the fully formed LogisticsRecord[] in result.data
+        setData(result.data || []);
 
-        const dispatchInvoicesRes = await fetchJson(invoicesUrl);
-        const dispatchInvoices = dispatchInvoicesRes.data as ApiDispatchInvoice[];
-
-        if (dispatchInvoicesRes.meta?.filter_count) {
-          setTotalPages(Math.ceil(dispatchInvoicesRes.meta.filter_count / ITEMS_PER_PAGE));
+        // Handle pagination from server meta
+        if (result.meta?.filter_count) {
+          setTotalPages(Math.ceil(result.meta.filter_count / ITEMS_PER_PAGE));
         } else {
-          setTotalPages(dispatchInvoices.length > 0 ? 1 : 0);
+          setTotalPages(result.data.length > 0 ? 1 : 0);
         }
-
-        if (dispatchInvoices.length === 0) {
-          setData([]);
-          setLoading(false);
-          return;
-        }
-
-        const planIds = [...new Set(dispatchInvoices.map(d => d.post_dispatch_plan_id))].join(',');
-        const invoiceIds = [...new Set(dispatchInvoices.map(d => d.invoice_id))];
-
-        // --- STEP 2: Fetch Plans & Invoice Details ---
-        const [plansRes, invoicesRes] = await Promise.all([
-             fetchJson(`http://100.110.197.61:8091/items/post_dispatch_plan?filter[id][_in]=${planIds}&limit=-1`),
-             invoiceIds.length > 0 
-                ? fetchJson(`http://100.110.197.61:8091/items/sales_invoice?filter[invoice_id][_in]=${invoiceIds.join(',')}&limit=-1`) 
-                : Promise.resolve({ data: [] })
-        ]);
-
-        const plans = plansRes.data as ApiPlan[];
-        const invoices = invoicesRes.data as ApiInvoice[];
-
-        const driverIds = [...new Set(plans.map(p => p.driver_id))].join(',');
-        const vehicleIds = [...new Set(plans.map(p => p.vehicle_id))].join(',');
-        const invoiceNos = invoices.map(i => i.invoice_no);
-        const customerCodes = [...new Set(invoices.map(i => i.customer_code))];
-        const invoiceIdsStr = invoiceIds.join(',');
-
-        // --- STEP 3: Tertiary Fetches ---
-        const tertiaryPromises = [
-            driverIds ? fetchJson(`http://100.110.197.61:8091/items/user?filter[user_id][_in]=${driverIds}&limit=-1`) : Promise.resolve({ data: [] }),
-            vehicleIds ? fetchJson(`http://100.110.197.61:8091/items/vehicles?filter[vehicle_id][_in]=${vehicleIds}&limit=-1`) : Promise.resolve({ data: [] }),
-        ];
-
-        if (invoiceNos.length > 0) {
-            const invNoStr = invoiceNos.map(n => encodeURIComponent(n)).join(',');
-            tertiaryPromises.push(fetchJson(`http://100.110.197.61:8091/items/sales_return?filter[invoice_no][_in]=${invNoStr}&limit=-1`));
-        } else { tertiaryPromises.push(Promise.resolve({ data: [] })); }
-
-        if (invoiceIdsStr) {
-            tertiaryPromises.push(fetchJson(`http://100.110.197.61:8091/items/unfulfilled_sales_transaction?filter[sales_invoice_id][_in]=${invoiceIdsStr}&limit=-1`));
-        } else { tertiaryPromises.push(Promise.resolve({ data: [] })); }
-        
-        if (customerCodes.length > 0) {
-            const custCodeStr = customerCodes.map(c => encodeURIComponent(c)).join(',');
-            tertiaryPromises.push(fetchJson(`http://100.110.197.61:8091/items/customer?filter[customer_code][_in]=${custCodeStr}&limit=-1`));
-        } else { tertiaryPromises.push(Promise.resolve({ data: [] })); }
-
-        const [usersRes, vehiclesRes, returnsRes, concernsRes, customersRes] = await Promise.all(tertiaryPromises);
-        
-        const returns = returnsRes.data as ApiReturn[];
-        const concerns = concernsRes.data as ApiConcern[];
-        const customers = customersRes.data as ApiCustomer[];
-
-        // --- STEP 3.5: Fetch Clusters ---
-        let areaClusters: ApiAreaCluster[] = [];
-        let clusters: ApiCluster[] = [];
-        const uniqueCities = [...new Set(customers.map(c => c.city).filter(Boolean))];
-        
-        if (uniqueCities.length > 0) {
-            const cityFilter = uniqueCities.map(c => encodeURIComponent(c)).join(',');
-            const areasRes = await fetchJson(`http://100.110.197.61:8091/items/area_per_cluster?filter[city][_in]=${cityFilter}&limit=-1`);
-            areaClusters = areasRes.data;
-
-            const clusterIds = [...new Set(areaClusters.map(a => a.cluster_id))];
-            if (clusterIds.length > 0) {
-                const clusterRes = await fetchJson(`http://100.110.197.61:8091/items/cluster?filter[id][_in]=${clusterIds.join(',')}&limit=-1`);
-                clusters = clusterRes.data;
-            }
-        }
-
-        // --- STEP 4: Build Maps ---
-        const driversMap = new Map((usersRes.data as ApiUser[]).map(u => [u.user_id, `${u.user_fname} ${u.user_lname}`]));
-        const vehiclesMap = new Map((vehiclesRes.data as ApiVehicle[]).map(v => [v.vehicle_id, v.vehicle_plate]));
-        const invoicesMap = new Map(invoices.map(i => [i.invoice_id, i]));
-        const customersMap = new Map(customers.map(c => [c.customer_code, c]));
-        const returnsMap = new Map(returns.map(r => [r.invoice_no, parseFloat(r.total_amount || '0')]));
-        const concernsMap = new Map(concerns.map(c => [c.sales_invoice_id, c.variance_amount]));
-
-        const cityToClusterIdMap = new Map<string, number>();
-        areaClusters.forEach(area => cityToClusterIdMap.set(area.city.toUpperCase(), area.cluster_id));
-        const clusterIdToNameMap = new Map<number, string>();
-        clusters.forEach(cl => clusterIdToNameMap.set(cl.id, cl.cluster_name));
-
-        const getClusterName = (city: string) => {
-            if (!city) return 'Unassigned';
-            const cId = cityToClusterIdMap.get(city.toUpperCase());
-            if (cId) return clusterIdToNameMap.get(cId) || 'Unassigned';
-            return 'Unassigned';
-        };
-
-        const planInvoicesMap = new Map<number, ApiDispatchInvoice[]>();
-        dispatchInvoices.forEach(di => {
-            const current = planInvoicesMap.get(di.post_dispatch_plan_id) || [];
-            current.push(di);
-            planInvoicesMap.set(di.post_dispatch_plan_id, current);
-        });
-
-        const processedData = plans.map(plan => {
-          const planDispatches = planInvoicesMap.get(plan.id) || [];
-          if (planDispatches.length === 0) return null;
-
-          const deliveries = planDispatches.map(dispatchItem => {
-            const invoice = invoicesMap.get(dispatchItem.invoice_id);
-            const customer = invoice ? customersMap.get(invoice.customer_code) : null;
-            
-            let fulfilled = 0, notFulfilled = 0, fulfilledWithReturns = 0, fulfilledWithConcerns = 0;
-
-            if (invoice) {
-              const invTotal = typeof invoice.total_amount === 'string' ? parseFloat(invoice.total_amount) : invoice.total_amount;
-              const invNo = invoice.invoice_no;
-
-              if (dispatchItem.status === 'Not Fulfilled') notFulfilled = invTotal;
-              else if (returnsMap.has(invNo)) fulfilledWithReturns = invTotal - (returnsMap.get(invNo) || 0);
-              else if (concernsMap.has(invoice.invoice_id)) fulfilledWithConcerns = invTotal - (concernsMap.get(invoice.invoice_id) || 0);
-              else fulfilled = invTotal;
-            }
-
-            const city = customer?.city || '';
-            return {
-              clusterName: getClusterName(city),
-              customerName: customer?.customer_name || 'Unknown Customer',
-              fulfilled, notFulfilled, fulfilledWithReturns, fulfilledWithConcerns
-            };
-          });
-
-          // Initial Default Sort: Cluster Name
-          deliveries.sort((a, b) => a.clusterName.localeCompare(b.clusterName));
-
-          return {
-            id: plan.id.toString(),
-            truckPlate: vehiclesMap.get(plan.vehicle_id) || 'Unknown Plate',
-            driver: driversMap.get(plan.driver_id) || 'Unknown Driver',
-            deliveries: deliveries
-          };
-        }).filter((item): item is LogisticsRecord => item !== null);
-        
-        const sortedProcessedData = processedData.sort((a, b) => {
-            const indexA = planIds.indexOf(parseInt(a.id));
-            const indexB = planIds.indexOf(parseInt(b.id));
-            return indexA - indexB;
-        });
-
-        setData(sortedProcessedData);
-        setLoading(false);
 
       } catch (err: any) {
         console.error("Error fetching data:", err);
         setError(err.message || 'An error occurred');
+        setData([]); // Clear data on error
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchWaterfallData();
+    // Debounce to prevent rapid-fire requests while typing
+    const timer = setTimeout(() => {
+        fetchData();
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [currentPage, searchTerm, dateRange, customDateFrom, customDateTo]);
 
   // --- Handlers ---
@@ -462,6 +313,8 @@ export function LogisticsSummary() {
               ) : sortedData.length === 0 ? (
                 <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500">No records found.</td></tr>
               ) : (
+                // Flattening or mapping logic remains. 
+                // The key is on the <tr> so it should be fine.
                 sortedData.map((record) => (
                   record.deliveries.map((delivery, index) => {
                     const isFirstRowOfTruck = index === 0;
