@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BASE_URL = "http://100.110.197.61:8091/items";
+// Use environment variable or fallback to localhost for safety
+const BASE_URL = process.env.REMOTE_API_BASE;
 const ITEMS_PER_PAGE = 50;
 
 // Helper to fetch JSON safely
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
 
     const [usersRes, vehiclesRes, returnsRes, concernsRes, customersRes] = await Promise.all(tertiaryPromises);
     
-    // --- STEP 5: Cluster Logic (Server Side) ---
+    // --- STEP 5: Cluster Logic ---
     const customers = customersRes.data;
     const uniqueCities = [...new Set(customers.map((c: any) => c.city).filter(Boolean))];
     let areaClusters: any[] = [];
@@ -99,11 +100,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // --- STEP 6: Build Maps & Response Object ---
-    // (We return the raw data needed for the frontend to build the table, 
-    // or we can build the final "LogisticsRecord" shape here. 
-    // Let's build the final shape here to keep frontend "dumb".)
-
+    // --- STEP 6: Build Response ---
     const driversMap = new Map(usersRes.data.map((u: any) => [u.user_id, `${u.user_fname} ${u.user_lname}`]));
     const vehiclesMap = new Map(vehiclesRes.data.map((v: any) => [v.vehicle_id, v.vehicle_plate]));
     const invoicesMap = new Map(invoices.map((i: any) => [i.invoice_id, i]));
@@ -158,7 +155,6 @@ export async function GET(req: NextRequest) {
         };
       });
 
-      // Default Sort by Cluster Name
       deliveries.sort((a: any, b: any) => a.clusterName.localeCompare(b.clusterName));
 
       return {
@@ -169,7 +165,6 @@ export async function GET(req: NextRequest) {
       };
     }).filter((item: any) => item !== null);
 
-    // Maintain original sort order based on dispatchInvoices
     const sortedProcessedData = processedData.sort((a: any, b: any) => {
         const indexA = planIds.indexOf(parseInt(a.id));
         const indexB = planIds.indexOf(parseInt(b.id));

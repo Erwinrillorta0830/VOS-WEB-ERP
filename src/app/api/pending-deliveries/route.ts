@@ -1,21 +1,19 @@
 import { NextResponse } from "next/server";
 
-// --- Interfaces (Moved to Server) ---
+// Use environment variable
+const BASE_URL = process.env.REMOTE_API_BASE;
+
 interface ApiCluster { id: number; cluster_name: string; }
 interface ApiCustomer { id: number; customer_code: string; customer_name: string; cluster_id?: number; province?: string; city?: string; }
 interface ApiSalesman { id: number; salesman_name: string; salesman_code: string; }
 interface ApiSalesOrder { order_id: number; order_no: string; customer_code: string; order_status: string; total_amount: number; order_date: string; salesman_id: number; }
 interface ApiAreaPerCluster { id: number; cluster_id: number; province: string; city: string; }
 
-// Output Interfaces
 interface CustomerGroupRaw { id: string; customerName: string; salesmanName: string; orders: ApiSalesOrder[]; }
 interface ClusterGroupRaw { clusterId: string; clusterName: string; customers: CustomerGroupRaw[]; }
 
-const BASE_URL = "http://100.110.197.61:8091/items";
-
 export async function GET() {
   try {
-    // 1. Fetch all required data in parallel
     const [clustersRes, customersRes, ordersRes, salesmanRes, areaRes] = await Promise.all([
       fetch(`${BASE_URL}/cluster?limit=-1`, { cache: 'no-store' }),
       fetch(`${BASE_URL}/customer?limit=-1`, { cache: 'no-store' }),
@@ -24,7 +22,6 @@ export async function GET() {
       fetch(`${BASE_URL}/area_per_cluster?limit=-1`, { cache: 'no-store' })
     ]);
 
-    // Check for failures
     if (!clustersRes.ok || !customersRes.ok || !ordersRes.ok || !salesmanRes.ok || !areaRes.ok) {
         throw new Error("Failed to fetch one or more upstream APIs");
     }
@@ -35,7 +32,7 @@ export async function GET() {
     const salesmanData: { data: ApiSalesman[] } = await salesmanRes.json();
     const areaData: { data: ApiAreaPerCluster[] } = await areaRes.json();
 
-    // 2. Filter Invalid Orders
+    // Filter Invalid Orders
     const bannedTerms = [
         'en route', 'en_route', 'delivered', 'on hold', 'on_hold', 
         'cancelled', 'no fulfilled', 'no_fulfilled', 'not fulfilled', 'not_fulfilled'
@@ -47,7 +44,6 @@ export async function GET() {
         return !bannedTerms.includes(normalizedStatus);
     });
 
-    // 3. Prepare Maps for Joining
     const clusters = clustersData.data || [];
     const customers = customersData.data || [];
     const salesmen = salesmanData.data || [];
@@ -84,7 +80,6 @@ export async function GET() {
         });
     });
 
-    // 4. Group Data
     const tempGroups: Record<string, { customers: Record<string, CustomerGroupRaw> }> = {};
 
     validOrders.forEach(order => {
