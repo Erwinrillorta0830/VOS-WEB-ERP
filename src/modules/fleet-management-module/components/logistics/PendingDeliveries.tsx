@@ -1,27 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Package, ChevronLeft, ChevronRight, Layers, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
-// --- API Interfaces ---
-
-interface ApiCluster {
-  id: number;
-  cluster_name: string;
-}
-
-interface ApiCustomer {
-  id: number;
-  customer_code: string;
-  customer_name: string;
-  cluster_id?: number;
-  province?: string;
-  city?: string;
-}
-
-interface ApiSalesman {
-  id: number;
-  salesman_name: string;
-  salesman_code: string;
-}
+// --- View Model Types ---
+// Note: We don't need the raw API types here anymore, just the structure the API returns.
 
 interface ApiSalesOrder {
   order_id: number;
@@ -33,24 +14,6 @@ interface ApiSalesOrder {
   salesman_id: number;
 }
 
-interface ApiAreaPerCluster {
-  id: number;
-  cluster_id: number;
-  province: string;
-  city: string;
-}
-
-// --- View Model Types ---
-
-type DateRange = 'yesterday' | 'today' | 'this-week' | 'this-month' | 'this-year' | 'custom';
-type SortDirection = 'asc' | 'desc';
-
-interface SortConfig {
-  key: keyof TableRow;
-  direction: SortDirection;
-}
-
-// Intermediate grouping structure
 interface CustomerGroupRaw {
   id: string; 
   customerName: string;
@@ -89,6 +52,14 @@ interface TableRow {
   clusterTotal: number;
 }
 
+type DateRange = 'yesterday' | 'today' | 'this-week' | 'this-month' | 'this-year' | 'custom';
+type SortDirection = 'asc' | 'desc';
+
+interface SortConfig {
+  key: keyof TableRow;
+  direction: SortDirection;
+}
+
 export function PendingDeliveries() {
   // --- State ---
   const [rawGroups, setRawGroups] = useState<ClusterGroupRaw[]>([]);
@@ -98,7 +69,7 @@ export function PendingDeliveries() {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [salesmanFilter, setSalesmanFilter] = useState<string>('All');
-  const [clusterFilter, setClusterFilter] = useState<string>('All'); // NEW STATE
+  const [clusterFilter, setClusterFilter] = useState<string>('All');
   
   // Date Range
   const [dateRange, setDateRange] = useState<DateRange>('this-month');
@@ -171,107 +142,23 @@ export function PendingDeliveries() {
     setSortConfig({ key, direction });
   };
 
-  // --- Data Fetching ---
+  // --- Data Fetching (UPDATED) ---
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [clustersRes, customersRes, ordersRes, salesmanRes, areaRes] = await Promise.all([
-            fetch('http:// 100.110.197.61:8091/items/cluster?limit=-1'),
-            fetch('http:// 100.110.197.61:8091/items/customer?limit=-1'),
-            fetch('http:// 100.110.197.61:8091/items/sales_order?limit=-1'),
-            fetch('http:// 100.110.197.61:8091/items/salesman?limit=-1'),
-            fetch('http:// 100.110.197.61:8091/items/area_per_cluster?limit=-1')
-        ]);
+        // Call our new Next.js API route
+        const res = await fetch('/api/pending-deliveries');
+        
+        if (!res.ok) {
+            throw new Error('Failed to fetch data');
+        }
 
-        const clustersData: { data: ApiCluster[] } = await clustersRes.json();
-        const customersData: { data: ApiCustomer[] } = await customersRes.json();
-        const ordersData: { data: ApiSalesOrder[] } = await ordersRes.json();
-        const salesmanData: { data: ApiSalesman[] } = await salesmanRes.json();
-        const areaData: { data: ApiAreaPerCluster[] } = await areaRes.json();
-
-        // 1. Filter Invalid Orders
-        const bannedTerms = [
-            'en route', 'en_route', 'delivered', 'on hold', 'on_hold', 
-            'cancelled', 'no fulfilled', 'no_fulfilled', 'not fulfilled', 'not_fulfilled'
-        ];
-        const validOrders = (ordersData.data || []).filter(order => {
-            const rawStatus = order.order_status || '';
-            const normalizedStatus = rawStatus.toLowerCase().replace('_', ' ').trim();
-            return !bannedTerms.includes(normalizedStatus);
-        });
-
-        // 2. Maps
-        const clusters = clustersData.data || [];
-        const customers = customersData.data || [];
-        const salesmen = salesmanData.data || [];
-        const areas = areaData.data || [];
-
-        const areaMap = new Map<string, number>();
-        areas.forEach(area => {
-            if (area.city && area.province) {
-                const key = `${area.city.trim().toLowerCase()}|${area.province.trim().toLowerCase()}`;
-                areaMap.set(key, area.cluster_id);
-            }
-        });
-
-        const salesmanMap = new Map<number, string>();
-        salesmen.forEach(s => {
-            salesmanMap.set(s.id, s.salesman_name);
-        });
-
-        const customerMap = new Map<string, { name: string, clusterName: string }>();
-        customers.forEach(c => {
-            let finalClusterId: number | undefined;
-            if (c.city && c.province) {
-                const geoKey = `${c.city.trim().toLowerCase()}|${c.province.trim().toLowerCase()}`;
-                finalClusterId = areaMap.get(geoKey);
-            }
-            if (!finalClusterId) finalClusterId = c.cluster_id;
-
-            const foundCluster = clusters.find(cl => cl.id === finalClusterId);
-            const clusterName = foundCluster ? foundCluster.cluster_name : (c.province || "Unassigned Cluster");
-
-            customerMap.set(c.customer_code, {
-                name: c.customer_name,
-                clusterName: clusterName
-            });
-        });
-
-        // 3. Grouping Structure
-        const tempGroups: Record<string, { customers: Record<string, CustomerGroupRaw> }> = {};
-
-        validOrders.forEach(order => {
-            const custDetails = customerMap.get(order.customer_code);
-            const customerName = custDetails ? custDetails.name : `Unknown (${order.customer_code})`;
-            const clusterName = custDetails ? custDetails.clusterName : 'Unassigned Cluster';
-            
-            if (!tempGroups[clusterName]) {
-                tempGroups[clusterName] = { customers: {} };
-            }
-
-            const customerKey = order.customer_code;
-
-            if (!tempGroups[clusterName].customers[customerKey]) {
-                const salesmanName = salesmanMap.get(order.salesman_id) || 'Unknown Salesman';
-                tempGroups[clusterName].customers[customerKey] = {
-                    id: customerKey,
-                    customerName: customerName,
-                    salesmanName: salesmanName,
-                    orders: [] 
-                };
-            }
-
-            tempGroups[clusterName].customers[customerKey].orders.push(order);
-        });
-
-        const result: ClusterGroupRaw[] = Object.entries(tempGroups).map(([clusterName, groupData]) => ({
-            clusterId: clusterName,
-            clusterName: clusterName,
-            customers: Object.values(groupData.customers)
-        }));
-
-        setRawGroups(result);
+        const result = await res.json();
+        
+        // The API returns the already grouped structure
+        setRawGroups(result.data || []);
+        
       } catch (err) {
         console.error(err);
         setError("Failed to load data.");
@@ -289,7 +176,6 @@ export function PendingDeliveries() {
     const searchLower = searchTerm.toLowerCase();
 
     rawGroups.forEach(group => {
-        // --- NEW CLUSTER FILTER LOGIC ---
         if (clusterFilter !== 'All' && group.clusterName !== clusterFilter) return;
 
         let clusterTotal = 0;
@@ -305,7 +191,6 @@ export function PendingDeliveries() {
                 if (!matchesSalesman) return false;
 
                 const matchesSearch = 
-                    // REMOVED CLUSTER SEARCH FROM HERE
                     customer.customerName.toLowerCase().includes(searchLower) ||
                     customer.salesmanName.toLowerCase().includes(searchLower);
                 
@@ -430,7 +315,6 @@ export function PendingDeliveries() {
       return Array.from(salesmen).sort();
   }, [rawGroups]);
 
-  // NEW: Available Clusters
   const availableClusters = useMemo(() => {
       const clusters = new Set<string>();
       rawGroups.forEach(group => clusters.add(group.clusterName));
@@ -494,7 +378,7 @@ export function PendingDeliveries() {
               </div>
             </div>
 
-            {/* NEW: Cluster Filter */}
+            {/* Cluster Filter */}
             <div>
               <label className="block text-sm text-gray-700 mb-2">Cluster</label>
               <div className="relative">
@@ -658,7 +542,7 @@ export function PendingDeliveries() {
               ) : sortedRows.length === 0 ? (
                 <tr><td colSpan={13} className="px-6 py-12 text-center text-gray-500">No pending deliveries found.</td></tr>
               ) : (
-                currentRows.map((row, index) => {
+                currentRows.map((row) => {
                     return (
                         <tr key={row.uniqueId} className="hover:bg-gray-50">
                         

@@ -1,113 +1,98 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
+  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import { 
-  Package, 
-  XCircle, 
-  CheckCircle, 
-  PhilippinePeso,
-  Calendar
+  Package, XCircle, CheckCircle, PhilippinePeso, Calendar, Loader2
 } from 'lucide-react';
 
 // --- TYPESCRIPT INTERFACES ---
-
-interface DeliveryItem {
-  id: number;
-  invoice_id: number | string | null;
-  status: string;
-  // Add other fields if needed, but these are the ones we rely on
-}
-
-interface SalesItem {
-  id: number | string;
-  invoice_id: number | string | null;
-  dispatch_date: string | null;
-  total_amount: string | number | null;
-  discount_amount: string | number | null;
-}
-
-interface ChartEntry {
-  name: string;
-  sortIndex: number;
-  'Fulfilled': number;
-  'Not Fulfilled': number;
-  'Fulfilled With Concerns': number;
-  'Fulfilled With Returns': number;
-  sales: number;
-  [key: string]: string | number; // Allow index access for dynamic keys
-}
-
 interface DeliveryStatusCount {
   name: string;
   value: number;
   color: string;
 }
 
+interface ChartEntry {
+  name: string;
+  sales: number;
+  'Fulfilled': number;
+  'Not Fulfilled': number;
+  'Fulfilled With Concerns': number;
+  'Fulfilled With Returns': number;
+}
+
+interface DashboardData {
+    chartData: ChartEntry[];
+    deliveryStatusCounts: DeliveryStatusCount[];
+    totalSales: number;
+    avgSales: number;
+}
+
 const COLORS = ['#10b981', '#f59e0b', '#facc15', '#ef4444']; 
 
 export function StatisticsDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
-  const [loadingStatus, setLoadingStatus] = useState<string>("");
-  
-  // Typed State for API Data
-  const [rawDeliveryItems, setRawDeliveryItems] = useState<DeliveryItem[]>([]);
-  const [rawSalesItems, setRawSalesItems] = useState<SalesItem[]>([]);
+  const [data, setData] = useState<DashboardData>({
+      chartData: [],
+      deliveryStatusCounts: [],
+      totalSales: 0,
+      avgSales: 0
+  });
 
   // Filter State
-  const [filterType, setFilterType] = useState<'thisWeek' | 'thisMonth' | 'thisYear' | 'custom'>('thisYear'); 
+  const [filterType, setFilterType] = useState<'thisWeek' | 'thisMonth' | 'thisYear' | 'custom'>('thisMonth');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
-  // --- 1. WATERFALL STRATEGY HELPER (GENERIC) ---
-  const fetchFullList = async <T,>(baseUrl: string, name: string, setProgress: (msg: string) => void): Promise<T[]> => {
-    let allItems: T[] = [];
-    let page = 1;
-    const limit = 100;
-    let hasMore = true;
+  // --- HELPER: Calculate Date Range for API ---
+  const getDateRangeParams = () => {
+      const now = new Date();
+      let start = new Date();
+      let end = new Date();
+      let viewType = 'day'; 
 
-    while (hasMore) {
-      setProgress(`Fetching ${name}... (${allItems.length} records)`);
-      
-      const response = await fetch(`${baseUrl}&limit=${limit}&page=${page}`);
-      const json = await response.json();
-      const items: T[] = json.data || json;
+      const formatDate = (d: Date) => d.toISOString().split('T')[0]; // YYYY-MM-DD
 
-      if (Array.isArray(items) && items.length > 0) {
-        allItems = [...allItems, ...items];
-        if (items.length < limit) hasMore = false; 
-        else page++;
-      } else {
-        hasMore = false;
+      if (filterType === 'thisWeek') {
+          const day = now.getDay(); 
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday start? or Sunday.
+          start.setDate(diff);
+          end.setDate(start.getDate() + 6);
+          viewType = 'day';
+      } else if (filterType === 'thisMonth') {
+          start = new Date(now.getFullYear(), now.getMonth(), 1);
+          end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          viewType = 'day';
+      } else if (filterType === 'thisYear') {
+          start = new Date(now.getFullYear(), 0, 1);
+          end = new Date(now.getFullYear(), 11, 31);
+          viewType = 'month'; // Important: We tell server to group by Month
+      } else if (filterType === 'custom' && customStartDate && customEndDate) {
+          return { start: customStartDate, end: customEndDate, viewType: 'day' };
       }
-    }
-    return allItems;
+
+      return { start: formatDate(start), end: formatDate(end), viewType };
   };
 
-  // --- 2. FETCH DATA ON MOUNT ---
+  // --- FETCH DATA ---
   useEffect(() => {
-    const initFetch = async () => {
+    const fetchData = async () => {
+      const { start, end, viewType } = getDateRangeParams();
+      
+      // If custom date is selected but not filled yet, don't fetch
+      if (filterType === 'custom' && (!start || !end)) return;
+
       try {
         setLoading(true);
-
-        // Run both waterfalls in parallel
-        const [deliveries, sales] = await Promise.all([
-          fetchFullList<DeliveryItem>('http://100.110.197.61:8091/items/post_dispatch_invoices?fields=*', 'Deliveries', setLoadingStatus),
-          fetchFullList<SalesItem>('http://100.110.197.61:8091/items/sales_invoice?fields=*', 'Sales', setLoadingStatus)
-        ]);
-
-        setRawDeliveryItems(deliveries);
-        setRawSalesItems(sales);
+        
+        // Use the new API route
+        const response = await fetch(`/api/statistics-deliveries?startDate=${start}&endDate=${end}&viewType=${viewType}`);
+        
+        if (!response.ok) throw new Error("Failed to fetch statistics");
+        
+        const result = await response.json();
+        setData(result);
 
       } catch (error) {
         console.error("Failed to fetch data:", error);
@@ -116,154 +101,12 @@ export function StatisticsDashboard() {
       }
     };
 
-    initFetch();
-  }, []);
+    fetchData();
+  }, [filterType, customStartDate, customEndDate]);
 
-  // --- 3. PROCESS & FILTER DATA ---
-  const { chartData, deliveryStatusCounts, totalSales, avgSales } = useMemo(() => {
-    if (rawDeliveryItems.length === 0 || rawSalesItems.length === 0) {
-      return { 
-        chartData: [], 
-        deliveryStatusCounts: [], 
-        totalSales: 0, 
-        avgSales: 0 
-      };
-    }
+  // --- DERIVED METRICS ---
+  const { deliveryStatusCounts, chartData, totalSales, avgSales } = data;
 
-    // A. Map Sales for Fast Lookup (ID -> Sale Object)
-    const salesMap = new Map<string, SalesItem>();
-    rawSalesItems.forEach(sale => {
-      if (sale.id) salesMap.set(String(sale.id), sale);
-      if (sale.invoice_id) salesMap.set(String(sale.invoice_id), sale);
-    });
-
-    // B. Determine Date Range
-    const now = new Date();
-    let start = new Date('2000-01-01');
-    let end = new Date();
-    const isYearView = filterType === 'thisYear';
-
-    if (filterType === 'thisWeek') {
-      start.setDate(now.getDate() - now.getDay());
-      start.setHours(0,0,0,0);
-      end = now;
-    } else if (filterType === 'thisMonth') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    } else if (filterType === 'thisYear') {
-      start = new Date(now.getFullYear(), 0, 1);
-      end = new Date(now.getFullYear(), 11, 31);
-    } else if (filterType === 'custom' && customStartDate && customEndDate) {
-      start = new Date(customStartDate);
-      end = new Date(customEndDate);
-      end.setHours(23, 59, 59);
-    }
-
-    // C. Initialize Aggregators
-    // We use a strictly typed object for counts to avoid "implicitly any" errors
-    let counts: Record<string, number> = {
-      'Fulfilled': 0,
-      'Not Fulfilled': 0,
-      'Fulfilled With Concerns': 0,
-      'Fulfilled With Returns': 0
-    };
-    
-    let salesSum = 0;
-    const groupMap = new Map<string, ChartEntry>();
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    // D. Loop Through Deliveries
-    rawDeliveryItems.forEach(item => {
-      const status = item.status;
-      
-      // 1. Find Matching Sale to get DATE and AMOUNT
-      const lookupId = String(item.invoice_id);
-      const matchingSale = salesMap.get(lookupId);
-
-      // If no sale found or no date, we can't plot it on the timeline
-      if (!matchingSale || !matchingSale.dispatch_date) return;
-
-      const date = new Date(matchingSale.dispatch_date);
-      
-      // Date Filter Check
-      if (date < start || date > end) return;
-
-      // 2. Aggregate Global Counts
-      if (Object.prototype.hasOwnProperty.call(counts, status)) {
-        counts[status]++;
-      }
-
-      // 3. Aggregate Sales (Total - Discount)
-      const validStatuses = ['Fulfilled', 'Fulfilled With Returns', 'Fulfilled With Concerns'];
-      let netAmount = 0;
-      
-      if (validStatuses.includes(status)) {
-        const total = Number(matchingSale.total_amount) || 0;
-        const discount = Number(matchingSale.discount_amount) || 0;
-        netAmount = total - discount;
-        salesSum += netAmount;
-      }
-
-      // 4. Group for Charts (Month vs Day)
-      let key: string;
-      let sortIndex: number;
-      
-      if (isYearView) {
-        key = monthNames[date.getMonth()];
-        sortIndex = date.getMonth();
-      } else {
-        key = date.getDate().toString();
-        sortIndex = date.getDate();
-      }
-
-      if (!groupMap.has(key)) {
-        groupMap.set(key, { 
-          name: key, 
-          sortIndex, 
-          'Fulfilled': 0, 
-          'Not Fulfilled': 0, 
-          'Fulfilled With Concerns': 0, 
-          'Fulfilled With Returns': 0,
-          sales: 0 
-        });
-      }
-
-      const entry = groupMap.get(key)!;
-      
-      // Safe Update using Type Assertion or Index Signature
-      if (Object.prototype.hasOwnProperty.call(entry, status)) {
-         // We cast to any here purely because we know the keys match the status strings
-         (entry as any)[status]++;
-      }
-      
-      entry.sales += netAmount;
-    });
-
-    // Sort Chart Data
-    const sortedChartData = Array.from(groupMap.values()).sort((a, b) => a.sortIndex - b.sortIndex);
-    
-    // Status Counts for Pie
-    const finalCounts: DeliveryStatusCount[] = [
-      { name: 'Fulfilled', value: counts['Fulfilled'], color: COLORS[0] },
-      { name: 'Not Fulfilled', value: counts['Not Fulfilled'], color: COLORS[1] },
-      { name: 'Fulfilled With Concerns', value: counts['Fulfilled With Concerns'], color: COLORS[2] },
-      { name: 'Fulfilled With Returns', value: counts['Fulfilled With Returns'], color: COLORS[3] },
-    ];
-
-    const totalDeliveries = Object.values(counts).reduce((a, b) => a + b, 0);
-    const calculatedAvg = totalDeliveries > 0 ? salesSum / totalDeliveries : 0;
-
-    return { 
-      chartData: sortedChartData, 
-      deliveryStatusCounts: finalCounts, 
-      totalSales: salesSum, 
-      avgSales: calculatedAvg 
-    };
-
-  }, [rawDeliveryItems, rawSalesItems, filterType, customStartDate, customEndDate]);
-
-
-  // --- UI RENDER HELPERS ---
   const fulfillmentRate = deliveryStatusCounts && deliveryStatusCounts.length > 0 
     ? ((deliveryStatusCounts[0].value / (deliveryStatusCounts.reduce((a,b) => a + b.value, 0) || 1)) * 100).toFixed(1)
     : "0.0";
@@ -276,14 +119,7 @@ export function StatisticsDashboard() {
       <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-gray-900 mb-1 text-2xl font-semibold">Statistics Dashboard</h1>
-          <div className="flex items-center gap-2">
-            <p className="text-gray-600">Overview of delivery performance and sales</p>
-            {loading && (
-              <span className="text-xs font-mono text-blue-600 bg-blue-50 px-2 py-1 rounded animate-pulse">
-                {loadingStatus}
-              </span>
-            )}
-          </div>
+          <p className="text-gray-600">Overview of delivery performance and sales</p>
         </div>
 
         {/* Global Filter */}
@@ -331,7 +167,9 @@ export function StatisticsDashboard() {
             </div>
           </div>
           <p className="text-gray-500 text-sm font-medium">Fulfilled Deliveries</p>
-          <p className="text-gray-900 text-2xl font-bold mt-1">{loading ? "..." : deliveryStatusCounts[0]?.value}</p>
+          <p className="text-gray-900 text-2xl font-bold mt-1">
+             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : deliveryStatusCounts[0]?.value || 0}
+          </p>
           <p className="text-xs text-green-600 mt-2 font-medium bg-green-50 inline-block px-2 py-0.5 rounded">
             {fulfillmentRate}% rate
           </p>
@@ -345,7 +183,9 @@ export function StatisticsDashboard() {
             </div>
           </div>
           <p className="text-gray-500 text-sm font-medium">Not Fulfilled</p>
-          <p className="text-gray-900 text-2xl font-bold mt-1">{loading ? "..." : deliveryStatusCounts[1]?.value}</p>
+          <p className="text-gray-900 text-2xl font-bold mt-1">
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : deliveryStatusCounts[1]?.value || 0}
+          </p>
           <p className="text-xs text-amber-600 mt-2 font-medium">Pending completion</p>
         </div>
 
@@ -357,7 +197,9 @@ export function StatisticsDashboard() {
             </div>
           </div>
           <p className="text-gray-500 text-sm font-medium">Concerns & Returns</p>
-          <p className="text-gray-900 text-2xl font-bold mt-1">{loading ? "..." : issuesCount}</p>
+          <p className="text-gray-900 text-2xl font-bold mt-1">
+             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : issuesCount}
+          </p>
           <p className="text-xs text-red-600 mt-2 font-medium">Requires attention</p>
         </div>
 
@@ -371,7 +213,7 @@ export function StatisticsDashboard() {
           <p className="text-gray-500 text-sm font-medium">Total Sales (Net)</p>
           <p className="text-gray-900 text-2xl font-bold mt-1">
             {loading 
-              ? "..." 
+              ? <Loader2 className="w-5 h-5 animate-spin" />
               : `₱${totalSales.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
             }
           </p>
@@ -387,8 +229,10 @@ export function StatisticsDashboard() {
         {/* PIE CHART */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h3 className="text-gray-900 font-semibold mb-6">Status Distribution</h3>
-          {loading || deliveryStatusCounts.length === 0 ? (
-             <div className="h-[300px] flex items-center justify-center text-gray-400">Loading or No Data</div>
+          {loading ? (
+             <div className="h-[300px] flex items-center justify-center text-gray-400">Loading...</div>
+          ) : deliveryStatusCounts.length === 0 ? (
+             <div className="h-[300px] flex items-center justify-center text-gray-400">No Data</div>
           ) : (
             <>
               <ResponsiveContainer width="100%" height={300}>
@@ -422,7 +266,7 @@ export function StatisticsDashboard() {
           )}
         </div>
 
-        {/* DELIVERY TRENDS BAR CHART - Updated with 4 Statuses */}
+        {/* DELIVERY TRENDS BAR CHART */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-gray-900 font-semibold">Delivery Trends</h3>
@@ -431,6 +275,42 @@ export function StatisticsDashboard() {
             </span>
           </div>
 
+          {loading ? (
+             <div className="h-[300px] flex items-center justify-center text-gray-400">Loading...</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{fill: '#64748b', fontSize: 12}} 
+                  dy={10}
+                />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }}/>
+                
+                <Bar dataKey="Fulfilled" fill="#10b981" name="Fulfilled" stackId="a" radius={[0, 0, 4, 4]} />
+                <Bar dataKey="Not Fulfilled" fill="#f59e0b" name="Not Fulfilled" stackId="a" />
+                <Bar dataKey="Fulfilled With Concerns" fill="#facc15" name="With Concerns" stackId="a" />
+                <Bar dataKey="Fulfilled With Returns" fill="#ef4444" name="With Returns" stackId="a" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* SALES TREND BAR CHART */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <h3 className="text-gray-900 font-semibold mb-6">Sales Revenue Trend</h3>
+        {loading ? (
+             <div className="h-[300px] flex items-center justify-center text-gray-400">Loading...</div>
+        ) : (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -441,50 +321,21 @@ export function StatisticsDashboard() {
                 tick={{fill: '#64748b', fontSize: 12}} 
                 dy={10}
               />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{fill: '#64748b', fontSize: 12}} 
+                tickFormatter={(value) => `₱${(value/1000).toFixed(0)}k`}
+              />
               <Tooltip 
+                formatter={(value: number) => [`₱${value.toLocaleString()}`, 'Sales']}
                 cursor={{ fill: '#f8fafc' }}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
               />
-              <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }}/>
-              
-              {/* The 4 Requested Statuses */}
-              <Bar dataKey="Fulfilled" fill="#10b981" name="Fulfilled" stackId="a" radius={[0, 0, 4, 4]} />
-              <Bar dataKey="Not Fulfilled" fill="#f59e0b" name="Not Fulfilled" stackId="a" />
-              <Bar dataKey="Fulfilled With Concerns" fill="#facc15" name="With Concerns" stackId="a" />
-              <Bar dataKey="Fulfilled With Returns" fill="#ef4444" name="With Returns" stackId="a" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="sales" fill="#3b82f6" name="Net Sales" radius={[4, 4, 0, 0]} maxBarSize={50} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* SALES TREND BAR CHART */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h3 className="text-gray-900 font-semibold mb-6">Sales Revenue Trend</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis 
-              dataKey="name" 
-              axisLine={false} 
-              tickLine={false} 
-              tick={{fill: '#64748b', fontSize: 12}} 
-              dy={10}
-            />
-            <YAxis 
-              axisLine={false} 
-              tickLine={false} 
-              tick={{fill: '#64748b', fontSize: 12}} 
-              tickFormatter={(value) => `₱${(value/1000).toFixed(0)}k`}
-            />
-            <Tooltip 
-              formatter={(value: number) => [`₱${value.toLocaleString()}`, 'Sales']}
-              cursor={{ fill: '#f8fafc' }}
-              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-            />
-            <Bar dataKey="sales" fill="#3b82f6" name="Net Sales" radius={[4, 4, 0, 0]} maxBarSize={50} />
-          </BarChart>
-        </ResponsiveContainer>
+        )}
       </div>
 
     </div>

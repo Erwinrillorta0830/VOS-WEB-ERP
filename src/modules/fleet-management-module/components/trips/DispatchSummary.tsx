@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Eye, TrendingUp, TrendingDown, Clock, CheckCircle, Calendar, Filter } from 'lucide-react';
+import { Plus, Eye, TrendingUp, TrendingDown, Clock, CheckCircle, Calendar, Filter, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- Type Definitions ---
@@ -33,24 +33,9 @@ export interface DispatchPlan {
   updatedAt: string;
 }
 
+// --- Static Modals ---
 const CreateDispatchPlanModal = ({ onClose, onCreatePlan }: any) => <div className="p-4 bg-white shadow-xl rounded-lg fixed inset-0 m-auto w-96 h-40">Create Plan Modal</div>;
 const ViewDispatchPlanModal = ({ plan, onClose, onUpdatePlan }: any) => <div className="p-4 bg-white shadow-xl rounded-lg fixed inset-0 m-auto w-96 h-40">View Plan: {plan.dpNumber}</div>;
-
-// --- API Endpoints ---
-const BASE_URL = 'http://100.110.197.61:8091/items/';
-
-const API_ENDPOINTS = {
-  PLANS: `${BASE_URL}post_dispatch_plan?limit=-1`,
-  STAFF: `${BASE_URL}post_dispatch_plan_staff?limit=-1`,
-  INVOICES: `${BASE_URL}post_dispatch_invoices?limit=-1`,
-  SALES_INVOICES: `${BASE_URL}sales_invoice?limit=-1`,
-  VEHICLES: `${BASE_URL}vehicles?limit=-1`,
-  USERS: `${BASE_URL}user?limit=-1`,
-  CUSTOMERS: `${BASE_URL}customer?limit=-1`,
-  SALESMEN: `${BASE_URL}salesman?limit=-1`,
-};
-
-const normalizeCode = (code: string) => code ? code.replace(/\s+/g, '') : '';
 
 // --- Helper: 12-Hour Time Formatter ---
 const formatDateTime = (dateString: string | null) => {
@@ -64,155 +49,14 @@ const formatDateTime = (dateString: string | null) => {
   });
 };
 
-// --- Data Fetching Logic ---
-const fetchAndMapData = async (): Promise<DispatchPlan[]> => {
-    console.log("Fetching dispatch data...");
-    try {
-        const [
-            plansRes, staffRes, dispatchInvoicesRes, salesInvoicesRes, 
-            vehiclesRes, usersRes, customersRes, salesmenRes
-        ] = await Promise.all([
-            fetch(API_ENDPOINTS.PLANS),
-            fetch(API_ENDPOINTS.STAFF),
-            fetch(API_ENDPOINTS.INVOICES),
-            fetch(API_ENDPOINTS.SALES_INVOICES),
-            fetch(API_ENDPOINTS.VEHICLES),
-            fetch(API_ENDPOINTS.USERS),
-            fetch(API_ENDPOINTS.CUSTOMERS),
-            fetch(API_ENDPOINTS.SALESMEN)
-        ]);
-
-        if (!plansRes.ok) throw new Error("Failed to fetch API data");
-
-        const plansData = await plansRes.json();
-        const staffData = await staffRes.json();
-        const dispatchInvoicesData = await dispatchInvoicesRes.json();
-        const salesInvoicesData = await salesInvoicesRes.json();
-        const vehiclesData = await vehiclesRes.json();
-        const usersData = await usersRes.json();
-        const customersData = await customersRes.json();
-        const salesmenData = await salesmenRes.json();
-
-        const rawPlans = plansData.data || [];
-
-        // --- 1. Lookup Maps ---
-        const userMap = new Map();
-        (usersData.data || []).forEach((u: any) => userMap.set(String(u.user_id), `${u.user_fname} ${u.user_lname}`.trim()));
-
-        const vehicleMap = new Map();
-        (vehiclesData.data || []).forEach((v: any) => {
-            if (v.vehicle_id) vehicleMap.set(String(v.vehicle_id), v.vehicle_plate);
-        });
-
-        const salesmanMap = new Map();
-        (salesmenData.data || []).forEach((s: any) => salesmanMap.set(String(s.id), s.salesman_name));
-
-        const salesInvoiceMap = new Map();
-        (salesInvoicesData.data || []).forEach((si: any) => salesInvoiceMap.set(String(si.invoice_id), si));
-
-        const customerMap = new Map();
-        (customersData.data || []).forEach((c: any) => {
-            if (c.customer_code) customerMap.set(normalizeCode(c.customer_code), c);
-        });
-
-        const invoicesByPlan = new Map<string, any[]>();
-        (dispatchInvoicesData.data || []).forEach((inv: any) => {
-            if (inv.post_dispatch_plan_id) {
-                const pId = String(inv.post_dispatch_plan_id);
-                if (!invoicesByPlan.has(pId)) invoicesByPlan.set(pId, []);
-                invoicesByPlan.get(pId)?.push(inv);
-            }
-        });
-
-        const driverByPlan = new Map<string, string>();
-        (staffData.data || []).forEach((s: any) => {
-            if (s.role === 'Driver') driverByPlan.set(String(s.post_dispatch_plan_id), String(s.user_id));
-        });
-
-        // --- 2. Map Plans ---
-        const mappedPlans: DispatchPlan[] = rawPlans.map((plan: any) => {
-            const planIdStr = String(plan.id);
-            const driverUserId = driverByPlan.get(planIdStr) || String(plan.driver_id);
-            const driverName = userMap.get(driverUserId) || 'Unknown Driver';
-            const vehicleIdStr = plan.vehicle_id ? String(plan.vehicle_id) : '';
-            const vehiclePlateNo = vehicleMap.get(vehicleIdStr) || 'Unknown Plate';
-
-            const planInvoices = invoicesByPlan.get(planIdStr) || [];
-            let foundSalesmanName = 'Unknown Salesman';
-            let foundSalesmanId = 'N/A';
-
-            for (const inv of planInvoices) {
-                const salesInv = salesInvoiceMap.get(String(inv.invoice_id));
-                if (salesInv && salesInv.salesman_id) {
-                    const sIdStr = String(salesInv.salesman_id);
-                    const name = salesmanMap.get(sIdStr);
-                    if (name) {
-                        foundSalesmanName = name;
-                        foundSalesmanId = sIdStr;
-                        break;
-                    }
-                }
-            }
-
-            const customerTransactions = planInvoices.map((inv: any) => {
-                const salesInv = salesInvoiceMap.get(String(inv.invoice_id));
-                let customerName = 'Unknown Customer';
-                let address = 'N/A';
-                let amount = 0;
-                if (salesInv) {
-                    amount = salesInv.total_amount || 0;
-                    if (salesInv.customer_code) {
-                        const cObj = customerMap.get(normalizeCode(salesInv.customer_code));
-                        if (cObj) {
-                            customerName = cObj.customer_name;
-                            address = `${cObj.city || ''}, ${cObj.province || ''}`;
-                        }
-                    }
-                }
-                return {
-                    id: String(inv.id),
-                    customerName,
-                    address,
-                    itemsOrdered: 'N/A',
-                    amount,
-                    status: inv.status
-                };
-            });
-
-            return {
-                id: planIdStr,
-                dpNumber: plan.doc_no,
-                driverId: driverUserId,
-                driverName,
-                salesmanId: foundSalesmanId,
-                salesmanName: foundSalesmanName,
-                vehicleId: vehicleIdStr,
-                vehiclePlateNo: vehiclePlateNo,
-                startingPoint: String(plan.starting_point),
-                timeOfDispatch: plan.time_of_dispatch, 
-                timeOfArrival: plan.time_of_arrival,
-                estimatedDispatch: plan.estimated_time_of_dispatch,
-                estimatedArrival: plan.estimated_time_of_arrival,
-                customerTransactions,
-                status: plan.status,
-                createdAt: plan.date_encoded,
-                updatedAt: plan.date_encoded,
-            };
-        });
-
-        return mappedPlans;
-    } catch (e) {
-        console.error("Failed to load dispatch data:", e);
-        return []; 
-    }
-};
-
 // --- DispatchSummary Component ---
 
 export function DispatchSummary() {
   const [dispatchPlans, setDispatchPlans] = useState<DispatchPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // UI State for Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<DispatchPlan | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -223,12 +67,15 @@ export function DispatchSummary() {
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
 
+  // --- Data Loading ---
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const plans = await fetchAndMapData();
-      setDispatchPlans(plans);
+      const res = await fetch('/api/dispatch-summary');
+      if (!res.ok) throw new Error("Failed to fetch dispatch plans");
+      const json = await res.json();
+      setDispatchPlans(json.data || []);
     } catch (e) {
       console.error("Failed to load data:", e);
       setError((e as Error).message);
@@ -241,6 +88,7 @@ export function DispatchSummary() {
     loadData();
   }, [loadData]);
 
+  // --- Handlers ---
   const handleCreatePlan = (newPlan: DispatchPlan) => { setDispatchPlans([...dispatchPlans, newPlan]); };
   const handleUpdatePlan = (updatedPlan: DispatchPlan) => {
     setDispatchPlans(dispatchPlans.map(plan => plan.id === updatedPlan.id ? updatedPlan : plan));
@@ -288,20 +136,18 @@ export function DispatchSummary() {
 
   // --- FILTERED TABLE DATA LOGIC ---
   const filteredTableData = visibleTablePlans.filter(plan => {
-    // 1. Status Filter
     if (statusFilter !== 'All Statuses') {
       const category = getStatusCategory(plan.status);
       if (category !== statusFilter) return false;
     }
 
-    // 2. Date Filter
     if (dateFilter !== 'All Time') {
       const planDate = new Date(plan.createdAt);
       const now = new Date();
       
       if (dateFilter === 'This Week') {
         const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+        startOfWeek.setDate(now.getDate() - now.getDay());
         startOfWeek.setHours(0, 0, 0, 0);
         return planDate >= startOfWeek;
       } 
@@ -366,25 +212,45 @@ export function DispatchSummary() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <div><p className="text-gray-600 text-sm mb-1 font-medium">Total Visible</p><p className="text-3xl font-semibold text-gray-900">{stats.total}</p></div>
+            <div>
+              <p className="text-gray-600 text-sm mb-1 font-medium">Total Visible</p>
+              <p className="text-3xl font-semibold text-gray-900">
+                {loading ? <Loader2 className="w-6 h-6 animate-spin text-blue-500" /> : stats.total}
+              </p>
+            </div>
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center"><Clock className="w-6 h-6 text-blue-600" /></div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <div><p className="text-gray-600 text-sm mb-1 font-medium">For Dispatch</p><p className="text-3xl font-semibold text-gray-900">{stats.forDispatch}</p></div>
+            <div>
+              <p className="text-gray-600 text-sm mb-1 font-medium">For Dispatch</p>
+              <p className="text-3xl font-semibold text-gray-900">
+                {loading ? <Loader2 className="w-6 h-6 animate-spin text-blue-500" /> : stats.forDispatch}
+              </p>
+            </div>
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center"><Plus className="w-6 h-6 text-blue-600" /></div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <div><p className="text-gray-600 text-sm mb-1 font-medium">For Inbound</p><p className="text-3xl font-semibold text-gray-900">{stats.forInbound}</p></div>
+            <div>
+              <p className="text-gray-600 text-sm mb-1 font-medium">For Inbound</p>
+              <p className="text-3xl font-semibold text-gray-900">
+                {loading ? <Loader2 className="w-6 h-6 animate-spin text-purple-500" /> : stats.forInbound}
+              </p>
+            </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center"><TrendingDown className="w-6 h-6 text-purple-600" /></div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <div><p className="text-gray-600 text-sm mb-1 font-medium">For Clearance</p><p className="text-3xl font-semibold text-gray-900">{stats.forClearance}</p></div>
+            <div>
+              <p className="text-gray-600 text-sm mb-1 font-medium">For Clearance</p>
+              <p className="text-3xl font-semibold text-gray-900">
+                {loading ? <Loader2 className="w-6 h-6 animate-spin text-pink-500" /> : stats.forClearance}
+              </p>
+            </div>
             <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center"><CheckCircle className="w-6 h-6 text-pink-600" /></div>
           </div>
         </div>
@@ -397,7 +263,11 @@ export function DispatchSummary() {
         <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">📊 Active Status Distribution</h2>
           <ResponsiveContainer width="100%" height={300}>
-            {statusChartData.length === 0 ? (
+            {loading ? (
+               <div className="flex items-center justify-center h-full text-gray-400">
+                 <Loader2 className="w-8 h-8 animate-spin text-blue-500 mr-2" /> Loading...
+               </div>
+            ) : statusChartData.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-gray-400">
                     No active dispatch data available
                 </div>
@@ -423,14 +293,20 @@ export function DispatchSummary() {
         <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">📈 Weekly Trend</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={weeklyTrendData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="day" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="dispatches" stroke="#3b82f6" strokeWidth={2} />
-            </LineChart>
+            {loading ? (
+               <div className="flex items-center justify-center h-full text-gray-400">
+                 <Loader2 className="w-8 h-8 animate-spin text-blue-500 mr-2" /> Loading...
+               </div>
+            ) : (
+                <LineChart data={weeklyTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="day" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="dispatches" stroke="#3b82f6" strokeWidth={2} />
+                </LineChart>
+            )}
           </ResponsiveContainer>
         </div>
       </div>
@@ -439,7 +315,6 @@ export function DispatchSummary() {
 
       {/* Table */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-        {/* MODIFIED HEADER: Fixed Alignment and Spacing */}
         <div className="p-6 border-b border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h2 className="text-xl font-semibold text-gray-900">📑 Active Dispatch Plans</h2>
           
@@ -448,7 +323,6 @@ export function DispatchSummary() {
             <div className="relative">
               <Filter className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <select 
-                // Added h-10 for fixed height
                 className="h-10 pl-10 pr-10 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -464,7 +338,6 @@ export function DispatchSummary() {
             <div className="relative">
               <Calendar className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <select 
-                // Added h-10 for fixed height
                 className="h-10 pl-10 pr-10 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
@@ -477,7 +350,7 @@ export function DispatchSummary() {
               </select>
             </div>
 
-            {/* Custom Date Inputs - Perfectly aligned with h-10 */}
+            {/* Custom Date Inputs */}
             {dateFilter === 'Custom' && (
               <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
                 <input 
@@ -513,7 +386,16 @@ export function DispatchSummary() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredTableData.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-24 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-2" />
+                      <p>Loading dispatch plans...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredTableData.length === 0 ? (
                 <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-500">No active dispatch plans found matching filters.</td></tr>
               ) : (
                 filteredTableData.map((plan) => (
