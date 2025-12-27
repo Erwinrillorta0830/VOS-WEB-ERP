@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/components/advance-filter.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/export-button.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/mode-toggle.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/check-register-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/customer-analysis-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/daily-collections-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/payment-method-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/regional-analysis-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/salesman-performance-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/cards/summary-report-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/check-status-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/customer-analysis.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/data-collection-trend.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/payment-method-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/payment-method-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/regional-analysis-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/regional-analysis-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/salesman-collection.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/summary-daily-collection.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/summary-daily-trend.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/charts/summary-payment-method-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/check-register-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/customer-analysis-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/daily-collections-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/payment-method-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/regional-analysis-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/salesman-performance.-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/contents/summary-report-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/check-register-table/column.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/check-register-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/check-register-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/check-register-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/check-register-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/customer-analysis-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/customer-analysis-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/customer-analysis-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/customer-analysis-data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/customer-analysis-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/daily-collections-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/daily-collections-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/daily-collections-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/daily-collections-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/payment-methods-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/payment-methods-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/payment-methods-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/payment-methods-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/regional-analysis-data-table/colums.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/regional-analysis-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/regional-analysis-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/drag-handler.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/draggable-row.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/table-cell-viewer.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/salesman-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/summary-report-data-table/column.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/summary-report-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/summary-report-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/summary-report-data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/data-table/summary-report-data-table/type.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/header/app-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/sidebar/app-sidebar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/sidebar/nav-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/shared/sidebar/nav-main.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/theme-provide.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/alert-dialog.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/alert.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/badge.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/button.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/calendar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/chart.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/checkbox.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/drawer.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/dropdown-menu.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/input.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/label.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/popover.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/select.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/separator.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/sheet.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/sidebar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/skeleton.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/sonner.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/table.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/tabs.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/ui/tooltip.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/hooks/use-mobile.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/check-register/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/customer-analysis/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/daily-collection/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/layout.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/payment-methods/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/regional-analysis/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/salesman-performance/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/bi/summary-report/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/check-register/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/collection-payment-methods/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/collection-salesman-performance/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/customer-analysis/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/daily-collections/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/regional-analysis/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/salesman-monthly-collections/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/summary-report/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/contexts/filter-context.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-check-register-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-customer-analysis-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-daily-collection-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-filtered-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-payment-method-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-regional-analysis-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-salesman-performance-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/hooks/use-summary-report-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/lib/daily-collections-utils.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/lib/summary-report-utils.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/lib/utils.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/advance-filter.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/export-button.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/mode-toggle.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/check-register-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/customer-analysis-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/daily-collections-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/payment-method-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/regional-analysis-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/salesman-performance-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/cards/summary-report-card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/check-status-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/customer-analysis.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/data-collection-trend.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/payment-method-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/payment-method-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/regional-analysis-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/regional-analysis-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/salesman-collection.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/summary-daily-collection.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/summary-daily-trend.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/charts/summary-payment-method-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/check-register-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/customer-analysis-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/daily-collections-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/payment-method-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/regional-analysis-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/salesman-performance.-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/contents/summary-report-content.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/check-register-table/column.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/check-register-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/check-register-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/check-register-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/check-register-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/customer-analysis-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/customer-analysis-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/customer-analysis-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/customer-analysis-data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/customer-analysis-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/daily-collections-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/daily-collections-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/daily-collections-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/daily-collections-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/payment-methods-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/payment-methods-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/payment-methods-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/payment-methods-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/regional-analysis-data-table/colums.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/regional-analysis-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/regional-analysis-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/drag-handler.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/draggable-row.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/table-cell-viewer.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/salesman-data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/summary-report-data-table/column.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/summary-report-data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/summary-report-data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/summary-report-data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/data-table/summary-report-data-table/type.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/header/app-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/sidebar/app-sidebar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/sidebar/nav-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/sidebar/nav-main.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/theme-provide.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/alert-dialog.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/alert.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/badge.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/button.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/calendar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/card.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/chart.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/checkbox.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/drawer.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/dropdown-menu.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/input.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/label.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/popover.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/select.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/separator.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/sheet.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/sidebar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/skeleton.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/sonner.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/table.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/tabs.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/tooltip.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <favorite-branches>
+      <branch-storage>
+        <map>
+          <entry type="LOCAL">
+            <value>
+              <list>
+                <branch-info repo="$PROJECT_DIR$" source="update" />
+              </list>
+            </value>
+          </entry>
+        </map>
+      </branch-storage>
+    </favorite-branches>
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="main" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;tijnara&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Erwinrillorta0830/VOS-WEB-ERP.git&quot;,
+    &quot;accountId&quot;: &quot;08b5967c-e7cb-4b4c-82ed-a66b414f36e3&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="370WBQNYbH2BgslTqBTp0ZqpMwM" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "main",
+    "js.debugger.nextJs.config.created.client": "true",
+    "js.debugger.nextJs.config.created.server": "true",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.keymap",
+    "to.speed.mode.migration.done": "true",
+    "ts.external.directory.path": "C:\\Users\\Admin\\Desktop\\VOS\\VOS-WEB-ERP\\node_modules\\typescript\\lib",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="ReactDesignerToolWindowState">
+    <option name="myId2Visible">
+      <map>
+        <entry key="com.intellij.reactbuddy.reactComponents" value="false" />
+        <entry key="com.intellij.reactbuddy.reactInspector" value="false" />
+        <entry key="com.intellij.reactbuddy.storybook" value="false" />
+      </map>
+    </option>
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\components" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\(app)" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api" />
+    </key>
+  </component>
+  <component name="RunManager" selected="npm.Next.js: server-side">
+    <configuration name="Next.js: debug client-side" type="JavascriptDebugType" uri="http://localhost:3000/">
+      <method v="2" />
+    </configuration>
+    <configuration name="Next.js: server-side" type="js.build_tools.npm">
+      <package-json value="$PROJECT_DIR$/package.json" />
+      <command value="run" />
+      <scripts>
+        <script value="dev" />
+      </scripts>
+      <node-interpreter value="project" />
+      <envs />
+      <method v="2" />
+    </configuration>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-WS-252.26830.93" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="" />
+      <created>1766040332538</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1766040332538</updated>
+      <workItem from="1766040335887" duration="7816000" />
+      <workItem from="1766136628528" duration="11819000" />
+      <workItem from="1766218027330" duration="713000" />
+      <workItem from="1766365091341" duration="12838000" />
+      <workItem from="1766766247922" duration="6328000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="main" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
+  </component>
+</project>
