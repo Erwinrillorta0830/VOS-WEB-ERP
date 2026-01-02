@@ -109,10 +109,10 @@ const MODULES: AppModule[] = [
     {
         key: "sales-bia",
         name: "Sales BIA",
-        href: "/app/sales-bia",
+        href: "/sales/executive",
         icon: BarChart3,
         accent: "from-sky-400 to-blue-500",
-        available: false,
+        available: true,
     },
     {
         key: "documents",
