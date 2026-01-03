@@ -101,18 +101,18 @@ const MODULES: AppModule[] = [
     {
         key: "collection-report",
         name: "Collection Report",
-        href: "/app/collection-report",
+        href: "/bi/summary-report",
         icon: FileSpreadsheet,
         accent: "from-lime-400 to-emerald-500",
-        available: false,
+        available: true,
     },
     {
         key: "sales-bia",
         name: "Sales BIA",
-        href: "/app/sales-bia",
+        href: "/sales/executive",
         icon: BarChart3,
         accent: "from-sky-400 to-blue-500",
-        available: false,
+        available: true,
     },
     {
         key: "documents",
