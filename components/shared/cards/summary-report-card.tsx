@@ -9,31 +9,15 @@ import {
 } from "@/components/ui/card";
 import { FileText, CheckCircle2, XCircle, TrendingUp } from "lucide-react";
 import { SummaryMetrics } from "../data-table/summary-report-data-table/type";
+import {
+  formatCurrencyDisplay,
+  formatNumber,
+} from "../../../src/app/lib/utils";
+import { getCardColor } from "../../../src/app/lib/utils";
 
 interface SummaryReportCardProps {
   summary: SummaryMetrics;
 }
-
-const formatCurrency = (amount: number): string =>
-  new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-const formatNumber = (num: number): string =>
-  new Intl.NumberFormat("en-US").format(num);
-
-const getCardColor = (index: number): string => {
-  const colors = [
-    "from-blue-500/10",
-    "from-green-500/10",
-    "from-orange-500/10",
-    "from-purple-500/10",
-  ];
-  return colors[index % colors.length];
-};
 
 export default function SummaryReportCard({ summary }: SummaryReportCardProps) {
   const cards = [
@@ -82,12 +66,12 @@ export default function SummaryReportCard({ summary }: SummaryReportCardProps) {
                 <Icon className="hidden sm:flex size-5 text-muted-foreground" />
               </div>
 
-              <CardTitle className="text-md sm:text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
-                {formatCurrency(card.amount)}
+              <CardTitle className="text-lg sm:text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
+                {formatCurrencyDisplay(card.amount!, 15)}
               </CardTitle>
 
               {!card.isAverage && (
-                <CardDescription className="text-md text-muted-foreground">
+                <CardDescription className="text-xs sm:text-lg text-muted-foreground">
                   {formatNumber(card.count!)} Collections
                 </CardDescription>
               )}

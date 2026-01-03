@@ -8,29 +8,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Users, TrendingUp, DollarSign, Target } from "lucide-react";
+import { formatCurrency } from "../../../src/app/lib/utils";
+import { getCardColor } from "../../../src/app/lib/utils";
 
 interface CustomerAnalysisCardProps {
   summary: CustomerAnalysisSummary | null;
   isLoading?: boolean;
 }
 
-const formatCurrency = (amount: number): string =>
-  new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-const getCardColor = (index: number): string => {
-  const colors = [
-    "from-blue-500/10",
-    "from-green-500/10",
-    "from-purple-500/10",
-    "from-orange-500/10",
-  ];
-  return colors[index % colors.length];
-};
 
 export function CustomerAnalysisCard({ summary }: CustomerAnalysisCardProps) {
   const cards = [
