@@ -1,204 +1,379 @@
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-async function fetchAll(url: string) {
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.data || [];
-  } catch (error) {
-    console.error(`Fetch error for ${url}:`, error);
-    return [];
-  }
+const DIRECTUS_URL = (process.env.DIRECTUS_URL ?? "http://100.110.197.61:8091")
+    .replace(/\/+$/, "");
+const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN ?? "";
+
+/* -------------------------------------------------------------------------- */
+/* DIRECTUS FETCH                                                             */
+/* -------------------------------------------------------------------------- */
+
+function getHeaders(): HeadersInit {
+    const headers: HeadersInit = { "Content-Type": "application/json" };
+    if (DIRECTUS_TOKEN) headers["Authorization"] = `Bearer ${DIRECTUS_TOKEN}`;
+    return headers;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function directusFetch(path: string, attempt = 1): Promise<any> {
+    const url = `${DIRECTUS_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+    const res = await fetch(url, { headers: getHeaders(), cache: "no-store" });
+
+    // Retry only on transient “under pressure” responses
+    if ((res.status === 503 || res.status === 429) && attempt < 4) {
+        await sleep(400 * attempt);
+        return directusFetch(path, attempt + 1);
+    }
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+            `Directus request failed (${res.status}) for ${url}. Response: ${text.slice(
+                0,
+                900
+            )}`
+        );
+    }
+
+    return res.json();
+}
+
+function toMoney(v: any): number {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function safeNet(inv: any): number {
+    const total = toMoney(inv.total_amount);
+    const disc = toMoney(inv.discount_amount);
+    const net = total - disc;
+    return Number.isFinite(net) ? net : 0;
+}
+
+function monthKey(isoOrDate: string | null | undefined): string {
+    if (!isoOrDate) return "Unknown";
+    const s = String(isoOrDate);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 7);
+    return "Unknown";
+}
+
+/* -------------------------------------------------------------------------- */
+/* ROUTE                                                                      */
+/* -------------------------------------------------------------------------- */
+
 export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const fromDate = searchParams.get("fromDate");
-    const toDate = searchParams.get("toDate");
+    try {
+        const { searchParams } = new URL(request.url);
+        const fromDate = searchParams.get("fromDate"); // yyyy-MM-dd
+        const toDate = searchParams.get("toDate"); // yyyy-MM-dd
 
-    // 1. FETCH DATA
-    const [salesmen, invoices, invoiceDetails, customers, products] =
-      await Promise.all([
-        fetchAll(`${DIRECTUS_URL}/items/salesman?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/sales_invoice?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/sales_invoice_details?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/customer?limit=-1`),
-        fetchAll(`${DIRECTUS_URL}/items/products?limit=-1`),
-      ]);
+        /* ---------------------------------------------------------------------- */
+        /* 1) FETCH (SAFE FIELDS ONLY)                                             */
+        /* ---------------------------------------------------------------------- */
 
-    // 2. PROCESS MAPS
-    const productMap = new Map(
-      products.map((p: any) => [p.product_id, p.product_name])
-    );
+        // Salesmen: keep it minimal to avoid field permission issues
+        const salesmenPromise = directusFetch(
+            `/items/salesman?fields=id,salesman_name&limit=-1`
+        ).catch(() => ({ data: [] }));
 
-    // Filter invoices by date
-    const filteredInvoices = invoices.filter((inv: any) => {
-      if (!inv.invoice_date) return false;
-      const d = inv.invoice_date.substring(0, 10);
-      return (!fromDate || d >= fromDate) && (!toDate || d <= toDate);
-    });
+        // Invoices: only fields we know exist and are commonly permitted
+        const invoicesPromise = directusFetch(
+            `/items/sales_invoice?fields=${encodeURIComponent(
+                [
+                    "invoice_id",
+                    "invoice_no",
+                    "invoice_date",
+                    "salesman_id",
+                    "total_amount",
+                    "discount_amount",
+                ].join(",")
+            )}&limit=-1`
+        ).catch(() => ({ data: [] }));
 
-    // 3. AGGREGATE PER SALESMAN
-    const salesmanStats = new Map();
+        // Invoice details: optional, used for top products
+        const detailsPromise = directusFetch(
+            `/items/sales_invoice_details?fields=${encodeURIComponent(
+                ["invoice_no", "product_id", "total_amount", "quantity"].join(",")
+            )}&limit=-1`
+        ).catch(() => ({ data: [] }));
 
-    // Initialize salesmen stats from salesman list
-    salesmen.forEach((s: any) => {
-      if (s.isActive) {
-        salesmanStats.set(s.id, {
-          id: s.id.toString(),
-          name: s.salesman_name,
-          netSales: 0,
-          target: 500000, // Default target since we don't have a targets table
-          returnRate: 0, // Placeholder as returns table wasn't provided in this prompt
-          visits: 0,
-          orders: 0,
-          strikeRate: 0,
-          topProduct: "N/A",
-          topSupplier: "N/A",
-          productsSold: 0,
-          productCounts: new Map(), // To calc top product
-        });
-      }
-    });
+        // Products: optional product map
+        const productsPromise = directusFetch(
+            `/items/products?fields=${encodeURIComponent(
+                ["product_id", "product_name"].join(",")
+            )}&limit=-1`
+        ).catch(() => ({ data: [] }));
 
-    let teamSales = 0;
-    const teamTarget = salesmanStats.size * 500000; // Aggregate target
-    let totalInvoicesCount = 0;
+        // Customers: optional coverage (store_name)
+        const customersPromise = directusFetch(
+            `/items/customer?fields=${encodeURIComponent(["id", "store_name"].join(","))}&limit=-1`
+        ).catch(() => ({ data: [] }));
 
-    // Process Invoices
-    filteredInvoices.forEach((inv: any) => {
-      const stats = salesmanStats.get(inv.salesman_id);
-      if (stats) {
-        const amount = Number(inv.total_amount) || 0;
-        stats.netSales += amount;
-        stats.orders += 1;
-        teamSales += amount;
-        totalInvoicesCount++;
-      }
-    });
+        const [salesmenJson, invoicesJson, detailsJson, productsJson, customersJson] =
+            await Promise.all([
+                salesmenPromise,
+                invoicesPromise,
+                detailsPromise,
+                productsPromise,
+                customersPromise,
+            ]);
 
-    // Process Invoice Details for Top Products & Products Sold count
-    // (This is a simplified approach; doing this for ALL details in memory might be heavy for large datasets)
-    const validInvoiceIds = new Set(
-      filteredInvoices.map((i: any) => i.invoice_id)
-    );
+        const salesmen = Array.isArray(salesmenJson?.data) ? salesmenJson.data : [];
+        const invoicesAll = Array.isArray(invoicesJson?.data) ? invoicesJson.data : [];
+        const invoiceDetails = Array.isArray(detailsJson?.data) ? detailsJson.data : [];
+        const products = Array.isArray(productsJson?.data) ? productsJson.data : [];
+        const customers = Array.isArray(customersJson?.data) ? customersJson.data : [];
 
-    invoiceDetails.forEach((det: any) => {
-      // Check if detail belongs to a valid invoice in our date range
-      // Note: invoice_no in details might be an ID or object depending on Directus config
-      const invId =
-        typeof det.invoice_no === "object" ? det.invoice_no.id : det.invoice_no;
+        /* ---------------------------------------------------------------------- */
+        /* 2) MAPS                                                                 */
+        /* ---------------------------------------------------------------------- */
 
-      if (validInvoiceIds.has(invId)) {
-        // Find salesman for this invoice
-        const inv = filteredInvoices.find((i: any) => i.invoice_id === invId);
-        if (inv && salesmanStats.has(inv.salesman_id)) {
-          const stats = salesmanStats.get(inv.salesman_id);
-          const pName = productMap.get(det.product_id) || "Unknown";
+        const productNameById = new Map<string | number, string>(
+            products.map((p: any) => [p.product_id, String(p.product_name ?? "Unknown")])
+        );
 
-          // Count products
-          stats.productCounts.set(
-            pName,
-            (stats.productCounts.get(pName) || 0) + Number(det.total_amount)
-          );
-        }
-      }
-    });
+        /* ---------------------------------------------------------------------- */
+        /* 3) FILTER INVOICES BY DATE RANGE                                        */
+        /* ---------------------------------------------------------------------- */
 
-    // Finalize Salesman Stats
-    const salesmenList = Array.from(salesmanStats.values())
-      .map((s: any) => {
-        // Top Product Logic
-        let topP = "N/A";
-        let maxVal = 0;
-        s.productCounts.forEach((val: number, key: string) => {
-          if (val > maxVal) {
-            maxVal = val;
-            topP = key;
-          }
+        const filteredInvoices = invoicesAll.filter((inv: any) => {
+            if (!inv.invoice_date) return false;
+            const d = String(inv.invoice_date).substring(0, 10);
+            if (fromDate && d < fromDate) return false;
+            if (toDate && d > toDate) return false;
+            return true;
         });
 
-        // Simulation for missing data fields
-        const estimatedVisits = s.orders > 0 ? Math.round(s.orders * 1.3) : 0;
-        const strikeRate =
-          estimatedVisits > 0
-            ? Math.round((s.orders / estimatedVisits) * 100)
-            : 0;
+        /* ---------------------------------------------------------------------- */
+        /* 4) INIT SALESMAN STATS                                                  */
+        /* ---------------------------------------------------------------------- */
 
-        return {
-          ...s,
-          topProduct: topP,
-          topSupplier: "Internal", // Placeholder as supplier logic requires more mapping
-          productsSold: s.productCounts.size,
-          visits: estimatedVisits,
-          strikeRate: strikeRate,
-          // Mock return rate for demo
-          returnRate: (Math.random() * 2).toFixed(2),
-        };
-      })
-      .sort((a, b) => b.netSales - a.netSales);
+        const DEFAULT_TARGET = 500_000;
 
-    // 4. COVERAGE DATA (Sari-Sari vs Resto)
-    let sariSariCount = 0;
-    let restoCount = 0;
-    let othersCount = 0;
+        const salesmanStats = new Map<
+            string,
+            {
+                id: string;
+                name: string;
+                netSales: number;
+                target: number;
+                returnRate: number; // placeholder
+                visits: number; // estimated
+                orders: number;
+                strikeRate: number;
+                topProduct: string;
+                topSupplier: string; // placeholder
+                productsSold: number;
+                productCounts: Map<string, number>; // product -> sales
+            }
+        >();
 
-    customers.forEach((c: any) => {
-      // Simple string matching based on store name or type
-      const name = (c.store_name || "").toUpperCase();
-      if (name.includes("SARI") || name.includes("STORE")) sariSariCount++;
-      else if (
-        name.includes("RESTO") ||
-        name.includes("CAFE") ||
-        name.includes("KITCHEN")
-      )
-        restoCount++;
-      else othersCount++;
-    });
+        salesmen.forEach((s: any) => {
+            const id = String(s.id);
+            const name = String(s.salesman_name ?? `Salesman ${id}`).trim();
 
-    const coverageDistribution = [
-      { type: "Sari-Sari Store", count: sariSariCount, fill: "#3b82f6" },
-      { type: "Restaurant", count: restoCount, fill: "#10b981" },
-      { type: "Others", count: othersCount, fill: "#f59e0b" },
-    ];
+            // If you later confirm an "isActive" field is permitted, you can filter here.
+            salesmanStats.set(id, {
+                id,
+                name,
+                netSales: 0,
+                target: DEFAULT_TARGET,
+                returnRate: 0,
+                visits: 0,
+                orders: 0,
+                strikeRate: 0,
+                topProduct: "N/A",
+                topSupplier: "Internal",
+                productsSold: 0,
+                productCounts: new Map(),
+            });
+        });
 
-    const totalCustomers = customers.length;
-    const penetrationRate =
-      totalCustomers > 0
-        ? (((sariSariCount + restoCount) / totalCustomers) * 100).toFixed(1)
-        : 0;
+        /* ---------------------------------------------------------------------- */
+        /* 5) AGGREGATE TEAM + PER SALESMAN                                        */
+        /* ---------------------------------------------------------------------- */
 
-    // 5. MOCK MONTHLY HISTORY (For chart visual consistency)
-    const monthlyPerformance = [
-      { month: "Jan", target: 500000, achieved: teamSales * 0.1 },
-      { month: "Feb", target: 500000, achieved: teamSales * 0.15 },
-      { month: "Mar", target: 500000, achieved: teamSales * 0.12 },
-      { month: "Apr", target: 500000, achieved: teamSales * 0.2 },
-      { month: "May", target: 500000, achieved: teamSales * 0.18 },
-      { month: "Jun", target: 500000, achieved: teamSales * 0.25 },
-    ];
+        let teamSales = 0;
+        let totalInvoicesCount = 0;
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        teamSales,
-        teamTarget,
-        totalInvoices: totalInvoicesCount,
-        penetrationRate,
-        coverageDistribution,
-        salesmen: salesmenList,
-        monthlyPerformance,
-      },
-    });
-  } catch (error: any) {
-    console.error("Supervisor API Error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  }
+        // Map invoice_id -> salesman_id (for detail attribution)
+        const invoiceIdToSalesman = new Map<string | number, string>();
+        // Also track valid invoice ids for quick lookup
+        const validInvoiceIds = new Set<string | number>();
+
+        filteredInvoices.forEach((inv: any) => {
+            const sid = String(inv.salesman_id ?? "");
+            const stats = salesmanStats.get(sid);
+            if (!stats) return;
+
+            const net = safeNet(inv);
+            stats.netSales += net;
+            stats.orders += 1;
+
+            teamSales += net;
+            totalInvoicesCount += 1;
+
+            const invId = inv.invoice_id;
+            validInvoiceIds.add(invId);
+            invoiceIdToSalesman.set(invId, sid);
+        });
+
+        // Team target = number of active salesmen * default target
+        const teamTarget = salesmanStats.size * DEFAULT_TARGET;
+
+        /* ---------------------------------------------------------------------- */
+        /* 6) INVOICE DETAILS -> TOP PRODUCTS                                      */
+        /* ---------------------------------------------------------------------- */
+
+        // Team-wide product totals
+        const teamProductTotals = new Map<string, number>();
+
+        invoiceDetails.forEach((det: any) => {
+            // In Directus relational setups, invoice_no might be:
+            // - a number (invoice_id)
+            // - or an object { id: ... }
+            const invId =
+                typeof det.invoice_no === "object" ? det.invoice_no?.id : det.invoice_no;
+
+            if (!validInvoiceIds.has(invId)) return;
+
+            const sid = invoiceIdToSalesman.get(invId);
+            if (!sid) return;
+
+            const stats = salesmanStats.get(sid);
+            if (!stats) return;
+
+            const pName =
+                productNameById.get(det.product_id) ||
+                (det.product_id ? `Product ${det.product_id}` : "Unknown");
+
+            const val = toMoney(det.total_amount);
+
+            // per salesman
+            stats.productCounts.set(pName, (stats.productCounts.get(pName) || 0) + val);
+
+            // team wide
+            teamProductTotals.set(pName, (teamProductTotals.get(pName) || 0) + val);
+        });
+
+        /* ---------------------------------------------------------------------- */
+        /* 7) FINALIZE SALESMAN STATS                                              */
+        /* ---------------------------------------------------------------------- */
+
+        const salesmenList = Array.from(salesmanStats.values())
+            .map((s) => {
+                // top product
+                let topP = "N/A";
+                let maxVal = 0;
+                s.productCounts.forEach((val, key) => {
+                    if (val > maxVal) {
+                        maxVal = val;
+                        topP = key;
+                    }
+                });
+
+                // estimated visits + strike rate
+                const estimatedVisits = s.orders > 0 ? Math.round(s.orders * 1.3) : 0;
+                const strikeRate =
+                    estimatedVisits > 0 ? Math.round((s.orders / estimatedVisits) * 100) : 0;
+
+                // products sold = unique products
+                const productsSold = s.productCounts.size;
+
+                return {
+                    ...s,
+                    topProduct: topP,
+                    visits: estimatedVisits,
+                    strikeRate,
+                    productsSold,
+                    // keep returnRate at 0 unless you add real returns logic later
+                    returnRate: 0,
+                };
+            })
+            .sort((a, b) => b.netSales - a.netSales);
+
+        /* ---------------------------------------------------------------------- */
+        /* 8) COVERAGE (CUSTOMERS)                                                 */
+        /* ---------------------------------------------------------------------- */
+
+        let sariSariCount = 0;
+        let restoCount = 0;
+        let othersCount = 0;
+
+        customers.forEach((c: any) => {
+            const name = String(c.store_name ?? "").toUpperCase();
+            if (name.includes("SARI") || name.includes("STORE")) sariSariCount++;
+            else if (name.includes("RESTO") || name.includes("CAFE") || name.includes("KITCHEN"))
+                restoCount++;
+            else othersCount++;
+        });
+
+        const coverageDistribution = [
+            { type: "Sari-Sari Store", count: sariSariCount, fill: "#3b82f6" },
+            { type: "Restaurant", count: restoCount, fill: "#10b981" },
+            { type: "Others", count: othersCount, fill: "#f59e0b" },
+        ];
+
+        const totalCustomers = customers.length;
+        const penetrationRate =
+            totalCustomers > 0
+                ? (((sariSariCount + restoCount) / totalCustomers) * 100).toFixed(1)
+                : "0.0";
+
+        /* ---------------------------------------------------------------------- */
+        /* 9) MONTHLY PERFORMANCE (REAL AGG, LAST 6 MONTHS)                        */
+        /* ---------------------------------------------------------------------- */
+
+        const monthAgg = new Map<string, number>();
+        filteredInvoices.forEach((inv: any) => {
+            const m = monthKey(inv.invoice_date);
+            monthAgg.set(m, (monthAgg.get(m) || 0) + safeNet(inv));
+        });
+
+        const monthsSorted = Array.from(monthAgg.entries()).sort((a, b) =>
+            a[0].localeCompare(b[0])
+        );
+
+        const monthlyPerformance = monthsSorted.slice(-6).map(([month, achieved]) => ({
+            month,
+            target: DEFAULT_TARGET, // placeholder; swap with real target table later
+            achieved,
+        }));
+
+        /* ---------------------------------------------------------------------- */
+        /* 10) TOP PRODUCTS (TEAM-WIDE)                                            */
+        /* ---------------------------------------------------------------------- */
+
+        const topProducts = Array.from(teamProductTotals.entries())
+            .map(([name, sales]) => ({ name, sales }))
+            .sort((a, b) => b.sales - a.sales)
+            .slice(0, 10);
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                teamSales,
+                teamTarget,
+                totalInvoices: totalInvoicesCount,
+                penetrationRate: Number(penetrationRate),
+                coverageDistribution,
+                salesmen: salesmenList,
+                monthlyPerformance,
+                topProducts,
+                // Keep placeholders; your page already has fallbacks
+                topSuppliers: [],
+                returnHistory: [],
+            },
+        });
+    } catch (error: any) {
+        console.error("Supervisor API Error:", error);
+        return NextResponse.json(
+            { success: false, error: error?.message ?? String(error) },
+            { status: 500 }
+        );
+    }
 }

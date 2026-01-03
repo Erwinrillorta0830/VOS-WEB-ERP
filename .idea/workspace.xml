@@ -5,59 +5,26 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="salesgit">
-      <change afterPath="$PROJECT_DIR$/components/dashboard/DataTable.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/dashboard/FilterBar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/dashboard/KPICard.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/dashboard/SalesChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/dashboard/SupplierHeatmap.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/dashboard/SupplierSalesChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/shared/Sidebar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/encoder/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/executive/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/globals.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/layout.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/manager/layout.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/supervisor/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/auth/login/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/invoice/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/by-branch/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/by-division/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/overview/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/supplier-monthly/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/supplier-trend/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/top-customer/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/manager/top-salesman/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/encoder/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/by-branch/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/by-division/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/overview/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/supplier-monthly/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/supplier-trend/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/top-customer/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager/top-salesman/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/supervisor/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/test/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/auth/AuthProvider.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/dashboard/DataTable.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/dashboard/FilterBar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/dashboard/KPICard.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/dashboard/SalesChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/dashboard/SupplierHeatmap.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/dashboard/SupplierSalesChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/modules/bi/DivisionSalesChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/modules/bi/RankBadge.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/modules/bi/SalesTrendChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/shared/Sidebar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/ui/dialog.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/hooks/use-executive-data.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/lib/utils.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/types/index.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/encoder/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/encoder/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/supervisor/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/supervisor/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/by-branch/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/by-division/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/overview/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/manager/overview/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/manager/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/supplier-monthly/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/supplier-trend/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/top-customer/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/manager/top-salesman/route.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/encoder/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/encoder/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/supervisor/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/supervisor/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/hooks/use-executive-data.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks/use-executive-data.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/modules/fleet-management-module/components/logistics/PendingDeliveries.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/modules/fleet-management-module/components/logistics/PendingDeliveries.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -182,7 +149,7 @@
       <workItem from="1766136628528" duration="11819000" />
       <workItem from="1766218027330" duration="713000" />
       <workItem from="1766365091341" duration="12838000" />
-      <workItem from="1766766247922" duration="26610000" />
+      <workItem from="1766766247922" duration="39186000" />
     </task>
     <task id="LOCAL-00001" summary="sales">
       <option name="closed" value="true" />
@@ -192,7 +159,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766807069588</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="salesgit">
+      <option name="closed" value="true" />
+      <created>1767338006822</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1767338006823</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -223,7 +198,8 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="sales" />
-    <option name="LAST_COMMIT_MESSAGE" value="sales" />
+    <MESSAGE value="salesgit" />
+    <option name="LAST_COMMIT_MESSAGE" value="salesgit" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
