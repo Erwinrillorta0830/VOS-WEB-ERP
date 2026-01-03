@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Package, ChevronLeft, ChevronRight, Layers, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Printer } from 'lucide-react';
+import { Search, Filter, Package, ChevronLeft, ChevronRight, Layers, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Printer, X, Calendar } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -10,7 +10,7 @@ interface ApiSalesOrder {
     order_no: string;
     customer_code: string;
     order_status: string;
-    total_amount: number;Q
+    total_amount: number;
     order_date: string;
     salesman_id: number;
 }
@@ -56,21 +56,40 @@ interface SortConfig {
     direction: SortDirection;
 }
 
+// --- Print Configuration Interface ---
+interface PrintConfig {
+    cluster: string;
+    salesman: string;
+    status: string; // 'All', 'For Approval', 'For Picking', etc.
+    dateRange: DateRange;
+    customFrom: string;
+    customTo: string;
+}
+
 export function PendingDeliveries() {
     // --- State ---
     const [rawGroups, setRawGroups] = useState<ClusterGroupRaw[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Filters
+    // Dashboard Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [salesmanFilter, setSalesmanFilter] = useState<string>('All');
     const [clusterFilter, setClusterFilter] = useState<string>('All');
-
-    // Date Range
     const [dateRange, setDateRange] = useState<DateRange>('this-month');
     const [customDateFrom, setCustomDateFrom] = useState('');
     const [customDateTo, setCustomDateTo] = useState('');
+
+    // Print Modal State
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [printConfig, setPrintConfig] = useState<PrintConfig>({
+        cluster: 'All',
+        salesman: 'All',
+        status: 'All',
+        dateRange: 'this-month',
+        customFrom: '',
+        customTo: ''
+    });
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -81,7 +100,6 @@ export function PendingDeliveries() {
 
     // --- Helpers ---
 
-    // For HTML Display (With Peso Sign)
     const formatCurrency = (amount: number) => {
         if (amount === 0) return '-';
         return `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -91,7 +109,6 @@ export function PendingDeliveries() {
         return `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
-    // For PDF Display (NO Symbol)
     const formatNumberForPDF = (amount: number) => {
         if (amount === 0) return '-';
         return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -102,73 +119,36 @@ export function PendingDeliveries() {
         return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
-    const getReadableDateLabel = () => {
-        const now = new Date();
-
-        if (dateRange === 'this-month') {
-            return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
-        }
-        if (dateRange === 'this-year') {
-            return now.getFullYear().toString();
-        }
-        if (dateRange === 'today') {
-            return now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
-        }
-        if (dateRange === 'yesterday') {
-            const yest = new Date(now);
-            yest.setDate(yest.getDate() - 1);
-            return yest.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
-        }
-        if (dateRange === 'this-week') {
-            return "THIS WEEK";
-        }
-        if (dateRange === 'custom') {
-            return `${customDateFrom} TO ${customDateTo}`;
-        }
-        return "ALL TIME";
-    };
-
-    const isDateInRange = (dateString: string) => {
+    // Generic Date Logic (Used by both Dashboard and Print)
+    const checkDateRange = (dateString: string, range: DateRange, customFrom?: string, customTo?: string) => {
         const date = new Date(dateString);
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-        if (dateRange === 'custom') {
-            if (!customDateFrom || !customDateTo) return true;
-            const from = new Date(customDateFrom);
-            const to = new Date(customDateTo);
+        if (range === 'custom') {
+            if (!customFrom || !customTo) return true;
+            const from = new Date(customFrom);
+            const to = new Date(customTo);
             return date >= from && date <= to;
         }
 
-        if (dateRange === 'today') return targetDate.getTime() === startOfToday.getTime();
-
-        if (dateRange === 'yesterday') {
+        if (range === 'today') return targetDate.getTime() === startOfToday.getTime();
+        if (range === 'yesterday') {
             const yesterday = new Date(startOfToday);
             yesterday.setDate(yesterday.getDate() - 1);
             return targetDate.getTime() === yesterday.getTime();
         }
-
-        if (dateRange === 'this-week') {
+        if (range === 'this-week') {
             const dayOfWeek = startOfToday.getDay();
             const diff = startOfToday.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
             const startOfWeek = new Date(startOfToday);
             startOfWeek.setDate(diff);
             return date >= startOfWeek;
         }
-
-        if (dateRange === 'this-month') return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-        if (dateRange === 'this-year') return date.getFullYear() === now.getFullYear();
-
+        if (range === 'this-month') return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        if (range === 'this-year') return date.getFullYear() === now.getFullYear();
         return true;
-    };
-
-    const handleSort = (key: keyof TableRow) => {
-        let direction: SortDirection = 'asc';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
-        setSortConfig({ key, direction });
     };
 
     // --- Data Fetching ---
@@ -176,15 +156,11 @@ export function PendingDeliveries() {
         const fetchData = async () => {
             setLoading(true);
             try {
+                // Mock data fetch - replace with your actual API call
                 const res = await fetch('/api/pending-deliveries');
-
-                if (!res.ok) {
-                    throw new Error('Failed to fetch data');
-                }
-
+                if (!res.ok) throw new Error('Failed to fetch data');
                 const result = await res.json();
                 setRawGroups(result.data || []);
-
             } catch (err) {
                 console.error(err);
                 setError("Failed to load data.");
@@ -192,34 +168,48 @@ export function PendingDeliveries() {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, []);
 
-    // --- Flattening Logic ---
-    const tableRows = useMemo(() => {
+    // --- Flattening Logic (Reusable) ---
+    // We create a function so we can use it for Dashboard (view) and Print (pdf) separately
+    const getFlattenedRows = (
+        data: ClusterGroupRaw[],
+        filters: { cluster: string, salesman: string, search?: string, status?: string },
+        dateSettings: { range: DateRange, from: string, to: string }
+    ) => {
         const rows: TableRow[] = [];
-        const searchLower = searchTerm.toLowerCase();
+        const searchLower = (filters.search || '').toLowerCase();
 
-        rawGroups.forEach(group => {
-            if (clusterFilter !== 'All' && group.clusterName !== clusterFilter) return;
+        data.forEach(group => {
+            if (filters.cluster !== 'All' && group.clusterName !== filters.cluster) return;
 
             let clusterTotal = 0;
             const groupRows: TableRow[] = [];
 
             group.customers.forEach(customer => {
                 const filteredOrders = customer.orders.filter(o => {
-                    const dateValid = isDateInRange(o.order_date);
-                    if (!dateValid) return false;
+                    // Date Filter
+                    if (!checkDateRange(o.order_date, dateSettings.range, dateSettings.from, dateSettings.to)) return false;
 
-                    const matchesSalesman = salesmanFilter === 'All' || customer.salesmanName === salesmanFilter;
-                    if (!matchesSalesman) return false;
+                    // Salesman Filter
+                    if (filters.salesman !== 'All' && customer.salesmanName !== filters.salesman) return false;
 
-                    const matchesSearch =
-                        customer.customerName.toLowerCase().includes(searchLower) ||
-                        customer.salesmanName.toLowerCase().includes(searchLower);
+                    // Status Filter (Specific to Print usually, but logic holds)
+                    // If filter.status is provided and not 'All', we strictly match it
+                    if (filters.status && filters.status !== 'All') {
+                        const orderStatusLower = (o.order_status || '').toLowerCase();
+                        // Mapping simple dropdown values to string inclusion
+                        const target = filters.status.toLowerCase().replace('for ', ''); // e.g., "For Picking" -> "picking"
+                        if (!orderStatusLower.includes(target)) return false;
+                    }
 
-                    return matchesSearch;
+                    // Search Filter (Dashboard only usually)
+                    if (filters.search) {
+                         return customer.customerName.toLowerCase().includes(searchLower) ||
+                                customer.salesmanName.toLowerCase().includes(searchLower);
+                    }
+                    return true;
                 });
 
                 if (filteredOrders.length === 0) return;
@@ -255,10 +245,21 @@ export function PendingDeliveries() {
             rows.push(...groupRows);
         });
 
+        // Apply Sorting (default by cluster then customer)
+        // Note: For PDF we usually just want them grouped by cluster
         return rows;
+    };
+
+    // Dashboard Data
+    const tableRows = useMemo(() => {
+        return getFlattenedRows(
+            rawGroups,
+            { cluster: clusterFilter, salesman: salesmanFilter, search: searchTerm },
+            { range: dateRange, from: customDateFrom, to: customDateTo }
+        );
     }, [rawGroups, searchTerm, salesmanFilter, clusterFilter, dateRange, customDateFrom, customDateTo]);
 
-    // --- Sorting Logic ---
+    // Sorting Logic
     const sortedRows = useMemo(() => {
         const sortableItems = [...tableRows];
         if (sortConfig !== null) {
@@ -277,160 +278,213 @@ export function PendingDeliveries() {
         return sortableItems;
     }, [tableRows, sortConfig]);
 
-    // --- Stats Calculation (Global for PDF) ---
-    const grandTotal = tableRows.reduce((sum, r) => sum + r.amount, 0);
-    const totalOrders = tableRows.length;
-    const uniqueClusters = new Set(tableRows.map(r => r.clusterName)).size;
+    // --- PDF GENERATION LOGIC ---
+    const executePrint = () => {
+        // 1. Get Data specific to the Print Configuration
+        // Note: We ignore the search term for printing as per typical requirements, unless specified otherwise
+        const printRows = getFlattenedRows(
+            rawGroups,
+            { cluster: printConfig.cluster, salesman: printConfig.salesman, status: printConfig.status },
+            { range: printConfig.dateRange, from: printConfig.customFrom, to: printConfig.customTo }
+        );
 
-    // --- PDF GENERATION (Updated with Cards) ---
-    const handlePrintPDF = () => {
-        const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
+        const doc = new jsPDF('l', 'mm', 'a4');
 
-        // 1. Add Header Info
-        const today = new Date().toLocaleDateString();
-        const dateLabel = getReadableDateLabel();
-
+        // 2. Header Info
+        const dateLabel = printConfig.dateRange === 'custom' 
+            ? `${printConfig.customFrom} to ${printConfig.customTo}` 
+            : printConfig.dateRange.replace('-', ' ').toUpperCase();
+            
         doc.setFontSize(14);
         doc.text("Delivery Monitor Report", 14, 15);
         doc.setFontSize(10);
         doc.text(`Period: ${dateLabel}`, 14, 22);
-        doc.text(`Generated: ${today}`, 14, 27);
+        
+        // Add Filter Context to Header
+        let filterText = `Cluster: ${printConfig.cluster} | Salesman: ${printConfig.salesman} | Status: ${printConfig.status}`;
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+        doc.text(filterText, 14, 27);
+        doc.setTextColor(0);
 
-        // --- 2. DRAW SUMMARY CARDS ---
-        const startX = 80; // Start drawing cards from here
+        // 3. Calculate Stats for Printed Data
+        const grandTotal = printRows.reduce((sum, r) => sum + r.amount, 0);
+        const totalOrders = printRows.length;
+        const uniqueClusters = new Set(printRows.map(r => r.clusterName)).size;
+
+        // 4. Draw Cards
+        const startX = 80;
         const startY = 10;
         const cardWidth = 65;
         const cardHeight = 22;
         const gap = 5;
 
-        // Helper to draw a single card
         const drawCard = (x: number, title: string, value: string, iconColor: [number, number, number]) => {
-            // Draw Box
-            doc.setDrawColor(220, 220, 220); // Light gray border
-            doc.setFillColor(255, 255, 255); // White background
+            doc.setDrawColor(220, 220, 220);
+            doc.setFillColor(255, 255, 255);
             doc.roundedRect(x, startY, cardWidth, cardHeight, 2, 2, 'FD');
-
-            // Draw Title
             doc.setFontSize(8);
-            doc.setTextColor(100, 100, 100); // Gray text
+            doc.setTextColor(100, 100, 100);
             doc.text(title, x + 4, startY + 7);
-
-            // Draw Value
             doc.setFontSize(14);
-            doc.setTextColor(0, 0, 0); // Black text
+            doc.setTextColor(0, 0, 0);
             doc.setFont("helvetica", "bold");
             doc.text(value, x + 4, startY + 17);
             doc.setFont("helvetica", "normal");
-
-            // Small colored indicator circle (mimicking icon)
             doc.setFillColor(...iconColor);
             doc.circle(x + cardWidth - 8, startY + 11, 4, 'F');
         };
 
-        // Card 1: Active Clusters (Blue ish)
         drawCard(startX, "Active Clusters", uniqueClusters.toString(), [219, 234, 254]);
-
-        // Card 2: Pending Orders (Purple ish)
         drawCard(startX + cardWidth + gap, "Pending Orders", totalOrders.toString(), [243, 232, 255]);
-
-        // Card 3: Total Pending Amount (Green ish)
         drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", `P ${formatNumberForPDF(grandTotal)}`, [220, 252, 231]);
 
-        // --- END SUMMARY CARDS ---
-
-        // 3. Prepare Main Table Data
-        const tableColumn = [
-            "Cluster", "Customer", "Salesman", "Date", "Approval", "Conso",
-            "Picking", "Invoicing", "Loading", "Shipping", "Total"
+        // 5. Dynamic Columns Logic
+        // Base Columns
+        let tableHeader = ["Cluster", "Customer", "Salesman", "Date"];
+        
+        // Dynamic Status Columns
+        const statusMap = [
+            { label: "Approval", key: "approval" as keyof TableRow },
+            { label: "Conso", key: "consolidation" as keyof TableRow },
+            { label: "Picking", key: "picking" as keyof TableRow },
+            { label: "Invoicing", key: "invoicing" as keyof TableRow },
+            { label: "Loading", key: "loading" as keyof TableRow },
+            { label: "Shipping", key: "shipping" as keyof TableRow },
         ];
 
-        const tableRowsData = sortedRows.map(row => [
-            row.clusterName,
-            row.customerName,
-            row.salesmanName,
-            formatDate(row.orderDate),
-            formatNumberForPDF(row.approval),
-            formatNumberForPDF(row.consolidation),
-            formatNumberForPDF(row.picking),
-            formatNumberForPDF(row.invoicing),
-            formatNumberForPDF(row.loading),
-            formatNumberForPDF(row.shipping),
-            formatNumberForPDF(row.amount)
-        ]);
+        let activeStatusKeys: (keyof TableRow)[] = [];
 
-        // 4. Generate Main Table (Pushed down to accommodate cards)
+        if (printConfig.status === 'All') {
+            // Show all
+            tableHeader.push(...statusMap.map(s => s.label));
+            activeStatusKeys = statusMap.map(s => s.key);
+        } else {
+            // Show only the selected status
+            // Normalize "For Picking" -> "Picking"
+            const selectedLabel = printConfig.status.replace('For ', '');
+            const found = statusMap.find(s => s.label.toLowerCase() === selectedLabel.toLowerCase() || s.label.toLowerCase().includes(selectedLabel.toLowerCase()));
+            
+            if (found) {
+                tableHeader.push(found.label);
+                activeStatusKeys = [found.key];
+            } else {
+                // Fallback if mismatch, show all
+                tableHeader.push(...statusMap.map(s => s.label));
+                activeStatusKeys = statusMap.map(s => s.key);
+            }
+        }
+
+        // Add Totals
+        tableHeader.push("Total", "Cluster Total");
+
+        // 6. Map Data to Dynamic Columns
+        const tableRowsData = printRows.map(row => {
+            const rowData = [
+                row.clusterName,
+                row.customerName,
+                row.salesmanName,
+                formatDate(row.orderDate)
+            ];
+
+            // Add value for active status columns
+            activeStatusKeys.forEach(key => {
+                rowData.push(formatNumberForPDF(row[key] as number));
+            });
+
+            // Add Totals
+            rowData.push(formatNumberForPDF(row.amount));
+            rowData.push(formatNumberForPDF(row.clusterTotal)); // We need to recalculate cluster total based on filtered rows if strictly needed, but usually cluster total reflects the group context. 
+            // Note: In flattened logic above, row.clusterTotal IS calculated based on the filtered group. So this is correct.
+
+            return rowData;
+        });
+
+        // 7. Define Column Styles Dynamically
+        const baseColStyles: any = {
+            0: { cellWidth: 25 },
+            3: { cellWidth: 15, halign: 'center' }
+        };
+        
+        // Determine index where status columns start (Index 4)
+        let colIndex = 4;
+        activeStatusKeys.forEach(() => {
+            baseColStyles[colIndex] = { halign: 'right' };
+            colIndex++;
+        });
+        // Total Column
+        baseColStyles[colIndex] = { halign: 'right', fontStyle: 'bold' };
+        // Cluster Total Column
+        baseColStyles[colIndex + 1] = { halign: 'right', fontStyle: 'bold', fillColor: [249, 250, 251] };
+
+
+        // 8. Generate Table
         autoTable(doc, {
-            head: [tableColumn],
+            head: [tableHeader],
             body: tableRowsData,
-            startY: 40, // Pushed down
+            startY: 40,
             theme: 'grid',
             styles: { fontSize: 7, cellPadding: 1, halign: 'left' },
             headStyles: { fillColor: [243, 244, 246], textColor: [20, 20, 20], fontStyle: 'bold' },
-            columnStyles: {
-                0: { cellWidth: 25 },
-                3: { cellWidth: 15, halign: 'center' },
-                4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' },
-                7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' },
-                10: { halign: 'right', fontStyle: 'bold' }
-            }
+            columnStyles: baseColStyles
         });
 
-        // 5. Calculate Cluster Summary
+        // 9. Cluster Summary at Bottom
+        // Re-calculate summary based on Print Rows
         const clusterTotals: Record<string, number> = {};
-        sortedRows.forEach(row => {
+        printRows.forEach(row => {
             if (!clusterTotals[row.clusterName]) clusterTotals[row.clusterName] = 0;
+            // To avoid adding the same order multiple times if uniqueId is not unique in list? 
+            // flattened rows are unique orders.
             clusterTotals[row.clusterName] += row.amount;
         });
+        
+        // Fix: The clusterTotals logic in flattened list sums every row. 
+        // We need to sum uniquely? No, amount is per row. So simple sum is fine.
+        // However, the object logic above: `clusterTotals[row.clusterName] += row.amount` is correct for a flat list of orders.
+        // BUT `clusterTotal` in row object is the group total. 
+        
+        // We will rebuild summary from scratch based on `printRows`
+        const summaryMap = new Map<string, number>();
+        printRows.forEach(r => {
+             const current = summaryMap.get(r.clusterName) || 0;
+             summaryMap.set(r.clusterName, current + r.amount);
+        });
 
-        const summaryData = Object.entries(clusterTotals).sort((a, b) => a[0].localeCompare(b[0])).map(([name, total]) => [
-            name, formatNumberForPDF(total)
-        ]);
-
-        const grandTotalSum = Object.values(clusterTotals).reduce((a, b) => a + b, 0);
-
-        // 6. Generate Footer Tables
-        // Get Y position after main table
+        const summaryData = Array.from(summaryMap.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([name, total]) => [name, formatNumberForPDF(total)]);
+            
         let finalY = (doc as any).lastAutoTable.finalY || 50;
-
-        // Check if we need a new page for the title
-        if (finalY > 170) { // A4 landscape height is 210mm, leaving some buffer
+        if (finalY > 160) {
             doc.addPage();
             finalY = 20;
         } else {
             finalY += 10;
         }
 
-        const summaryStartY = finalY;
-
         doc.setFontSize(10);
-        doc.setTextColor(0,0,0);
-        doc.text("Cluster Summary", 14, summaryStartY);
+        doc.text("Cluster Summary", 14, finalY);
 
-        // Table A: List of Clusters
         autoTable(doc, {
             head: [['Cluster Name', 'Total Amount']],
             body: summaryData,
-            startY: summaryStartY + 5,
+            startY: finalY + 5,
             theme: 'grid',
             tableWidth: 90,
             margin: { left: 14 },
             styles: { fontSize: 8, cellPadding: 2 },
             headStyles: { fillColor: [229, 231, 235], textColor: [0, 0, 0], fontStyle: 'bold' },
             columnStyles: { 1: { halign: 'right' } },
-            // This hook runs after every page of this specific table is drawn
             didDrawPage: (data) => {
-                // Check if we are on the last page of the cluster summary table
                 if (data.pageCount === data.pageNumber) {
-                    // Get the Y position after the last row on this page
                     const grandTotalStartY = data.cursor.y + 5;
-
-                    // Draw the Grand Total Box
                     autoTable(doc, {
-                        body: [['GRAND TOTAL', formatNumberForPDF(grandTotalSum)]],
+                        body: [['GRAND TOTAL', formatNumberForPDF(grandTotal)]],
                         startY: grandTotalStartY,
                         theme: 'grid',
                         tableWidth: 80,
-                        margin: { left: 120 }, // Position it to the right of the summary table
+                        margin: { left: 120 },
                         styles: { fontSize: 10, cellPadding: 3, fontStyle: 'bold', valign: 'middle' },
                         columnStyles: {
                             0: { fillColor: [229, 231, 235], cellWidth: 40 },
@@ -441,10 +495,11 @@ export function PendingDeliveries() {
             }
         });
 
-        doc.save(`delivery_monitor_${new Date().toISOString().split('T')[0]}.pdf`);
+        doc.save(`delivery_monitor_print.pdf`);
+        setIsPrintModalOpen(false);
     };
 
-    // --- Pagination & Spans per Page ---
+    // --- Pagination & Spans ---
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
     const totalPages = Math.ceil(sortedRows.length / itemsPerPage);
@@ -486,8 +541,16 @@ export function PendingDeliveries() {
         return Array.from(clusters).sort();
     }, [rawGroups]);
 
+    // Available Statuses (Hardcoded or derived)
+    const availableStatuses = ['For Approval', 'For Conso', 'For Picking', 'For Invoicing', 'For Loading', 'For Shipping'];
+
     useEffect(() => { setCurrentPage(1); }, [searchTerm, dateRange, salesmanFilter, clusterFilter]);
     const handlePageChange = (newPage: number) => { if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage); };
+    const handleSort = (key: keyof TableRow) => {
+        let direction: SortDirection = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+        setSortConfig({ key, direction });
+    };
 
     const SortableHeader = ({ label, sortKey, align = 'left' }: { label: string, sortKey: keyof TableRow, align?: 'left' | 'center' | 'right' }) => (
         <th className={`px-4 py-3 text-${align} bg-gray-100 border-r border-gray-200 cursor-pointer hover:bg-gray-200 transition-colors group`} onClick={() => handleSort(sortKey)}>
@@ -501,16 +564,16 @@ export function PendingDeliveries() {
     );
 
     return (
-        <div className="p-8">
+        <div className="p-8 relative">
             {/* Header */}
             <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div><h1 className="text-gray-900 text-2xl font-bold mb-1">Delivery Monitor</h1><p className="text-gray-600">Pending deliveries matrix</p></div>
-                <button onClick={handlePrintPDF} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 shadow-sm transition-colors font-medium text-sm">
+                <button onClick={() => setIsPrintModalOpen(true)} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 hover:text-gray-900 shadow-sm transition-colors font-medium text-sm">
                     <Printer className="w-4 h-4 mr-2" /> Print PDF
                 </button>
             </div>
 
-            {/* Filters */}
+            {/* Dashboard Filters */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
                 <div className="flex flex-col xl:flex-row gap-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-grow">
@@ -523,11 +586,101 @@ export function PendingDeliveries() {
                 {dateRange === 'custom' && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200"><div><label className="block text-sm text-gray-700 mb-2">From</label><input type="date" value={customDateFrom} onChange={(e) => setCustomDateFrom(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" /></div><div><label className="block text-sm text-gray-700 mb-2">To</label><input type="date" value={customDateTo} onChange={(e) => setCustomDateTo(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" /></div></div>)}
             </div>
 
-            {/* Stats */}
+            {/* Print Modal */}
+            {isPrintModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+                style={{ backdropFilter: 'blur(4px)' }}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                            <h3 className="text-lg font-bold text-gray-800">What needs to be printed?</h3>
+                            <button onClick={() => setIsPrintModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5"/></button>
+                        </div>
+                        
+                        <div className="p-6 space-y-5">
+                            {/* Filters Row 1 */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cluster</label>
+                                    <select 
+                                        value={printConfig.cluster} 
+                                        onChange={(e) => setPrintConfig({...printConfig, cluster: e.target.value})}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="All">All Clusters</option>
+                                        {availableClusters.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Salesman</label>
+                                    <select 
+                                        value={printConfig.salesman} 
+                                        onChange={(e) => setPrintConfig({...printConfig, salesman: e.target.value})}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="All">All Salesmen</option>
+                                        {availableSalesmen.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Status Filter */}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+                                <select 
+                                    value={printConfig.status} 
+                                    onChange={(e) => setPrintConfig({...printConfig, status: e.target.value})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="All">All Statuses (Full Matrix)</option>
+                                    {availableStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <p className="text-xs text-gray-400 mt-1">If a specific status is selected, only that column will be printed.</p>
+                            </div>
+
+                            {/* Date Range */}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Date Range</label>
+                                <div className="grid grid-cols-3 gap-2 mb-3">
+                                    {(['today', 'this-week', 'this-month', 'custom'] as DateRange[]).map((range) => (
+                                        <button 
+                                            key={range} 
+                                            onClick={() => setPrintConfig({...printConfig, dateRange: range})}
+                                            className={`px-3 py-1.5 rounded border text-xs font-medium transition-colors ${printConfig.dateRange === range ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            {range === 'custom' ? 'Custom' : range.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                        </button>
+                                    ))}
+                                </div>
+                                {printConfig.dateRange === 'custom' && (
+                                    <div className="flex gap-3 bg-gray-50 p-3 rounded-md border border-gray-200">
+                                        <div className="flex-1">
+                                            <span className="text-[10px] uppercase text-gray-400 font-bold">From</span>
+                                            <input type="date" value={printConfig.customFrom} onChange={(e) => setPrintConfig({...printConfig, customFrom: e.target.value})} className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <span className="text-[10px] uppercase text-gray-400 font-bold">To</span>
+                                            <input type="date" value={printConfig.customTo} onChange={(e) => setPrintConfig({...printConfig, customTo: e.target.value})} className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                            <button onClick={() => setIsPrintModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors">Cancel</button>
+                            <button onClick={executePrint} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm flex items-center">
+                                <Printer className="w-4 h-4 mr-2"/> Print Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Stats Dashboard */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between"><div><p className="text-sm font-medium text-gray-500">Active Clusters</p><p className="text-2xl font-bold text-gray-900 mt-1">{loading ? <span className="animate-pulse bg-gray-200 rounded h-8 w-12 inline-block"></span> : uniqueClusters}</p></div><div className="p-3 bg-blue-50 rounded-full text-blue-600"><Layers className="w-6 h-6" /></div></div>
-                <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between"><div><p className="text-sm font-medium text-gray-500">Pending Orders</p><p className="text-2xl font-bold text-gray-900 mt-1">{loading ? <span className="animate-pulse bg-gray-200 rounded h-8 w-12 inline-block"></span> : totalOrders}</p></div><div className="p-3 bg-purple-50 rounded-full text-purple-600"><Package className="w-6 h-6" /></div></div>
-                <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between"><div><p className="text-sm font-medium text-gray-500">Total Pending Amount</p><p className="text-2xl font-bold text-gray-900 mt-1">{loading ? <span className="animate-pulse bg-gray-200 rounded h-8 w-24 inline-block"></span> : formatTotalCurrency(grandTotal)}</p></div><div className="p-3 bg-green-50 rounded-full text-green-600"><span className="font-bold text-xl">₱</span></div></div>
+                <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between"><div><p className="text-sm font-medium text-gray-500">Active Clusters</p><p className="text-2xl font-bold text-gray-900 mt-1">{loading ? <span className="animate-pulse bg-gray-200 rounded h-8 w-12 inline-block"></span> : new Set(tableRows.map(r => r.clusterName)).size}</p></div><div className="p-3 bg-blue-50 rounded-full text-blue-600"><Layers className="w-6 h-6" /></div></div>
+                <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between"><div><p className="text-sm font-medium text-gray-500">Pending Orders</p><p className="text-2xl font-bold text-gray-900 mt-1">{loading ? <span className="animate-pulse bg-gray-200 rounded h-8 w-12 inline-block"></span> : tableRows.length}</p></div><div className="p-3 bg-purple-50 rounded-full text-purple-600"><Package className="w-6 h-6" /></div></div>
+                <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between"><div><p className="text-sm font-medium text-gray-500">Total Pending Amount</p><p className="text-2xl font-bold text-gray-900 mt-1">{loading ? <span className="animate-pulse bg-gray-200 rounded h-8 w-24 inline-block"></span> : formatTotalCurrency(tableRows.reduce((acc, r) => acc + r.amount, 0))}</p></div><div className="p-3 bg-green-50 rounded-full text-green-600"><span className="font-bold text-xl">₱</span></div></div>
             </div>
 
             {/* Table */}
