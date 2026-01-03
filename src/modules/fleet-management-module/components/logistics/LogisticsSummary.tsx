@@ -1,21 +1,22 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ChevronLeft, ChevronRight, Loader2, ArrowUpDown } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Loader2, ArrowUpDown, Printer } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // --- Interfaces ---
-// We can remove the raw API interfaces (ApiPlan, ApiDispatchInvoice, etc.) 
-// because the server now handles those. We only need the shape the UI uses.
-
 interface DeliveryDetail {
-  clusterName: string; 
+  clusterName: string;
   customerName: string;
-  fulfilled: number; notFulfilled: number;
-  fulfilledWithReturns: number; fulfilledWithConcerns: number;
+  fulfilled: number;
+  notFulfilled: number;
+  fulfilledWithReturns: number;
+  fulfilledWithConcerns: number;
 }
 
 interface LogisticsRecord {
-  id: string; 
-  truckPlate: string; 
-  driver: string; 
+  id: string;
+  truckPlate: string;
+  driver: string;
   deliveries: DeliveryDetail[];
 }
 
@@ -94,7 +95,7 @@ export function LogisticsSummary() {
     return `${formatDate(start)}${T_START},${formatDate(end)}${T_END}`;
   };
 
-  // --- REPLACED: New useEffect calling local API Route ---
+  // --- API Fetching ---
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -102,14 +103,11 @@ export function LogisticsSummary() {
         setError('');
 
         const dateFilter = getDateFilterString();
-
-        // Construct query parameters
         const params = new URLSearchParams();
         params.append('page', currentPage.toString());
         if (searchTerm) params.append('search', searchTerm);
         if (dateFilter) params.append('dateFilter', dateFilter);
 
-        // Fetch from your Next.js API route
         const res = await fetch(`/api/logistics-summary?${params.toString()}`);
 
         if (!res.ok) {
@@ -118,11 +116,8 @@ export function LogisticsSummary() {
         }
 
         const result = await res.json();
-        
-        // The server returns the fully formed LogisticsRecord[] in result.data
         setData(result.data || []);
 
-        // Handle pagination from server meta
         if (result.meta?.filter_count) {
           setTotalPages(Math.ceil(result.meta.filter_count / ITEMS_PER_PAGE));
         } else {
@@ -132,13 +127,12 @@ export function LogisticsSummary() {
       } catch (err: any) {
         console.error("Error fetching data:", err);
         setError(err.message || 'An error occurred');
-        setData([]); // Clear data on error
+        setData([]);
       } finally {
         setLoading(false);
       }
     };
 
-    // Debounce to prevent rapid-fire requests while typing
     const timer = setTimeout(() => {
         fetchData();
     }, 300);
@@ -150,10 +144,10 @@ export function LogisticsSummary() {
   const handleRangeChange = (range: DateRange) => { setDateRange(range); setCurrentPage(1); };
   const handlePageChange = (newPage: number) => { if (newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage); };
   
-  // Calculate Totals Helper
   const calculateTotal = (deliveries: DeliveryDetail[]) => 
     deliveries.reduce((sum, d) => sum + d.fulfilled + d.notFulfilled + d.fulfilledWithReturns + d.fulfilledWithConcerns, 0);
   
+  // Default formatter for UI (Web) - Keeps the ₱ symbol
   const formatCurrency = (amount: number) => 
     `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -170,11 +164,10 @@ export function LogisticsSummary() {
     if (!sortConfig) return data;
 
     const { key, direction } = sortConfig;
-    const sorted = [...data].map(record => ({ ...record, deliveries: [...record.deliveries] })); // Deep clone structure
+    const sorted = [...data].map(record => ({ ...record, deliveries: [...record.deliveries] }));
 
     const modifier = direction === 'asc' ? 1 : -1;
 
-    // Parent Columns (Sort the Record Array)
     if (key === 'truckPlate' || key === 'driver' || key === 'total') {
         sorted.sort((a, b) => {
             if (key === 'truckPlate') return a.truckPlate.localeCompare(b.truckPlate) * modifier;
@@ -183,15 +176,11 @@ export function LogisticsSummary() {
             return 0;
         });
     } 
-    // Child Columns (Sort the Deliveries inside each Record)
     else {
         sorted.forEach(record => {
             record.deliveries.sort((a, b) => {
-                // String Sorts
                 if (key === 'clusterName') return a.clusterName.localeCompare(b.clusterName) * modifier;
                 if (key === 'customerName') return a.customerName.localeCompare(b.customerName) * modifier;
-                
-                // Numeric Sorts
                 if (key === 'fulfilled') return (a.fulfilled - b.fulfilled) * modifier;
                 if (key === 'notFulfilled') return (a.notFulfilled - b.notFulfilled) * modifier;
                 if (key === 'fulfilledWithReturns') return (a.fulfilledWithReturns - b.fulfilledWithReturns) * modifier;
@@ -204,7 +193,143 @@ export function LogisticsSummary() {
     return sorted;
   }, [data, sortConfig]);
 
-  // Helper for Sort Icon
+  // --- PDF Generation Handler ---
+  const handlePrintPdf = () => {
+    const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+    const today = new Date();
+    const todayStr = today.toLocaleDateString();
+
+    // ** PDF Specific Formatter **
+    // Removes the symbol to avoid encoding errors (±) and save space
+    const formatCurrencyPdf = (amount: number) => 
+        amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Helper to format the period label
+    const formatPeriodLabel = () => {
+        const now = new Date();
+        const monthNames = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+          "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
+        ];
+        
+        if (dateRange === 'this-month') {
+            return `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+        } else if (dateRange === 'this-year') {
+            return `${now.getFullYear()}`;
+        } else if (dateRange === 'yesterday') {
+            const yesterday = new Date(now);
+            yesterday.setDate(now.getDate() - 1);
+            return `${monthNames[yesterday.getMonth()]} ${yesterday.getDate()}, ${yesterday.getFullYear()}`;
+        } else if (dateRange === 'today') {
+            return `${monthNames[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+        } else if (dateRange === 'tomorrow') {
+            const tomorrow = new Date(now);
+            tomorrow.setDate(now.getDate() + 1);
+            return `${monthNames[tomorrow.getMonth()]} ${tomorrow.getDate()}, ${tomorrow.getFullYear()}`;
+        }
+         else {
+            return dateRange.replace('-', ' ').toUpperCase();
+        }
+    };
+
+    // 1. Calculate Summary Stats for Header
+    let grandTotalAmount = 0;
+    let totalItems = 0;
+    const uniqueClusters = new Set<string>();
+
+    sortedData.forEach(record => {
+      record.deliveries.forEach(d => {
+        const rowTotal = d.fulfilled + d.notFulfilled + d.fulfilledWithReturns + d.fulfilledWithConcerns;
+        grandTotalAmount += rowTotal;
+        totalItems++;
+        if (d.clusterName) uniqueClusters.add(d.clusterName);
+      });
+    });
+
+    // 2. Draw Header
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Logistics Summary Report", 14, 15); 
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Period: ${formatPeriodLabel()}`, 14, 22);
+    doc.text(`Generated: ${todayStr}`, 14, 27);
+
+    // Summary Cards Representation (Simple boxes in PDF)
+    const drawCard = (label: string, value: string, x: number) => {
+      doc.setDrawColor(220, 220, 220);
+      doc.roundedRect(x, 10, 50, 20, 2, 2, 'S');
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      doc.text(label, x + 4, 15);
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "bold");
+      doc.text(value, x + 4, 24);
+      doc.setFont("helvetica", "normal"); // Reset
+    };
+
+    // Draw stats at the top right
+    drawCard("Active Clusters", uniqueClusters.size.toString(), 120);
+    drawCard("Total Deliveries", totalItems.toString(), 175);
+    // Use PDF specific formatter here
+    drawCard("Total Amount", formatCurrencyPdf(grandTotalAmount), 230);
+
+    // 3. Prepare Table Data
+    const tableColumn = [
+      "Cluster", 
+      "Customer", 
+      "Salesman / Driver", 
+      "Truck",
+      "Fulfilled", 
+      "Not Fulfilled", 
+      "Returns", 
+      "Concerns",
+      "Total"
+    ];
+
+    const tableRows: any[] = [];
+
+    sortedData.forEach(record => {
+      record.deliveries.forEach(d => {
+        const rowTotal = d.fulfilled + d.notFulfilled + d.fulfilledWithReturns + d.fulfilledWithConcerns;
+        
+        // Use formatCurrencyPdf instead of formatCurrency
+        const rowData = [
+          d.clusterName,
+          d.customerName,
+          record.driver,
+          record.truckPlate,
+          d.fulfilled > 0 ? formatCurrencyPdf(d.fulfilled) : '-',
+          d.notFulfilled > 0 ? formatCurrencyPdf(d.notFulfilled) : '-',
+          d.fulfilledWithReturns > 0 ? formatCurrencyPdf(d.fulfilledWithReturns) : '-',
+          d.fulfilledWithConcerns > 0 ? formatCurrencyPdf(d.fulfilledWithConcerns) : '-',
+          formatCurrencyPdf(rowTotal)
+        ];
+        tableRows.push(rowData);
+      });
+    });
+
+    // 4. Generate Table
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 35,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [245, 247, 250], textColor: [80, 80, 80], fontStyle: 'bold', lineWidth: 0.1, lineColor: [200, 200, 200] },
+      columnStyles: {
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'right' },
+        7: { halign: 'right' },
+        8: { halign: 'right', fontStyle: 'bold' }
+      },
+    });
+
+    doc.save(`logistics summary report - ${todayStr.replace(/\//g, '-')}.pdf`);
+  };
+
   const SortIcon = ({ columnKey }: { columnKey: SortKey }) => (
     <div className={`inline-block ml-2 ${sortConfig?.key === columnKey ? 'text-blue-600' : 'text-gray-300'}`}>
       <ArrowUpDown className="w-4 h-4" />
@@ -225,9 +350,22 @@ export function LogisticsSummary() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-gray-900 mb-2">Logistics Summary</h1>
-        <p className="text-gray-600">Comprehensive delivery tracking and performance overview</p>
+      {/* Header Section */}
+      <div className="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <h1 className="text-gray-900 mb-2 text-2xl font-semibold">Logistics Summary</h1>
+          <p className="text-gray-600">Comprehensive delivery tracking and performance overview</p>
+        </div>
+        
+        {/* Print PDF Button */}
+        <button 
+          onClick={handlePrintPdf}
+          disabled={loading || sortedData.length === 0}
+          className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 shadow-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Printer className="w-4 h-4" />
+          Print PDF
+        </button>
       </div>
 
       {/* Filters Section */}
@@ -313,8 +451,6 @@ export function LogisticsSummary() {
               ) : sortedData.length === 0 ? (
                 <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500">No records found.</td></tr>
               ) : (
-                // Flattening or mapping logic remains. 
-                // The key is on the <tr> so it should be fine.
                 sortedData.map((record) => (
                   record.deliveries.map((delivery, index) => {
                     const isFirstRowOfTruck = index === 0;
