@@ -13,7 +13,7 @@ import {
   formatCurrencyDisplay,
   formatNumber,
 } from "../../../src/app/lib/utils";
-import { getCardColor } from "../../../src/app/lib/utils";  
+import { getCardColor } from "../../../src/app/lib/utils";
 
 interface SummaryReportCardProps {
   summary: SummaryMetrics;
@@ -64,13 +64,14 @@ export default function SummaryReportCard({ summary }: SummaryReportCardProps) {
                   {card.title}
                 </CardDescription>
                 <Icon className="hidden sm:flex size-5 text-muted-foreground" />
-                
-           <CardTitle className="text-lg sm:text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
+              </div>
+
+              <CardTitle className="text-lg sm:text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
                 {formatCurrencyDisplay(card.amount!, 15)}
               </CardTitle>
 
               {!card.isAverage && (
-              <CardDescription className="text-xs sm:text-lg text-muted-foreground">
+                <CardDescription className="text-xs sm:text-lg text-muted-foreground">
                   {formatNumber(card.count!)} Collections
                 </CardDescription>
               )}
