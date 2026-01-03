@@ -8,28 +8,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CheckCircle2, Clock, Calendar, Wallet } from "lucide-react";
+import { formatCurrency } from "../../../src/app/lib/utils";
+import { getCardColor } from "../../../src/app/lib/utils";
 
 interface CheckRegisterCardsProps {
   summary: Summary | null;
 }
-
-const formatCurrency = (amount: number): string =>
-  new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-const getCardColor = (index: number): string => {
-  const colors = [
-    "from-blue-500/10",
-    "from-green-500/10",
-    "from-orange-500/10",
-    "from-purple-500/10",
-  ];
-  return colors[index % colors.length];
-};
 
 export function CheckRegisterCards({ summary }: CheckRegisterCardsProps) {
   if (!summary) return null;
