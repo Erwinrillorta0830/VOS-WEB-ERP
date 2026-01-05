@@ -3,6 +3,7 @@ import { Plus, Eye, TrendingUp, TrendingDown, Clock, CheckCircle, Calendar, Filt
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CreateDispatchPlanModal } from './CreateDispatchPlanModal';
 
 // --- Type Definitions ---
 
@@ -36,7 +37,6 @@ export interface DispatchPlan {
 }
 
 // --- Static Modals ---
-const CreateDispatchPlanModal = ({ onClose, onCreatePlan }: any) => <div className="p-4 bg-white shadow-xl rounded-lg fixed inset-0 m-auto w-96 h-40 z-50">Create Plan Modal</div>;
 const ViewDispatchPlanModal = ({ plan, onClose, onUpdatePlan }: any) => <div className="p-4 bg-white shadow-xl rounded-lg fixed inset-0 m-auto w-96 h-40 z-50">View Plan: {plan.dpNumber}</div>;
 
 // --- Helper: 12-Hour Time Formatter ---
@@ -544,7 +544,14 @@ export function DispatchSummary() {
         </div>
       </div>
 
-      {isCreateModalOpen && <CreateDispatchPlanModal onClose={() => setIsCreateModalOpen(false)} onCreatePlan={handleCreatePlan} />}
+      {isCreateModalOpen && (<CreateDispatchPlanModal 
+    onClose={() => setIsCreateModalOpen(false)} 
+    onSuccess={() => {
+      loadData(); // This refreshes the table automatically after creation!
+      setIsCreateModalOpen(false);
+    }} 
+  />
+)}
       {isViewModalOpen && selectedPlan && <ViewDispatchPlanModal plan={selectedPlan} onClose={handleModalClose} onUpdatePlan={handleUpdatePlan} />}
 
       {/* --- PRINT MODAL --- */}
