@@ -14,6 +14,7 @@ interface CollectionDetailRow {
   collection_id: number;
   amount: number | string | null;
   payment_method: number | null; // method_id
+  type: number; // coa_id type (1, 2, 96, 98, etc.)
 }
 
 interface PaymentMethodRow {
@@ -25,6 +26,14 @@ interface SalesmanRow {
   id: number;
   salesman_name: string;
 }
+
+// Type to payment method mapping
+const TYPE_TO_METHOD_MAP: Record<number, { key: string; name: string }> = {
+  1: { key: "type_1", name: "Cash" },
+  2: { key: "type_2", name: "Bank Transfer" },
+  96: { key: "type_check", name: "Check" },
+  98: { key: "type_check", name: "Check" }, // Same key as 96
+};
 
 export async function GET(req: NextRequest) {
   if (!API_BASE) {
@@ -165,8 +174,9 @@ export async function GET(req: NextRequest) {
 
     // Collect per collection: unique methods + amount
     type PerCollectionInfo = {
-      methodIds: Set<number>; // distinct method ids
-      amountByMethod: Map<number, number>;
+      methodKeys: Set<string>; // distinct method keys (can be method_id or type-based)
+      amountByKey: Map<string, number>;
+      nameByKey: Map<string, string>;
       totalAmount: number;
     };
 
@@ -178,7 +188,6 @@ export async function GET(req: NextRequest) {
       const header = collectionsMap.get(d.collection_id);
       if (!header) continue;
 
-      // amount
       const amt =
         typeof d.amount === "number"
           ? d.amount
@@ -186,22 +195,44 @@ export async function GET(req: NextRequest) {
           ? Number.parseFloat(d.amount as string)
           : 0;
 
-      const methodId = d.payment_method ?? 0; // 0 for "Unspecified"
-
       let info = perCollection.get(d.collection_id);
       if (!info) {
         info = {
-          methodIds: new Set<number>(),
-          amountByMethod: new Map<number, number>(),
+          methodKeys: new Set<string>(),
+          amountByKey: new Map<string, number>(),
+          nameByKey: new Map<string, string>(),
           totalAmount: 0,
         };
         perCollection.set(d.collection_id, info);
       }
 
-      info.methodIds.add(methodId);
+      let methodKey: string;
+      let methodName: string;
+
+      if (d.payment_method === 1 || (!d.payment_method && d.type === 1)) {
+        methodKey = "method_1";
+        const method = methodsMap.get(1);
+        methodName = method?.method_name || "Cash";
+      } else if (d.payment_method !== null && d.payment_method !== undefined) {
+        methodKey = `method_${d.payment_method}`;
+        const method = methodsMap.get(d.payment_method);
+        methodName = method?.method_name || `Method #${d.payment_method}`;
+      } else {
+        const typeMapping = TYPE_TO_METHOD_MAP[d.type];
+        if (typeMapping) {
+          methodKey = typeMapping.key;
+          methodName = typeMapping.name;
+        } else {
+          methodKey = `type_${d.type || 0}`;
+          methodName = `Type #${d.type || 0}`;
+        }
+      }
+
+      info.methodKeys.add(methodKey);
       info.totalAmount += amt;
-      const prev = info.amountByMethod.get(methodId) ?? 0;
-      info.amountByMethod.set(methodId, prev + amt);
+      const prevAmt = info.amountByKey.get(methodKey) ?? 0;
+      info.amountByKey.set(methodKey, prevAmt + amt);
+      info.nameByKey.set(methodKey, methodName);
     }
 
     // Aggregate per payment method (+ Mixed)
@@ -235,24 +266,38 @@ export async function GET(req: NextRequest) {
     }
 
     for (const [collectionId, info] of perCollection.entries()) {
-      const distinctCount = info.methodIds.size;
+      const distinctCount = info.methodKeys.size;
 
       if (distinctCount === 0) continue;
 
       if (distinctCount > 1) {
-        // Mixed
+        // Mixed - multiple payment methods in one collection
         const agg = getOrCreateAgg("mixed", null, "Mixed");
         agg.transactions_count += 1;
         agg.total_amount += info.totalAmount;
       } else {
-        const methodId = Array.from(info.methodIds)[0];
-        const method = methodsMap.get(methodId);
-        const name = method?.method_name || `Method #${methodId || 0}`;
-        const key = `method_${methodId || 0}`;
+        // Single payment method
+        const methodKey = Array.from(info.methodKeys)[0];
+        const amt = info.amountByKey.get(methodKey) ?? info.totalAmount;
 
-        const amt = info.amountByMethod.get(methodId) ?? info.totalAmount;
+        // Determine method name and ID for display
+        let methodName: string;
+        let methodId: number | null = null;
 
-        const agg = getOrCreateAgg(key, methodId || null, name);
+        if (methodKey.startsWith("method_")) {
+          // From payment_methods table
+          methodId = parseInt(methodKey.replace("method_", ""));
+          const method = methodsMap.get(methodId);
+          methodName = method?.method_name || `Method #${methodId}`;
+        } else {
+          // From type mapping
+          const typeEntry = Object.values(TYPE_TO_METHOD_MAP).find(
+            (t) => t.key === methodKey
+          );
+          methodName = typeEntry?.name || methodKey;
+        }
+
+        const agg = getOrCreateAgg(methodKey, methodId, methodName);
         agg.transactions_count += 1;
         agg.total_amount += amt;
       }
