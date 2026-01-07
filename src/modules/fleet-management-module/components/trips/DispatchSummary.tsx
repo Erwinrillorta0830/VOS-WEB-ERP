@@ -315,9 +315,9 @@ export function DispatchSummary() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">🚚 Dispatch Summary Dashboard (Active)</h1>
           <p className="text-gray-600">For Dispatch, In Transit, and For Clearance.</p>
         </div>
-        <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md">
+        {/* <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md">
           <Plus className="w-5 h-5" /> Create Dispatch Plan
-        </button>
+        </button> */}
       </div>
 
       <hr className="my-6" />
