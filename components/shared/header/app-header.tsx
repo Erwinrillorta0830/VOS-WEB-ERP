@@ -17,7 +17,7 @@ interface AppHeaderProps {
   to: string;
 }
 
-const DISABLED_SEGMENTS = ["pages"];
+const DISABLED_SEGMENTS = ["bi"];
 
 function formatSegment(segment: string) {
   return segment
