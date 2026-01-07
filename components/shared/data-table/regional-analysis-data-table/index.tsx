@@ -27,17 +27,6 @@ interface DataTableProps {
   data: RegionalAnalysis[];
 }
 
-const formatCurrency = (amount: number): string =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "PHP",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-const formatNumber = (num: number): string =>
-  new Intl.NumberFormat("en-US").format(num);
-
 export function RegionalAnalysisDataTable({ data }: DataTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
 
@@ -76,6 +65,9 @@ export function RegionalAnalysisDataTable({ data }: DataTableProps) {
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto"
       >
+        <div className="text-lg font-semibold">
+          Regional Performance Details
+        </div>
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader className="bg-muted sticky top-0 z-10">

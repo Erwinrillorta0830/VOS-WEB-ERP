@@ -63,6 +63,7 @@ export function DataTable({ data }: DataTableProps) {
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto"
       >
+        <div className="text-lg font-semibold">Customer Collection Details</div>
         <div className="flex gap-2 w-full">
           <Input
             placeholder="Search by customer name..."

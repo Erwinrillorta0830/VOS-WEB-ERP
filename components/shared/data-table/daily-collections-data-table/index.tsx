@@ -54,6 +54,7 @@ export function DailyCollectionDataTable({ data, loading }: DataTableProps) {
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto"
       >
+        <div className="text-lg font-semibold">Daily Collection Details</div>
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader className="bg-muted sticky top-0 z-10">
