@@ -26,7 +26,7 @@ import type { PageType } from '../../../modules/fleet-management-module/types';
 import { CreateDispatchPlanModal } from '../../../modules/CreateDispatchPlanModal';
 
 export default function HomePage() {
-    const [currentPage, setCurrentPage] = useState<PageType>('dashboard');
+    const [currentPage, setCurrentPage] = useState<PageType>('dispatch-summary');
 
     const renderPage = () => {
         console.log('Current page:', currentPage); // Debug log
