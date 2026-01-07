@@ -299,12 +299,47 @@ export function DispatchSummary() {
     { name: 'For Clearance', value: stats.forClearance, color: '#ec4899' },
   ].filter(item => item.value > 0);
 
-  const weeklyTrendData = [
-    { day: 'Mon', dispatches: 12 }, { day: 'Tue', dispatches: 19 }, 
-    { day: 'Wed', dispatches: 15 }, { day: 'Thu', dispatches: 22 }, 
-    { day: 'Fri', dispatches: 18 }, { day: 'Sat', dispatches: 8 }, 
-    { day: 'Sun', dispatches: 5 },
-  ];
+    // --- Weekly Trend (API-aligned): counts ACTIVE plans per day for the current week (Mon–Sun)
+  const weeklyTrendData = useMemo(() => {
+    const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+    // Seed ensures the chart always renders 7 points (even if zeros)
+    const seed = labels.map((day) => ({ day, dispatches: 0 }));
+
+    // Start of week = Monday 00:00 (local)
+    const startOfWeek = new Date();
+    const jsDay = startOfWeek.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = (jsDay + 6) % 7; // Mon=0, Tue=1, ... Sun=6
+    startOfWeek.setDate(startOfWeek.getDate() - diffToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    // Bucket active plans
+    for (const plan of visibleTablePlans) {
+      if (!plan?.createdAt) continue;
+
+      // Keep consistent with your display formatter behavior (treat trailing 'Z' as local if present)
+      const localString = plan.createdAt.replace(/Z$/, "");
+      const dt = new Date(localString);
+      if (isNaN(dt.getTime())) continue;
+
+      if (dt < startOfWeek || dt >= endOfWeek) continue;
+
+      const d = dt.getDay(); // 0=Sun..6=Sat
+      const idx = (d + 6) % 7; // convert to Mon=0..Sun=6
+      seed[idx].dispatches += 1;
+    }
+
+    return seed;
+  }, [visibleTablePlans]);
+
+  const weeklyTrendTotal = useMemo(
+    () => weeklyTrendData.reduce((sum, r) => sum + r.dispatches, 0),
+    [weeklyTrendData]
+  );
+
 
   if (error) return <div className="p-6 text-center text-red-600 bg-red-50 border-red-200 rounded-lg">🚨 Error: {error}</div>;
 
@@ -404,24 +439,34 @@ export function DispatchSummary() {
             )}
           </ResponsiveContainer>
         </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">📈 Weekly Trend</h2>
-          <ResponsiveContainer width="100%" height={300}>
-             {loading ? (
-               <div className="flex items-center justify-center h-full text-gray-400">
-                 <Loader2 className="w-8 h-8 animate-spin text-blue-500 mr-2" /> Loading...
-               </div>
-            ) : (
-                <LineChart data={weeklyTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="dispatches" stroke="#3b82f6" strokeWidth={2} />
-                </LineChart>
+
+          {/* Keep chart mounted for stable sizing; use overlays for loading/empty states */}
+          <div className="relative h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={weeklyTrendData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="day" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="dispatches" stroke="#3b82f6" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-white/70">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500 mr-2" /> Loading...
+              </div>
             )}
-          </ResponsiveContainer>
+
+            {!loading && weeklyTrendTotal === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-white/70">
+                No active dispatch data for this week
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -506,7 +551,7 @@ export function DispatchSummary() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispatch From</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispatch To</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th> */}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -533,9 +578,9 @@ export function DispatchSummary() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDateTime(plan.timeOfArrival)}</td>
 
                     <td className="px-6 py-4 whitespace-nowrap"><span className={`inline-flex px-3 py-1 text-xs font-semibold border rounded-full ${getStatusBadgeClass(plan.status)}`}>{plan.status}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button onClick={() => handleView(plan)} className="flex items-center gap-2 text-blue-600 hover:text-blue-700"><Eye className="w-4 h-4" /> View</button>
-                    </td>
+                    </td> */}
                   </tr>
                 ))
               )}
