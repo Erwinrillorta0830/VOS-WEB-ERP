@@ -70,6 +70,7 @@ export function SummaryReportDataTable({ data }: DataTableProps) {
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto"
       >
+        <div className="text-lg font-semibold">Collection Details</div>
         {/* Search Filter */}
         <div className="flex items-center gap-2">
           <Input

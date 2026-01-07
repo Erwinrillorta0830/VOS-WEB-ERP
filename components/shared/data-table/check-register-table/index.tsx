@@ -202,6 +202,7 @@ export function CheckRegisterDataTable({
         onValueChange={setStatusFilter}
         className="w-full"
       >
+        <div className="text-lg font-semibold">Check Register Details</div>
         <div className="grid grid-cols-[auto_1fr] sm:grid-cols-[1fr_500px] items-start sm:items-center justify-between gap-2">
           <div className="w-30 sm:hidden">
             <Select value={statusFilter} onValueChange={setStatusFilter}>

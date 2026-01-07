@@ -120,6 +120,7 @@ export function DataTable({ data: initialData }: DataTableProps) {
       defaultValue="outline"
       className="w-full flex-col justify-start gap-4"
     >
+      <div className="text-lg font-semibold">Salesman Performance Details</div>
       <div className="flex gap-2 w-full">
         <Input
           placeholder="Search by Salesman name"
