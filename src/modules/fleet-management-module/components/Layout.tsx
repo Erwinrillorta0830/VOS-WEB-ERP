@@ -35,60 +35,60 @@ export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const menuItems = [
-        {
-            category: "Dashboard",
-            items: [
-                { id: "dashboard" as PageType, label: "Fleet Dashboard", icon: LayoutDashboard },
-            ],
-        },
-        {
-            category: "Vehicles Management",
-            items: [
-                { id: "vehicles-list" as PageType, label: "Vehicle List", icon: Truck },
-                { id: "vehicle-documents" as PageType, label: "Info & Registration", icon: FileText },
-                { id: "vehicle-designation" as PageType, label: "Vehicle Designation", icon: UserCheck },
-                { id: "maintenance-schedule" as PageType, label: "Maintenance Schedule", icon: Calendar },
-                { id: "job-orders" as PageType, label: "Job Orders and Repairs", icon: Wrench },
-            ],
-        },
-        {
-            category: "Driver Management",
-            items: [
-                { id: "driver-management" as PageType, label: "Driver Profiles", icon: Users },
-                { id: "violations" as PageType, label: "Violations and Penalties", icon: AlertTriangle },
-            ],
-        },
+        // {
+        //     category: "Dashboard",
+        //     items: [
+        //         { id: "dashboard" as PageType, label: "Fleet Dashboard", icon: LayoutDashboard },
+        //     ],
+        // },
+        // {
+        //     category: "Vehicles Management",
+        //     items: [
+        //         { id: "vehicles-list" as PageType, label: "Vehicle List", icon: Truck },
+        //         { id: "vehicle-documents" as PageType, label: "Info & Registration", icon: FileText },
+        //         { id: "vehicle-designation" as PageType, label: "Vehicle Designation", icon: UserCheck },
+        //         { id: "maintenance-schedule" as PageType, label: "Maintenance Schedule", icon: Calendar },
+        //         { id: "job-orders" as PageType, label: "Job Orders and Repairs", icon: Wrench },
+        //     ],
+        // },
+        // {
+        //     category: "Driver Management",
+        //     items: [
+        //         { id: "driver-management" as PageType, label: "Driver Profiles", icon: Users },
+        //         { id: "violations" as PageType, label: "Violations and Penalties", icon: AlertTriangle },
+        //     ],
+        // },
         {
             category: "Trip Management",
             items: [
-                { id: "trip-management" as PageType, label: "Requests & Dispatch", icon: Route },
+                //{ id: "trip-management" as PageType, label: "Requests & Dispatch", icon: Route },
                 { id: "dispatch-summary" as PageType, label: "Dispatch Summary", icon: ClipboardCheck },
-                { id: "vehicle-tracking" as PageType, label: "Vehicle Tracking", icon: MapPin },
+                //{ id: "vehicle-tracking" as PageType, label: "Vehicle Tracking", icon: MapPin },
             ],
         },
         {
             category: "Logistics",
             items: [
-                { id: "deliveries" as PageType, label: "Deliveries", icon: Package },
+                //{ id: "deliveries" as PageType, label: "Deliveries", icon: Package },
                 { id: "statistics-dashboard" as PageType, label: "Delivery Statistics", icon: BarChart3 },
                 { id: "logistics-summary" as PageType, label: "Logistics Summary", icon: FileText },
                 { id: "pending-deliveries" as PageType, label: "Pending Deliveries", icon: PackageCheck },
             ],
         },
-        {
-            category: "Inventory Management",
-            items: [
-                { id: "fuel-management" as PageType, label: "Fuel Management", icon: Fuel },
-                { id: "spare-parts" as PageType, label: "Spare Parts", icon: ClipboardList },
-            ],
-        },
-        {
-            category: "System",
-            items: [
-                { id: "user-role-management" as PageType, label: "Users and Roles", icon: Shield },
-                { id: "system-settings" as PageType, label: "System Settings", icon: Settings },
-            ],
-        },
+        // {
+        //     category: "Inventory Management",
+        //     items: [
+        //         { id: "fuel-management" as PageType, label: "Fuel Management", icon: Fuel },
+        //         { id: "spare-parts" as PageType, label: "Spare Parts", icon: ClipboardList },
+        //     ],
+        // },
+        // {
+        //     category: "System",
+        //     items: [
+        //         { id: "user-role-management" as PageType, label: "Users and Roles", icon: Shield },
+        //         { id: "system-settings" as PageType, label: "System Settings", icon: Settings },
+        //     ],
+        // },
     ];
 
     const handleNavigate = (page: PageType) => {

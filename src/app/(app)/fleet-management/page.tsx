@@ -23,9 +23,10 @@ import { Violations } from '../../../modules/fleet-management-module/components/
 import { UserRoleManagement } from '../../../modules/fleet-management-module/components/settings/UserRoleManagement';
 import { SystemSettings } from '../../../modules/fleet-management-module/components/settings/SystemSettings';
 import type { PageType } from '../../../modules/fleet-management-module/types';
+import { CreateDispatchPlanModal } from '../../../modules/CreateDispatchPlanModal';
 
 export default function HomePage() {
-    const [currentPage, setCurrentPage] = useState<PageType>('dashboard');
+    const [currentPage, setCurrentPage] = useState<PageType>('dispatch-summary');
 
     const renderPage = () => {
         console.log('Current page:', currentPage); // Debug log
