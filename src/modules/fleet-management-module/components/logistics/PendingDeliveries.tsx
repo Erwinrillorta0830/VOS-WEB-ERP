@@ -158,6 +158,82 @@ export function PendingDeliveries() {
     return `${y}-${m}-${day}`;
   };
 
+  const formatDateLong = (d: Date) => {
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const getQuickRangeBounds = (
+    range: DateRange,
+    customFrom?: string,
+    customTo?: string
+  ): { from: Date; to: Date } | null => {
+    const now = new Date();
+
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    if (range === "today") {
+      return { from: startOfToday, to: endOfToday };
+    }
+
+    if (range === "yesterday") {
+      const from = new Date(startOfToday);
+      from.setDate(from.getDate() - 1);
+      const to = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 23, 59, 59, 999);
+      return { from, to };
+    }
+
+    if (range === "this-week") {
+      // Monday-start week (matches your filter logic)
+      const dayOfWeek = startOfToday.getDay(); // 0=Sun
+      const diff = startOfToday.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+      const from = new Date(startOfToday);
+      from.setDate(diff);
+      const to = new Date(from);
+      to.setDate(from.getDate() + 6);
+      to.setHours(23, 59, 59, 999);
+      return { from, to };
+    }
+
+    if (range === "this-month") {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { from, to };
+    }
+
+    if (range === "this-year") {
+      const from = new Date(now.getFullYear(), 0, 1);
+      const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      return { from, to };
+    }
+
+    if (range === "custom") {
+      if (!customFrom || !customTo) return null;
+      const from = new Date(customFrom);
+      const to = new Date(customTo);
+      to.setHours(23, 59, 59, 999);
+      return { from, to };
+    }
+
+    return null;
+  };
+
+  const getPeriodLabel = (range: DateRange, customFrom?: string, customTo?: string) => {
+    const bounds = getQuickRangeBounds(range, customFrom, customTo);
+    if (!bounds) return "All Dates";
+
+    const fromKey = `${bounds.from.getFullYear()}-${bounds.from.getMonth()}-${bounds.from.getDate()}`;
+    const toKey = `${bounds.to.getFullYear()}-${bounds.to.getMonth()}-${bounds.to.getDate()}`;
+
+    if (fromKey === toKey) return formatDateLong(bounds.from);
+
+    return `${formatDateLong(bounds.from)} - ${formatDateLong(bounds.to)}`;
+  };
+
   const formatDate = (dateString: string) => {
     // dateString here is YYYY-MM-DD (day key)
     if (!dateString) return "-";
@@ -171,12 +247,7 @@ export function PendingDeliveries() {
   };
 
   // Generic Date Logic (Used by both Dashboard and Print)
-  const checkDateRange = (
-    dateString: string,
-    range: DateRange,
-    customFrom?: string,
-    customTo?: string
-  ) => {
+  const checkDateRange = (dateString: string, range: DateRange, customFrom?: string, customTo?: string) => {
     const date = new Date(dateString);
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -244,8 +315,45 @@ export function PendingDeliveries() {
     fetchData();
   }, []);
 
+  // Counts RAW orders (not grouped) but respects the same filters/date/search logic.
+  const countFilteredOrders = (
+    data: ClusterGroupRaw[],
+    filters: { cluster: string; salesman: string; search?: string; status?: string },
+    dateSettings: { range: DateRange; from: string; to: string }
+  ) => {
+    const searchLower = (filters.search || "").toLowerCase();
+    let count = 0;
+
+    data.forEach((group) => {
+      if (filters.cluster !== "All" && group.clusterName !== filters.cluster) return;
+
+      group.customers.forEach((customer) => {
+        customer.orders.forEach((o) => {
+          if (!checkDateRange(o.order_date, dateSettings.range, dateSettings.from, dateSettings.to)) return;
+          if (filters.salesman !== "All" && customer.salesmanName !== filters.salesman) return;
+
+          if (filters.status && filters.status !== "All") {
+            const orderStatusLower = (o.order_status || "").toLowerCase();
+            const target = filters.status.toLowerCase().replace("for ", "");
+            if (!orderStatusLower.includes(target)) return;
+          }
+
+          if (filters.search) {
+            const hit =
+              customer.customerName.toLowerCase().includes(searchLower) ||
+              customer.salesmanName.toLowerCase().includes(searchLower);
+            if (!hit) return;
+          }
+
+          count++;
+        });
+      });
+    });
+
+    return count;
+  };
+
   // --- Grouping + Flattening Logic (Reusable) ---
-  // GROUP KEY = Cluster + Customer + Salesman + Date(YYYY-MM-DD)
   const getGroupedRows = (
     data: ClusterGroupRaw[],
     filters: { cluster: string; salesman: string; search?: string; status?: string },
@@ -257,25 +365,19 @@ export function PendingDeliveries() {
     data.forEach((group) => {
       if (filters.cluster !== "All" && group.clusterName !== filters.cluster) return;
 
-      // Map: (customer|salesman|dateKey) -> aggregated row
       const agg = new Map<string, TableRow>();
 
       group.customers.forEach((customer) => {
         customer.orders.forEach((o) => {
-          // Date filter
           if (!checkDateRange(o.order_date, dateSettings.range, dateSettings.from, dateSettings.to)) return;
-
-          // Salesman filter (based on customer grouping)
           if (filters.salesman !== "All" && customer.salesmanName !== filters.salesman) return;
 
-          // Print-only status filter support (matches your existing behavior)
           if (filters.status && filters.status !== "All") {
             const orderStatusLower = (o.order_status || "").toLowerCase();
             const target = filters.status.toLowerCase().replace("for ", "");
             if (!orderStatusLower.includes(target)) return;
           }
 
-          // Search filter (dashboard)
           if (filters.search) {
             const hit =
               customer.customerName.toLowerCase().includes(searchLower) ||
@@ -323,7 +425,6 @@ export function PendingDeliveries() {
 
       const groupRows = Array.from(agg.values());
 
-      // Cluster total based on grouped rows
       const clusterTotal = groupRows.reduce((sum, r) => sum + r.amount, 0);
       groupRows.forEach((r) => (r.clusterTotal = clusterTotal));
 
@@ -333,7 +434,6 @@ export function PendingDeliveries() {
     return rows;
   };
 
-  // Dashboard grouped data
   const tableRows = useMemo(() => {
     return getGroupedRows(
       rawGroups,
@@ -342,9 +442,14 @@ export function PendingDeliveries() {
     );
   }, [rawGroups, searchTerm, salesmanFilter, clusterFilter, dateRange, customDateFrom, customDateTo]);
 
-  // --- OPTION A Sorting (Group-preserving) ---
-  // We keep the table visually grouped by: Cluster -> Customer -> Salesman -> Date
-  // If user sorts, we apply that sort *within each Cluster+Customer block* to keep rowSpans clean.
+  const pendingOrdersCount = useMemo(() => {
+    return countFilteredOrders(
+      rawGroups,
+      { cluster: clusterFilter, salesman: salesmanFilter, search: searchTerm },
+      { range: dateRange, from: customDateFrom, to: customDateTo }
+    );
+  }, [rawGroups, searchTerm, salesmanFilter, clusterFilter, dateRange, customDateFrom, customDateTo]);
+
   const sortedRows = useMemo(() => {
     const base = [...tableRows].sort((a, b) => {
       const c = a.clusterName.localeCompare(b.clusterName);
@@ -358,7 +463,6 @@ export function PendingDeliveries() {
 
     if (!sortConfig) return base;
 
-    // Build blocks by Cluster+Customer to preserve rowSpan
     const blocks = new Map<string, TableRow[]>();
     for (const r of base) {
       const k = `${r.clusterName}||${r.customerName}`;
@@ -370,18 +474,15 @@ export function PendingDeliveries() {
       const av = a[sortConfig.key];
       const bv = b[sortConfig.key];
 
-      // numbers
       if (typeof av === "number" && typeof bv === "number") {
         return sortConfig.direction === "asc" ? av - bv : bv - av;
       }
-      // strings
       if (typeof av === "string" && typeof bv === "string") {
         return sortConfig.direction === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       }
       return 0;
     };
 
-    // Rebuild in original block order, sorting inside each block only
     const out: TableRow[] = [];
     const seen = new Set<string>();
     for (const r of base) {
@@ -397,7 +498,9 @@ export function PendingDeliveries() {
     return out;
   }, [tableRows, sortConfig]);
 
-  // --- PDF GENERATION LOGIC ---
+  // ===========================
+  // PDF (UPDATED HEADER + CARDS)
+  // ===========================
   const executePrint = () => {
     const printRows = getGroupedRows(
       rawGroups,
@@ -405,7 +508,12 @@ export function PendingDeliveries() {
       { range: printConfig.dateRange, from: printConfig.customFrom, to: printConfig.customTo }
     );
 
-    // For printing, preserve grouping order (Cluster->Customer->Salesman->Date)
+    const pdfPendingOrders = countFilteredOrders(
+      rawGroups,
+      { cluster: printConfig.cluster, salesman: printConfig.salesman, status: printConfig.status },
+      { range: printConfig.dateRange, from: printConfig.customFrom, to: printConfig.customTo }
+    );
+
     printRows.sort((a, b) => {
       const c = a.clusterName.localeCompare(b.clusterName);
       if (c !== 0) return c;
@@ -418,54 +526,93 @@ export function PendingDeliveries() {
 
     const doc = new jsPDF("l", "mm", "a4");
 
-    const dateLabel =
-      printConfig.dateRange === "custom"
-        ? `${printConfig.customFrom} to ${printConfig.customTo}`
-        : printConfig.dateRange.replace("-", " ").toUpperCase();
-
-    doc.setFontSize(14);
-    doc.text("Delivery Monitor Report", 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Period: ${dateLabel}`, 14, 22);
-
-    let filterText = `Cluster: ${printConfig.cluster} | Salesman: ${printConfig.salesman} | Status: ${printConfig.status}`;
-    doc.setFontSize(8);
-    doc.setTextColor(100);
-    doc.text(filterText, 14, 27);
-    doc.setTextColor(0);
+    const periodLabel = getPeriodLabel(printConfig.dateRange, printConfig.customFrom, printConfig.customTo);
+    const filterText = `Cluster: ${printConfig.cluster} | Salesman: ${printConfig.salesman} | Status: ${printConfig.status}`;
 
     const grandTotal = printRows.reduce((sum, r) => sum + r.amount, 0);
-    const totalRows = printRows.length;
     const uniqueClusters = new Set(printRows.map((r) => r.clusterName)).size;
 
-    const startX = 80;
-    const startY = 10;
-    const cardWidth = 65;
-    const cardHeight = 22;
-    const gap = 5;
+    // =========================
+    // LAYOUT CONSTANTS (TIGHT)
+    // =========================
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const leftX = 14;
+    const rightMargin = 14;
 
+    // Smaller cards so they fit with header text (no ugly whitespace)
+    const cardWidth = 58;
+    const cardHeight = 18;
+    const gap = 4;
+
+    const cardsTotalWidth = cardWidth * 3 + gap * 2;
+    const startX = pageWidth - rightMargin - cardsTotalWidth;
+
+    // Keep cards high (do not push down)
+    const cardsY = 10;
+
+    // Header text can only occupy left column (prevents overlap)
+    const leftMaxWidth = Math.max(40, startX - leftX - 6);
+
+    // =========================
+    // HEADER TEXT (WRAPPED LEFT)
+    // =========================
+    doc.setFontSize(14);
+    doc.text("Delivery Monitor Report", leftX, 15);
+
+    doc.setFontSize(10);
+    const periodLines = doc.splitTextToSize(`Period: ${periodLabel}`, leftMaxWidth);
+    doc.text(periodLines, leftX, 22);
+
+    const lineH10 = 4.5;
+    const afterPeriodY = 22 + (periodLines.length - 1) * lineH10;
+
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    const filterLines = doc.splitTextToSize(filterText, leftMaxWidth);
+    doc.text(filterLines, leftX, afterPeriodY + 5);
+    doc.setTextColor(0);
+
+    // Approx header bottom (so table never collides)
+    const lineH8 = 3.8;
+    const headerBottomY = afterPeriodY + 5 + (filterLines.length - 1) * lineH8;
+
+    // =========================
+    // CARDS (SMALLER + SAME STYLE)
+    // =========================
     const drawCard = (x: number, title: string, value: string, iconColor: [number, number, number]) => {
       doc.setDrawColor(220, 220, 220);
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(x, startY, cardWidth, cardHeight, 2, 2, "FD");
-      doc.setFontSize(8);
+      doc.roundedRect(x, cardsY, cardWidth, cardHeight, 2, 2, "FD");
+
+      doc.setFontSize(7);
       doc.setTextColor(100, 100, 100);
-      doc.text(title, x + 4, startY + 7);
-      doc.setFontSize(14);
+      doc.text(title, x + 4, cardsY + 6);
+
+      doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "bold");
-      doc.text(value, x + 4, startY + 17);
+      doc.text(value, x + 4, cardsY + 14);
       doc.setFont("helvetica", "normal");
+
       doc.setFillColor(...iconColor);
-      doc.circle(x + cardWidth - 8, startY + 11, 4, "F");
+      doc.circle(x + cardWidth - 7, cardsY + 9, 3.5, "F");
     };
 
     drawCard(startX, "Active Clusters", uniqueClusters.toString(), [219, 234, 254]);
-    drawCard(startX + cardWidth + gap, "Grouped Rows", totalRows.toString(), [243, 232, 255]);
-    drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", `P ${formatNumberForPDF(grandTotal)}`, [
-      220, 252, 231,
-    ]);
+    drawCard(startX + cardWidth + gap, "Pending Orders", pdfPendingOrders.toString(), [243, 232, 255]);
+    drawCard(
+      startX + (cardWidth + gap) * 2,
+      "Total Pending Amount",
+      `P ${formatNumberForPDF(grandTotal)}`,
+      [220, 252, 231]
+    );
 
+    // ✅ Table starts after whichever is lower: header text block OR cards
+    const tableStartY = Math.max(cardsY + cardHeight + 6, headerBottomY + 8);
+
+    // =========================
+    // PDF TABLE (NO CLUSTER TOTAL)
+    // =========================
     let tableHeader = ["Cluster", "Customer", "Salesman", "Date"];
 
     const statusMap = [
@@ -485,7 +632,9 @@ export function PendingDeliveries() {
     } else {
       const selectedLabel = printConfig.status.replace("For ", "");
       const found = statusMap.find(
-        (s) => s.label.toLowerCase() === selectedLabel.toLowerCase() || s.label.toLowerCase().includes(selectedLabel.toLowerCase())
+        (s) =>
+          s.label.toLowerCase() === selectedLabel.toLowerCase() ||
+          s.label.toLowerCase().includes(selectedLabel.toLowerCase())
       );
       if (found) {
         tableHeader.push(found.label);
@@ -496,13 +645,12 @@ export function PendingDeliveries() {
       }
     }
 
-    tableHeader.push("Total", "Cluster Total");
+    tableHeader.push("Total");
 
     const tableRowsData = printRows.map((row) => {
       const rowData: any[] = [row.clusterName, row.customerName, row.salesmanName, formatDate(row.orderDate)];
       activeStatusKeys.forEach((key) => rowData.push(formatNumberForPDF(row[key] as number)));
       rowData.push(formatNumberForPDF(row.amount));
-      rowData.push(formatNumberForPDF(row.clusterTotal));
       return rowData;
     });
 
@@ -517,18 +665,20 @@ export function PendingDeliveries() {
       colIndex++;
     });
     baseColStyles[colIndex] = { halign: "right", fontStyle: "bold" };
-    baseColStyles[colIndex + 1] = { halign: "right", fontStyle: "bold", fillColor: [249, 250, 251] };
 
     autoTable(doc, {
       head: [tableHeader],
       body: tableRowsData,
-      startY: 40,
+      startY: tableStartY,
       theme: "grid",
       styles: { fontSize: 7, cellPadding: 1, halign: "left" },
       headStyles: { fillColor: [243, 244, 246], textColor: [20, 20, 20], fontStyle: "bold" },
       columnStyles: baseColStyles,
     });
 
+    // =========================
+    // CLUSTER SUMMARY
+    // =========================
     const summaryMap = new Map<string, number>();
     printRows.forEach((r) => {
       summaryMap.set(r.clusterName, (summaryMap.get(r.clusterName) || 0) + r.amount);
@@ -588,14 +738,13 @@ export function PendingDeliveries() {
   const totalPages = Math.ceil(sortedRows.length / itemsPerPage);
 
   const currentRows = useMemo(() => {
-    const rawCurrentRows = sortedRows.slice(indexOfFirstItem, indexOfLastItem);
-    const rows = rawCurrentRows.map((r) => ({ ...r }));
+    const currentSlice = sortedRows.slice(indexOfFirstItem, indexOfLastItem);
+    const rows = currentSlice.map((r) => ({ ...r }));
 
     for (let i = 0; i < rows.length; i++) {
       const current = rows[i];
       const prev = rows[i - 1];
 
-      // Cluster rowspan
       if (i === 0 || current.clusterName !== prev.clusterName) {
         let span = 1;
         for (let j = i + 1; j < rows.length; j++) {
@@ -607,19 +756,10 @@ export function PendingDeliveries() {
         current.clusterRowSpan = 0;
       }
 
-      // Customer rowspan (scoped to cluster)
-      if (
-        i === 0 ||
-        current.customerName !== prev.customerName ||
-        current.clusterName !== prev.clusterName
-      ) {
+      if (i === 0 || current.customerName !== prev.customerName || current.clusterName !== prev.clusterName) {
         let span = 1;
         for (let j = i + 1; j < rows.length; j++) {
-          if (
-            rows[j].customerName === current.customerName &&
-            rows[j].clusterName === current.clusterName
-          )
-            span++;
+          if (rows[j].customerName === current.customerName && rows[j].clusterName === current.clusterName) span++;
           else break;
         }
         current.customerRowSpan = span;
@@ -719,7 +859,7 @@ export function PendingDeliveries() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type="text"
-                  placeholder="Customer..."
+                  placeholder="Search Customer..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -769,17 +909,19 @@ export function PendingDeliveries() {
           <div className="xl:w-auto">
             <label className="block text-sm text-gray-700 mb-2">Quick Range</label>
             <div className="flex gap-2 flex-wrap">
-              {(["yesterday", "today", "this-week", "this-month", "this-year", "custom"] as DateRange[]).map((range) => (
-                <button
-                  key={range}
-                  onClick={() => setDateRange(range)}
-                  className={`px-4 py-2 rounded-lg text-sm transition-colors capitalize ${
-                    dateRange === range ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {range.replace("-", " ")}
-                </button>
-              ))}
+              {(["yesterday", "today", "this-week", "this-month", "this-year", "custom"] as DateRange[]).map(
+                (range) => (
+                  <button
+                    key={range}
+                    onClick={() => setDateRange(range)}
+                    className={`px-4 py-2 rounded-lg text-sm transition-colors capitalize ${
+                      dateRange === range ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {range.replace("-", " ")}
+                  </button>
+                )
+              )}
             </div>
           </div>
         </div>
@@ -814,10 +956,7 @@ export function PendingDeliveries() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-bold text-gray-800">What needs to be printed?</h3>
-              <button
-                onClick={() => setIsPrintModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
+              <button onClick={() => setIsPrintModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -825,9 +964,7 @@ export function PendingDeliveries() {
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Cluster
-                  </label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cluster</label>
                   <select
                     value={printConfig.cluster}
                     onChange={(e) => setPrintConfig({ ...printConfig, cluster: e.target.value })}
@@ -843,9 +980,7 @@ export function PendingDeliveries() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Salesman
-                  </label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Salesman</label>
                   <select
                     value={printConfig.salesman}
                     onChange={(e) => setPrintConfig({ ...printConfig, salesman: e.target.value })}
@@ -879,9 +1014,7 @@ export function PendingDeliveries() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                  Date Range
-                </label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Date Range</label>
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {(["today", "this-week", "this-month", "custom"] as DateRange[]).map((range) => (
                     <button
@@ -961,12 +1094,12 @@ export function PendingDeliveries() {
 
         <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-500">Grouped Rows</p>
+            <p className="text-sm font-medium text-gray-500">Pending Orders</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {loading ? (
                 <span className="animate-pulse bg-gray-200 rounded h-8 w-12 inline-block"></span>
               ) : (
-                tableRows.length
+                pendingOrdersCount
               )}
             </p>
           </div>
@@ -992,7 +1125,7 @@ export function PendingDeliveries() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table (UNCHANGED) */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
