@@ -11,6 +11,8 @@
         Package,
         ChevronLeft,
         ChevronRight,
+        Activity,
+        Presentation,
     } from "lucide-react";
     import { useEffect, useMemo, useState } from "react";
     import type { ComponentType } from "react";

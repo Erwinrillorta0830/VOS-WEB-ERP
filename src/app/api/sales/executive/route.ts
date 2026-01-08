@@ -1,584 +1,801 @@
-// app/api/sales/executive/route.ts
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-const DIRECTUS_URL =
-    (process.env.DIRECTUS_URL ?? "http://100.110.197.61:8091").replace(/\/+$/, "");
-
-const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN;
-
-/* -------------------------------------------------------------------------- */
-/* TYPES                                                                      */
-/* -------------------------------------------------------------------------- */
-
-type DirectusListResponse<T> = { data: T[] };
-
-/* -------------------------------------------------------------------------- */
-/* UTIL                                                                       */
-/* -------------------------------------------------------------------------- */
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 /**
- * Normalize incoming query dates to YYYY-MM-DD for safe string comparisons.
- * Accepts:
- * - YYYY-MM-DD
- * - MM/DD/YYYY
- * - DD/MM/YYYY (auto-detect: if first part > 12, treat as DD/MM)
+ * Fixes:
+ * - trailing slash causing //items/... (Directus ROUTE_NOT_FOUND)
+ * - missing env causing undefined/items/...
+ * - limit=-1 large payload instability (uses paging)
+ * - adds _debug to quickly identify wrong collection names/permissions
  */
-function normalizeDate(input: string | null): string | null {
-    if (!input) return null;
 
-    if (/^\d{4}-\d{2}-\d{2}/.test(input)) return input.substring(0, 10);
+const RAW_DIRECTUS_URL =
+    process.env.DIRECTUS_URL || "http://100.110.197.61:8091";
+const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, "");
 
-    if (input.includes("/")) {
-        const parts = input.split("/");
-        if (parts.length === 3) {
-            const a = Number(parts[0]);
-            const b = Number(parts[1]);
-            const year = parts[2];
+// Optional token support (only if your Directus needs it)
+const DIRECTUS_TOKEN =
+    process.env.DIRECTUS_TOKEN ||
+    process.env.DIRECTUS_ACCESS_TOKEN ||
+    process.env.DIRECTUS_STATIC_TOKEN ||
+    "";
 
-            const day = a > 12 ? String(a) : String(b);
-            const month = a > 12 ? String(b) : String(a);
+type DirectusErrorItem = {
+    collection: string;
+    status?: number;
+    message: string;
+    url: string;
+};
 
-            return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-        }
-    }
+// --- 1. DIVISION MAPPING RULES ---
+const DIVISION_RULES: Record<
+    string,
+    { brands: string[]; sections: string[] }
+> = {
+    "Dry Goods": {
+        brands: [
+            "Lucky Me",
+            "Nescafe",
+            "Kopiko",
+            "Bear Brand",
+            "Maggi",
+            "Surf",
+            "Downy",
+            "Richeese",
+            "Richoco",
+            "Keratin",
+            "KeratinPlus",
+            "Dove",
+            "Palmolive",
+            "Safeguard",
+            "Sunsilk",
+            "Cream Silk",
+            "Head & Shoulders",
+            "Colgate",
+            "Close Up",
+            "Bioderm",
+            "Casino",
+            "Efficascent",
+            "Great Taste",
+            "Presto",
+            "Tide",
+            "Ariel",
+            "Champion",
+            "Callee",
+            "Systemack",
+            "Wings",
+            "Pride",
+            "Smart",
+        ],
+        sections: [
+            "Grocery",
+            "Canned",
+            "Noodles",
+            "Beverages",
+            "Non-Food",
+            "Personal Care",
+            "Snacks",
+            "Biscuits",
+            "Candy",
+            "Coffee",
+            "Milk",
+            "Powder",
+        ],
+    },
+    "Frozen Goods": {
+        brands: [
+            "CDO",
+            "Tender Juicy",
+            "Mekeni",
+            "Virginia",
+            "Purefoods",
+            "Aviko",
+            "Swift",
+            "Argentina",
+            "Star",
+            "Holiday",
+            "Highland",
+            "Bibbo",
+            "Home Made",
+            "Young Pork",
+        ],
+        sections: [
+            "Frozen",
+            "Meat",
+            "Processed Meat",
+            "Cold Cuts",
+            "Ice Cream",
+            "Hotdog",
+            "Chicken",
+            "Pork",
+        ],
+    },
+    Industrial: {
+        brands: [
+            "Mama Sita",
+            "Datu Puti",
+            "Silver Swan",
+            "Golden Fiesta",
+            "LPG",
+            "Solane",
+            "Gasul",
+            "Fiesta",
+            "UFC",
+            "Super Q",
+            "Biguerlai",
+            "Equal",
+            "Jufran",
+        ],
+        sections: [
+            "Condiments",
+            "Oil",
+            "Sacks",
+            "Sugar",
+            "Flour",
+            "Industrial",
+            "Gas",
+            "Rice",
+            "Salt",
+        ],
+    },
+    "Mama Pina's": {
+        brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
+        sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
+    },
+    Internal: {
+        brands: ["Internal", "Office Supplies", "House Account", "VOS"],
+        sections: ["Internal", "Office", "Supplies", "Use"],
+    },
+};
 
-    return input;
+// DIRECT SUPPLIER MAPPING
+const SUPPLIER_TO_DIVISION: Record<string, string> = {
+    MEN2: "Dry Goods",
+    "MEN2 MARKETING": "Dry Goods",
+    PUREFOODS: "Frozen Goods",
+    CDO: "Frozen Goods",
+    INDUSTRIAL: "Industrial",
+    "MAMA PINA": "Mama Pina's",
+    VIRGINIA: "Frozen Goods",
+    AVIKO: "Frozen Goods",
+    MEKENI: "Frozen Goods",
+    TIONGSAN: "Dry Goods",
+    CSI: "Dry Goods",
+    TSH: "Dry Goods",
+    JUMAPAS: "Dry Goods",
+    COSTSAVER: "Dry Goods",
+    "RISING SUN": "Dry Goods",
+    MUNICIPAL: "Dry Goods",
+    INTERNAL: "Internal",
+    VOS: "Internal",
+};
+
+const ALL_DIVISIONS = [
+    "Dry Goods",
+    "Frozen Goods",
+    "Industrial",
+    "Mama Pina's",
+    "Internal",
+] as const;
+
+// --- HELPERS ---
+function normalizeDate(d: string | null) {
+    if (!d) return null;
+    const dateObj = new Date(d);
+    if (Number.isNaN(dateObj.getTime())) return d;
+    return dateObj.toISOString().split("T")[0];
 }
 
 const toFixed = (num: number) => Math.round(num * 100) / 100;
 
-function isTruthy(field: any) {
-    if (field === true || field === 1 || field === "1" || field === "true")
-        return true;
-    if (field && typeof field === "object" && field.data && field.data[0] === 1)
-        return true;
+function isTrue(field: any) {
+    if (field === true) return true;
+    if (field === 1) return true;
+    if (field === "1") return true;
+    if (typeof field === "object" && field !== null) {
+        if (field.data && field.data[0] === 1) return true;
+        if (field.type === "Buffer" && field.data && field.data[0] === 1)
+            return true;
+    }
     return false;
 }
 
-/* -------------------------------------------------------------------------- */
-/* DIRECTUS FETCH                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Fetch JSON from Directus with retry on transient backpressure errors.
- */
-async function directusFetch<T>(path: string, attempt = 1): Promise<T> {
-    const url = `${DIRECTUS_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-
-    const res = await fetch(url, {
-        cache: "no-store",
-        headers: {
-            ...(DIRECTUS_TOKEN ? { Authorization: `Bearer ${DIRECTUS_TOKEN}` } : {}),
-        },
-    });
-
-    // Retry on transient pressure responses
-    if ((res.status === 503 || res.status === 429) && attempt < 4) {
-        await sleep(500 * attempt); // 500ms, 1000ms, 1500ms
-        return directusFetch<T>(path, attempt + 1);
+function getDatesInRange(startDate: string, endDate: string) {
+    const date = new Date(startDate);
+    const end = new Date(endDate);
+    const dates: string[] = [];
+    while (date <= end) {
+        dates.push(new Date(date).toISOString().split("T")[0]);
+        date.setDate(date.getDate() + 1);
     }
-
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(
-            `Directus request failed (${res.status}) for ${url}. Response: ${text.slice(
-                0,
-                700
-            )}`
-        );
-    }
-
-    return res.json() as Promise<T>;
+    return dates;
 }
 
-/**
- * Paged list fetcher for Directus /items endpoints.
- * Uses limit+offset to avoid limit=-1 load spikes.
- */
+async function directusFetch<T>(
+    url: string,
+    errors: DirectusErrorItem[],
+    collection: string
+): Promise<T[]> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min
+
+    try {
+        const headers: Record<string, string> = { Accept: "application/json" };
+        if (DIRECTUS_TOKEN) headers.Authorization = `Bearer ${DIRECTUS_TOKEN}`;
+
+        const res = await fetch(url, {
+            cache: "no-store",
+            signal: controller.signal,
+            headers,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            errors.push({
+                collection,
+                status: res.status,
+                message: `Directus request failed. ${text}`,
+                url,
+            });
+            return [];
+        }
+
+        const json = await res.json();
+        return (json?.data as T[]) || [];
+    } catch (e: any) {
+        clearTimeout(timeoutId);
+        errors.push({
+            collection,
+            status: undefined,
+            message: e?.message || "Unknown fetch error",
+            url,
+        });
+        return [];
+    }
+}
+
 async function fetchAllPaged<T>(
-    basePath: string,
-    pageSize = 500,
-    hardOffsetLimit = 200_000
+    collection: string,
+    fields: string,
+    errors: DirectusErrorItem[],
+    pageSize = 500
 ): Promise<T[]> {
     const out: T[] = [];
     let offset = 0;
 
-    while (true) {
-        const joiner = basePath.includes("?") ? "&" : "?";
-        const pagePath = `${basePath}${joiner}limit=${pageSize}&offset=${offset}`;
+    // Safety cap to avoid infinite loops
+    const MAX_PAGES = 300;
 
-        const json = await directusFetch<DirectusListResponse<T>>(pagePath);
-        const batch = json.data ?? [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+        const url =
+            `${DIRECTUS_BASE}/items/${collection}` +
+            `?fields=${encodeURIComponent(fields)}` +
+            `&limit=${pageSize}&offset=${offset}`;
 
-        out.push(...batch);
+        const chunk = await directusFetch<T>(url, errors, collection);
+        out.push(...chunk);
 
-        if (batch.length < pageSize) break;
-
+        if (chunk.length < pageSize) break;
         offset += pageSize;
-        if (offset > hardOffsetLimit) break; // safety
     }
 
     return out;
 }
 
-/* -------------------------------------------------------------------------- */
-/* MAIN ROUTE                                                                 */
-/* -------------------------------------------------------------------------- */
-
 export async function GET(request: Request) {
+    const errors: DirectusErrorItem[] = [];
+
     try {
         const { searchParams } = new URL(request.url);
-
-        const fromDate = normalizeDate(searchParams.get("fromDate"));
-        const toDate = normalizeDate(searchParams.get("toDate"));
-
+        const rawFrom = searchParams.get("fromDate");
+        const rawTo = searchParams.get("toDate");
         const rawDiv = searchParams.get("division");
-        const divisionFilter = rawDiv === "all" || !rawDiv ? null : rawDiv;
 
-        const warnings: string[] = [];
+        const fromDate = normalizeDate(rawFrom);
+        const toDate = normalizeDate(rawTo);
+        const divisionFilter = rawDiv === "all" ? null : rawDiv;
 
-        /* ---------------------------------------------------------------------- */
-        /* LOAD DATA (reduce payload via fields=...)                              */
-        /* ---------------------------------------------------------------------- */
+        // --- FETCH DATA (Paged + Field-Limited) ---
+        const [
+            invoices,
+            details,
+            products,
+            pps,
+            suppliers,
+            salesmen,
+            divisions,
+            returns,
+            returnDetails,
+            collections,
+            brands,
+            sections,
+        ] = await Promise.all([
+            fetchAllPaged<any>(
+                "sales_invoice",
+                "invoice_id,invoice_date",
+                errors
+            ),
+            fetchAllPaged<any>(
+                "sales_invoice_details",
+                "invoice_no,product_id,quantity,total_amount,discount_amount",
+                errors
+            ),
+            fetchAllPaged<any>(
+                "products",
+                "product_id,product_name,product_brand,product_section,estimated_unit_cost,priceA,price_per_unit",
+                errors
+            ),
+            fetchAllPaged<any>(
+                "product_per_supplier",
+                "product_id,supplier_id",
+                errors
+            ),
+            fetchAllPaged<any>("suppliers", "id,supplier_name", errors),
+            fetchAllPaged<any>("salesman", "id,division_id", errors),
+            fetchAllPaged<any>("division", "division_id,division_name", errors),
+            fetchAllPaged<any>(
+                "sales_return",
+                "id,return_number,return_date",
+                errors
+            ),
+            fetchAllPaged<any>(
+                "sales_return_details",
+                "return_no,product_id,quantity,total_amount,unit_price",
+                errors
+            ),
+            fetchAllPaged<any>(
+                "collection",
+                "collection_date,isCancelled,totalAmount,salesman_id",
+                errors
+            ),
+            fetchAllPaged<any>("brand", "brand_id,brand_name", errors),
+            fetchAllPaged<any>("sections", "section_id,section_name", errors),
+        ]);
 
-        // Fetch sequentially (or in small groups) to reduce concurrent load.
-        const invoices = await fetchAllPaged<any>(
-            `/items/sales_invoice?fields=invoice_id,invoice_no,invoice_date,order_id,salesman_id`
-        );
-
-        const details = await fetchAllPaged<any>(
-            `/items/sales_invoice_details?fields=invoice_no,product_id,quantity,unit_price,total_amount,discount_amount`
-        );
-
-        const products = await fetchAllPaged<any>(
-            `/items/products?fields=product_id,parent_id,cost_per_unit,estimated_unit_cost`
-        );
-
-        const pps = await fetchAllPaged<any>(
-            `/items/product_per_supplier?fields=id,product_id,supplier_id`,
-            500
-        );
-
-        const suppliers = await fetchAllPaged<any>(
-            `/items/suppliers?fields=id,supplier_name`,
-            500
-        );
-
-        const salesmen = await fetchAllPaged<any>(
-            `/items/salesman?fields=id,division_id`,
-            500
-        );
-
-        const divisions = await fetchAllPaged<any>(
-            `/items/division?fields=division_id,division_name`,
-            500
-        );
-
-        const returns = await fetchAllPaged<any>(
-            `/items/sales_return?fields=return_number,order_id,invoice_no`,
-            500
-        );
-
-        const returnDetails = await fetchAllPaged<any>(
-            `/items/sales_return_details?fields=return_no,product_id,total_amount,discount_amount`,
-            500
-        );
-
-        // Collections: likely the largest + most prone to 503. Do not fail whole dashboard.
-        let collections: any[] = [];
-        try {
-            collections = await fetchAllPaged<any>(
-                `/items/collection?fields=collection_date,salesman_id,totalAmount,isCancelled`,
-                300
-            );
-        } catch (e) {
-            warnings.push(
-                "Collections data temporarily unavailable (Directus under pressure). KPI collection rate may be incomplete."
-            );
-            collections = [];
+        // If everything failed, return debug immediately
+        if (
+            invoices.length === 0 &&
+            details.length === 0 &&
+            products.length === 0 &&
+            returns.length === 0 &&
+            collections.length === 0
+        ) {
+            return NextResponse.json({
+                kpi: {
+                    totalNetSales: 0,
+                    totalReturns: 0,
+                    grossMargin: 0,
+                    collectionRate: 0,
+                },
+                kpiByDivision: {},
+                divisionSales: [],
+                salesTrend: [],
+                supplierSalesByDivision: {},
+                heatmapDataByDivision: {},
+                _debug: {
+                    directusUrl: DIRECTUS_BASE + "/",
+                    hasToken: Boolean(DIRECTUS_TOKEN),
+                    fromDate,
+                    toDate,
+                    division: divisionFilter || "all",
+                    counts: {
+                        invoices: invoices.length,
+                        details: details.length,
+                        products: products.length,
+                        pps: pps.length,
+                        suppliers: suppliers.length,
+                        returns: returns.length,
+                        returnDetails: returnDetails.length,
+                        collections: collections.length,
+                        brands: brands.length,
+                        sections: sections.length,
+                    },
+                    errors,
+                },
+            });
         }
 
-        /* ---------------------------------------------------------------------- */
-        /* BUILD MAPS                                                             */
-        /* ---------------------------------------------------------------------- */
-
-        const monthSet = new Set<string>();
-
-        // Robust invoice keying: invoice_id, invoice_no, and Directus id (if any)
-        const invoiceMap = new Map<string, any>();
-
-        invoices.forEach((i: any) => {
-            const invoiceDate = i.invoice_date?.substring?.(0, 10);
-            if (!invoiceDate) return;
-
-            // Strict date filtering
-            if (fromDate && invoiceDate < fromDate) return;
-            if (toDate && invoiceDate > toDate) return;
-
-            if (i.invoice_id != null) invoiceMap.set(String(i.invoice_id), i);
-            if (i.invoice_no != null) invoiceMap.set(String(i.invoice_no), i);
-            if (i.id != null) invoiceMap.set(String(i.id), i);
-
-            monthSet.add(i.invoice_date.substring(0, 7));
+        // --- 1. BUILD MAPS ---
+        const brandMap = new Map<number | string, string>();
+        brands.forEach((b: any) => {
+            if (b?.brand_id == null) return;
+            brandMap.set(b.brand_id, String(b.brand_name || "").toUpperCase());
         });
 
-        const sortedMonths = Array.from(monthSet).sort();
+        const sectionMap = new Map<number | string, string>();
+        sections.forEach((s: any) => {
+            if (s?.section_id == null) return;
+            sectionMap.set(s.section_id, String(s.section_name || "").toUpperCase());
+        });
 
-        const productParentMap = new Map<string | number, string | number>(
-            products.map((p: any) => {
-                const parentId =
-                    p.parent_id === 0 || p.parent_id === null
-                        ? p.product_id
-                        : p.parent_id;
-                return [p.product_id, parentId];
-            })
-        );
+        const productMap = new Map<string, any>();
+        const productPriceMap = new Map<string, number>();
 
-        const productCostMap = new Map<string | number, number>(
-            products.map((p: any) => [
-                p.product_id,
-                Number(p.cost_per_unit) || Number(p.estimated_unit_cost) || 0,
-            ])
-        );
-
-        const primarySupplierMap = new Map<string | number, string | number>();
-        pps
-            .slice()
-            .sort((a: any, b: any) => (a.id || 0) - (b.id || 0))
-            .forEach((r: any) => {
-                if (!primarySupplierMap.has(r.product_id)) {
-                    primarySupplierMap.set(r.product_id, r.supplier_id);
-                }
+        products.forEach((p: any) => {
+            const pid = String(p.product_id);
+            productMap.set(pid, {
+                ...p,
+                brand_name: brandMap.get(p.product_brand) || "",
+                section_name: sectionMap.get(p.product_section) || "",
             });
+
+            productPriceMap.set(
+                pid,
+                Number(p.priceA) || Number(p.price_per_unit) || 0
+            );
+        });
 
         const supplierNameMap = new Map<string, string>(
-            suppliers.map((s: any) => [String(s.id), String(s.supplier_name)])
+            suppliers.map((s: any) => [String(s.id), String(s.supplier_name || "")])
         );
 
-        const salesmanDivisionMap = new Map<string, string>(
-            salesmen.map((s: any) => [String(s.id), String(s.division_id)])
-        );
-
-        const divisionNameMap = new Map<string, string>(
-            divisions.map((d: any) => [
-                String(d.division_id),
-                String(d.division_name),
-            ])
-        );
-
-        // Returns lookup (avoid returns.find for each return detail)
-        const returnsByReturnNo = new Map<string, any>();
-        returns.forEach((r: any) => {
-            if (r.return_number != null)
-                returnsByReturnNo.set(String(r.return_number), r);
+        // Primary supplier map (first seen wins)
+        const primarySupplierMap = new Map<string, string>();
+        pps.forEach((r: any) => {
+            const pid = String(r.product_id);
+            if (!primarySupplierMap.has(pid)) {
+                primarySupplierMap.set(pid, String(r.supplier_id));
+            }
         });
 
-        const returnItemMap = new Map<string, { total: number; disc: number }>();
-        returnDetails.forEach((rd: any) => {
-            const parent = returnsByReturnNo.get(String(rd.return_no));
-            if (!parent) return;
-
-            const masterProduct =
-                productParentMap.get(rd.product_id) || rd.product_id;
-
-            const key = `${parent.order_id}_${parent.invoice_no}_${masterProduct}`;
-            const cur = returnItemMap.get(key) || { total: 0, disc: 0 };
-
-            returnItemMap.set(key, {
-                total: cur.total + (+rd.total_amount || 0),
-                disc: cur.disc + (+rd.discount_amount || 0),
-            });
+        // Salesman -> division_id
+        const salesmanDivisionMap = new Map<string, string>();
+        salesmen.forEach((s: any) => {
+            salesmanDivisionMap.set(String(s.id), String(s.division_id ?? ""));
         });
 
-        /* ---------------------------------------------------------------------- */
-        /* AGGREGATION CONTAINERS                                                 */
-        /* ---------------------------------------------------------------------- */
+        // division_id -> division_name
+        const divisionNameMap = new Map<string, string>();
+        divisions.forEach((d: any) => {
+            divisionNameMap.set(String(d.division_id), String(d.division_name || ""));
+        });
 
-        const heatmapMap = new Map<string, Map<string, any>>();
-        const supplierChartMap = new Map<string, Map<string, number>>();
+        // --- 2. DIVISION MATCHING LOGIC ---
+        const getDivisionForProduct = (pId: string) => {
+            const prod = productMap.get(String(pId));
+            if (!prod) return "Dry Goods";
+
+            const pBrand = String(prod.brand_name || "").toUpperCase();
+            const pSection = String(prod.section_name || "").toUpperCase();
+            const pName = String(prod.product_name || "").toUpperCase();
+
+            for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
+                if (
+                    rules.brands.some((b) => {
+                        const key = b.toUpperCase();
+                        return pBrand.includes(key) || pName.includes(key);
+                    })
+                ) {
+                    return divName;
+                }
+
+                if (rules.sections.some((s) => pSection.includes(s.toUpperCase()))) {
+                    return divName;
+                }
+            }
+
+            const suppId = primarySupplierMap.get(String(pId));
+            if (suppId) {
+                const suppName = (supplierNameMap.get(String(suppId)) || "").toUpperCase();
+                for (const [key, val] of Object.entries(SUPPLIER_TO_DIVISION)) {
+                    if (suppName.includes(key)) return val;
+                }
+            }
+
+            if (pSection.includes("FROZEN") || pName.includes("HOTDOG"))
+                return "Frozen Goods";
+
+            return "Dry Goods";
+        };
+
+        // --- 3. AGGREGATION SETUP ---
         const divisionTotals = new Map<string, number>();
-
-        const monthlyStats = new Map<
-            string,
-            { sales: number; returns: number; cogs: number; collections: number }
-        >();
-        sortedMonths.forEach((m) => {
-            monthlyStats.set(m, { sales: 0, returns: 0, cogs: 0, collections: 0 });
-        });
+        const trendMap = new Map<string, number>();
 
         const divisionStats = new Map<
             string,
             { sales: number; returns: number; cogs: number; collections: number }
         >();
 
-        divisions.forEach((d: any) => {
-            const name = String(d.division_name || d.division);
-            if (name) {
-                divisionTotals.set(name, 0);
-                divisionStats.set(name, {
-                    sales: 0,
-                    returns: 0,
-                    cogs: 0,
-                    collections: 0,
-                });
-            }
-        });
+        const heatmapMap = new Map<string, Map<string, any>>();
+        const supplierChartMap = new Map<string, Map<string, number>>();
 
-        ["Dry Goods", "Industrial", "Mama Pina's", "Frozen Goods", "Unassigned"].forEach(
-            (name) => {
-                if (!divisionStats.has(name)) {
-                    divisionStats.set(name, {
-                        sales: 0,
-                        returns: 0,
-                        cogs: 0,
-                        collections: 0,
-                    });
-                }
-            }
-        );
+        ALL_DIVISIONS.forEach((div) => {
+            divisionStats.set(div, { sales: 0, returns: 0, cogs: 0, collections: 0 });
+            divisionTotals.set(div, 0);
+        });
 
         let grandTotalSales = 0;
         let grandTotalReturns = 0;
         let grandTotalCOGS = 0;
-
-        /* ---------------------------------------------------------------------- */
-        /* PROCESS SALES DETAILS                                                  */
-        /* ---------------------------------------------------------------------- */
-
-        details.forEach((det: any) => {
-            // invoice_no can be:
-            // - invoice_no string
-            // - invoice_id number
-            // - object { id, invoice_id, invoice_no }
-            const invKey =
-                typeof det.invoice_no === "object"
-                    ? String(
-                        det.invoice_no?.invoice_id ??
-                        det.invoice_no?.invoice_no ??
-                        det.invoice_no?.id ??
-                        ""
-                    )
-                    : String(det.invoice_no ?? "");
-
-            const inv = invoiceMap.get(invKey);
-            if (!inv) return;
-
-            const masterProduct =
-                productParentMap.get(det.product_id) || det.product_id;
-
-            const supplierId = String(primarySupplierMap.get(masterProduct) ?? "");
-            const supplierRaw = supplierNameMap.get(supplierId);
-            const supplier = typeof supplierRaw === "string" ? supplierRaw : "No Supplier";
-
-            const divisionId = salesmanDivisionMap.get(String(inv.salesman_id));
-            let division = divisionId ? divisionNameMap.get(divisionId) : undefined;
-
-            // Fallback logic
-            if (!division || division === "Unassigned") {
-                if (supplier === "VOS" || supplier === "VOS BIA") division = "Dry Goods";
-                else if (supplier === "Mama Pina's") division = "Mama Pina's";
-                else if (
-                    supplier === "Industrial Corp" ||
-                    (supplier && supplier.includes("Industrial"))
-                )
-                    division = "Industrial";
-                else if (supplier && supplier !== "No Supplier") division = "Frozen Goods";
-                else division = "Unassigned";
-            }
-
-            if (divisionFilter && division !== divisionFilter) return;
-
-            const month = inv.invoice_date.substring(0, 7);
-
-            const retKey = `${inv.order_id}_${inv.invoice_no}_${masterProduct}`;
-            const ret = returnItemMap.get(retKey) || { total: 0, disc: 0 };
-            const returnAmount = ret.total - ret.disc;
-
-            const net =
-                (+det.total_amount || 0) - (+det.discount_amount || 0) - returnAmount;
-
-            const unitCost = Number(productCostMap.get(det.product_id) || 0);
-            const unitPrice = +det.unit_price || 0;
-            const returnedQtyApprox = unitPrice > 0 ? returnAmount / unitPrice : 0;
-            const netQty = (+det.quantity || 0) - returnedQtyApprox;
-            const cogs = unitCost * netQty;
-
-            grandTotalSales += net;
-            grandTotalReturns += returnAmount;
-            grandTotalCOGS += cogs;
-
-            if (!divisionStats.has(division)) {
-                divisionStats.set(division, {
-                    sales: 0,
-                    returns: 0,
-                    cogs: 0,
-                    collections: 0,
-                });
-            }
-
-            const dStat = divisionStats.get(division)!;
-            dStat.sales += net;
-            dStat.returns += returnAmount;
-            dStat.cogs += cogs;
-
-            divisionTotals.set(division, (divisionTotals.get(division) || 0) + net);
-
-            const mStat = monthlyStats.get(month);
-            if (mStat) {
-                mStat.sales += net;
-                mStat.returns += returnAmount;
-                mStat.cogs += cogs;
-            }
-
-            if (net === 0) return;
-
-            // Heatmap
-            if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
-            const divMap = heatmapMap.get(division)!;
-
-            if (!divMap.has(supplier)) {
-                const row: any = { supplier, total: 0 };
-                sortedMonths.forEach((m) => (row[m] = 0));
-                divMap.set(supplier, row);
-            }
-
-            const hRow = divMap.get(supplier)!;
-            if (hRow[month] !== undefined) hRow[month] += net;
-            hRow.total += net;
-
-            // Supplier chart
-            if (!supplierChartMap.has(division))
-                supplierChartMap.set(division, new Map());
-            const chartMap = supplierChartMap.get(division)!;
-            chartMap.set(supplier, (chartMap.get(supplier) || 0) + net);
-        });
-
-        /* ---------------------------------------------------------------------- */
-        /* PROCESS COLLECTIONS                                                    */
-        /* ---------------------------------------------------------------------- */
-
         let grandTotalCollected = 0;
 
-        collections.forEach((col: any) => {
-            if (!col.collection_date) return;
-            const d = col.collection_date.substring(0, 10);
+        const invoiceLookup = new Map<string, any>();
+        const filteredInvoiceIds = new Set<string>();
+        const sortedFilteredMonths = new Set<string>();
+
+        // --- 4. PROCESS INVOICES (Sales Header) ---
+        invoices.forEach((inv: any) => {
+            if (!inv?.invoice_date) return;
+            const d = String(inv.invoice_date).substring(0, 10);
 
             if (fromDate && d < fromDate) return;
             if (toDate && d > toDate) return;
-            if (isTruthy(col.isCancelled)) return;
 
-            const divId = salesmanDivisionMap.get(String(col.salesman_id));
-            const colDivision = divId
-                ? divisionNameMap.get(divId) || "Unassigned"
-                : "Unassigned";
+            const id = String(inv.invoice_id);
+            invoiceLookup.set(id, inv);
+            filteredInvoiceIds.add(id);
+        });
 
-            if (divisionFilter && colDivision !== divisionFilter) return;
+        // --- 5. PROCESS DETAILS (Division Logic) ---
+        details.forEach((det: any) => {
+            const invId =
+                typeof det.invoice_no === "object"
+                    ? String(det.invoice_no?.id ?? "")
+                    : String(det.invoice_no ?? "");
+
+            if (!invId || !filteredInvoiceIds.has(invId)) return;
+
+            const inv = invoiceLookup.get(invId);
+            if (!inv?.invoice_date) return;
+
+            const d = String(inv.invoice_date).substring(0, 10);
+            const month = String(inv.invoice_date).substring(0, 7);
+            sortedFilteredMonths.add(month);
+
+            const pId = String(det.product_id);
+            const division = getDivisionForProduct(pId);
+
+            if (divisionFilter && division !== divisionFilter) return;
+
+            // NET DETAIL = Total Amount - Discount Amount
+            const netDetail =
+                (Number(det.total_amount) || 0) - (Number(det.discount_amount) || 0);
+
+            const unitCost = Number(productMap.get(pId)?.estimated_unit_cost || 0);
+            const qty = Number(det.quantity) || 0;
+            const cogs = unitCost * qty;
+
+            grandTotalSales += netDetail;
+            grandTotalCOGS += cogs;
+
+            divisionTotals.set(division, (divisionTotals.get(division) || 0) + netDetail);
+            trendMap.set(d, (trendMap.get(d) || 0) + netDetail);
+
+            if (divisionStats.has(division)) {
+                const stats = divisionStats.get(division)!;
+                stats.sales += netDetail;
+                stats.cogs += cogs;
+            }
+
+            // Supplier charts / heatmap
+            const supplierId = String(primarySupplierMap.get(String(pId)) || "");
+            const supplier = supplierNameMap.get(supplierId) || "Internal / Others";
+
+            if (netDetail > 0) {
+                if (!heatmapMap.has(division)) heatmapMap.set(division, new Map());
+                const divMap = heatmapMap.get(division)!;
+
+                if (!divMap.has(supplier)) divMap.set(supplier, { supplier, total: 0 });
+                divMap.get(supplier)![month] = (divMap.get(supplier)![month] || 0) + netDetail;
+                divMap.get(supplier)!.total += netDetail;
+
+                if (!supplierChartMap.has(division)) supplierChartMap.set(division, new Map());
+                const chMap = supplierChartMap.get(division)!;
+                chMap.set(supplier, (chMap.get(supplier) || 0) + netDetail);
+            }
+        });
+
+        // --- 6. PROCESS RETURNS (Robust logic) ---
+        const validReturnIds = new Set<string>();
+
+        returns.forEach((ret: any) => {
+            if (!ret?.return_date) return;
+            const d = String(ret.return_date).substring(0, 10);
+
+            if (fromDate && d < fromDate) return;
+            if (toDate && d > toDate) return;
+
+            if (ret.id != null) validReturnIds.add(String(ret.id));
+            if (ret.return_number != null) validReturnIds.add(String(ret.return_number));
+        });
+
+        returnDetails.forEach((rd: any) => {
+            const returnRef =
+                typeof rd.return_no === "object"
+                    ? String(rd.return_no?.id ?? "")
+                    : String(rd.return_no ?? "");
+
+            if (!returnRef || !validReturnIds.has(returnRef)) return;
+
+            const pId = String(rd.product_id);
+            const qty = Number(rd.quantity) || 0;
+
+            // Value estimate: qty * product price (fallback to return detail if needed)
+            const fallbackPrice =
+                Number(rd.unit_price) ||
+                (() => {
+                    const total = Number(rd.total_amount) || 0;
+                    return qty > 0 ? total / qty : 0;
+                })();
+
+            const price = productPriceMap.get(pId) || fallbackPrice || 0;
+            const returnVal = qty * price;
+
+            const div = getDivisionForProduct(pId);
+            if (divisionFilter && div !== divisionFilter) return;
+
+            grandTotalReturns += returnVal;
+
+            if (divisionStats.has(div)) {
+                divisionStats.get(div)!.returns += returnVal;
+            }
+        });
+
+        // --- 7. PROCESS COLLECTIONS ---
+        collections.forEach((col: any) => {
+            if (isTrue(col.isCancelled)) return;
+            if (!col?.collection_date) return;
+
+            const d = String(col.collection_date).substring(0, 10);
+            if (fromDate && d < fromDate) return;
+            if (toDate && d > toDate) return;
 
             const amount = Number(col.totalAmount) || 0;
-            const month = col.collection_date.substring(0, 7);
+
+            const sId = String(col.salesman_id ?? "");
+            const divId = salesmanDivisionMap.get(sId) || "";
+            let colDiv = divId ? divisionNameMap.get(divId) || "Dry Goods" : "Dry Goods";
+
+            // Normalizations
+            if (colDiv === "Frozen") colDiv = "Frozen Goods";
+            if (colDiv === "Dry") colDiv = "Dry Goods";
+            if (colDiv === "Internal Goods") colDiv = "Internal";
+
+            if (!ALL_DIVISIONS.includes(colDiv as any)) colDiv = "Dry Goods";
+            if (divisionFilter && colDiv !== divisionFilter) return;
 
             grandTotalCollected += amount;
 
-            if (!divisionStats.has(colDivision)) {
-                divisionStats.set(colDivision, {
-                    sales: 0,
-                    returns: 0,
-                    cogs: 0,
-                    collections: 0,
-                });
+            if (divisionStats.has(colDiv)) {
+                divisionStats.get(colDiv)!.collections += amount;
             }
-
-            divisionStats.get(colDivision)!.collections += amount;
-
-            const mStat = monthlyStats.get(month);
-            if (mStat) mStat.collections += amount;
         });
 
-        /* ---------------------------------------------------------------------- */
-        /* KPI CALCULATIONS                                                       */
-        /* ---------------------------------------------------------------------- */
+        // --- 8. RESULTS ---
+        const netSales = grandTotalSales - grandTotalReturns;
 
         const grossMargin =
-            grandTotalSales > 0
-                ? ((grandTotalSales - grandTotalCOGS) / grandTotalSales) * 100
-                : 0;
+            netSales > 0 ? ((netSales - grandTotalCOGS) / netSales) * 100 : 0;
 
         const collectionRate =
-            grandTotalSales > 0 ? (grandTotalCollected / grandTotalSales) * 100 : 0;
+            netSales > 0 ? (grandTotalCollected / netSales) * 100 : 0;
 
-        const kpiByDivision: any = {};
+        // Division breakdown reflects net sales (minus returns)
+        const divisionSalesFormatted = Array.from(divisionTotals.entries())
+            .map(([division, grossSales]) => {
+                const divReturns = divisionStats.get(division)?.returns || 0;
+                return {
+                    division,
+                    netSales: toFixed(grossSales - divReturns),
+                };
+            })
+            .sort((a, b) => b.netSales - a.netSales);
+
+        let salesTrendFormatted: Array<{ date: string; netSales: number }> = [];
+
+        if (fromDate && toDate) {
+            salesTrendFormatted = getDatesInRange(fromDate, toDate).map((date) => ({
+                date: new Date(date).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                }),
+                netSales: toFixed(trendMap.get(date) || 0),
+            }));
+        } else {
+            salesTrendFormatted = Array.from(trendMap.entries())
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([d, val]) => ({
+                    date: new Date(d).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                    }),
+                    netSales: toFixed(val),
+                }));
+        }
+
+        const chartFinal: Record<string, Array<{ name: string; netSales: number }>> =
+            {};
+
+        for (const [divName, sMap] of supplierChartMap.entries()) {
+            chartFinal[divName] = Array.from(sMap.entries())
+                .map(([name, ns]) => ({ name, netSales: toFixed(ns) }))
+                .sort((a, b) => b.netSales - a.netSales)
+                .slice(0, 10);
+        }
+
+        const heatmapFinal: Record<string, any[]> = {};
+        const monthList = Array.from(sortedFilteredMonths).sort();
+
+        for (const [divName, sMap] of heatmapMap.entries()) {
+            heatmapFinal[divName] = Array.from(sMap.values())
+                .map((row) => {
+                    const newRow: any = {
+                        supplier: row.supplier,
+                        total: toFixed(row.total),
+                    };
+                    monthList.forEach((m) => (newRow[m] = toFixed(row[m] || 0)));
+                    return newRow;
+                })
+                .sort((a: any, b: any) => b.total - a.total);
+        }
+
+        const kpiByDivision: Record<string, any> = {};
         divisionStats.forEach((val, key) => {
-            const divGM = val.sales > 0 ? ((val.sales - val.cogs) / val.sales) * 100 : 0;
-            const divCR = val.sales > 0 ? (val.collections / val.sales) * 100 : 0;
+            const divNetSales = val.sales - val.returns;
+            const divGM =
+                divNetSales > 0 ? ((divNetSales - val.cogs) / divNetSales) * 100 : 0;
+            const divCR =
+                divNetSales > 0 ? (val.collections / divNetSales) * 100 : 0;
 
             kpiByDivision[key] = {
-                totalNetSales: toFixed(val.sales),
+                totalNetSales: toFixed(divNetSales),
                 totalReturns: toFixed(val.returns),
                 grossMargin: toFixed(divGM),
                 collectionRate: toFixed(divCR),
             };
         });
 
-        /* ---------------------------------------------------------------------- */
-        /* FORMAT RESPONSE                                                        */
-        /* ---------------------------------------------------------------------- */
-
-        const heatmapFinal: any = {};
-        for (const [divName, sMap] of heatmapMap.entries()) {
-            heatmapFinal[divName] = Array.from(sMap.values())
-                .map((row) => {
-                    row.total = toFixed(row.total);
-                    sortedMonths.forEach((m) => (row[m] = toFixed(row[m] || 0)));
-                    return row;
-                })
-                .sort((a, b) => b.total - a.total);
-        }
-
-        const chartFinal: any = {};
-        for (const [divName, sMap] of supplierChartMap.entries()) {
-            chartFinal[divName] = Array.from(sMap, ([name, netSales]) => ({
-                name,
-                netSales: toFixed(netSales),
-            })).sort((a, b) => b.netSales - a.netSales);
-        }
-
-        const divisionSalesFormatted = Array.from(divisionTotals, ([division, netSales]) => ({
-            division,
-            netSales: toFixed(netSales),
-        }))
-            .filter((d) => d.division !== "Unassigned" || d.netSales > 0)
-            .sort((a, b) => b.netSales - a.netSales);
-
-        const salesTrendFormatted = sortedMonths.map((month) => {
-            const s = monthlyStats.get(month) || { sales: 0 };
-            return {
-                date: month,
-                netSales: toFixed((s as any).sales ?? 0),
-            };
-        });
-
         return NextResponse.json({
-            warnings,
             kpi: {
-                totalNetSales: toFixed(grandTotalSales),
+                totalNetSales: toFixed(netSales),
                 totalReturns: toFixed(grandTotalReturns),
                 grossMargin: toFixed(grossMargin),
                 collectionRate: toFixed(collectionRate),
             },
             kpiByDivision,
             divisionSales: divisionSalesFormatted,
+            salesTrend: salesTrendFormatted,
             supplierSalesByDivision: chartFinal,
             heatmapDataByDivision: heatmapFinal,
-            salesTrend: salesTrendFormatted,
+
+            // Debug payload (remove later if you want)
+            _debug: {
+                directusUrl: DIRECTUS_BASE + "/",
+                hasToken: Boolean(DIRECTUS_TOKEN),
+                fromDate,
+                toDate,
+                division: divisionFilter || "all",
+                counts: {
+                    invoices: invoices.length,
+                    details: details.length,
+                    products: products.length,
+                    pps: pps.length,
+                    suppliers: suppliers.length,
+                    salesmen: salesmen.length,
+                    divisions: divisions.length,
+                    returns: returns.length,
+                    returnDetails: returnDetails.length,
+                    collections: collections.length,
+                    brands: brands.length,
+                    sections: sections.length,
+                },
+                errors,
+            },
         });
-    } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("Dashboard Error:", err);
-        return NextResponse.json({ error: msg }, { status: 500 });
+    } catch (err: any) {
+        console.error("API Error", err);
+        return NextResponse.json(
+            {
+                error: err?.message || "Unknown error",
+                _debug: {
+                    directusUrl: DIRECTUS_BASE + "/",
+                    hasToken: Boolean(DIRECTUS_TOKEN),
+                    errors,
+                },
+            },
+            { status: 500 }
+        );
     }
 }

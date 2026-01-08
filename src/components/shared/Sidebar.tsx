@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+    Activity,
+    Presentation,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -29,6 +31,12 @@ const navItems: NavItem[] = [
     icon: LayoutDashboard,
     role: ["executive"],
   },
+    {
+        title: "Executive Dashboard V2 (test)",
+        href: "/bi/executive-v2",
+        icon: Presentation,
+        role: ["executive"],
+    },
   {
     title: "Manager Dashboard",
     href: "/bi/manager",
