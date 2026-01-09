@@ -6,6 +6,8 @@ import { NextResponse } from "next/server";
  * - missing env causing undefined/items/...
  * - limit=-1 large payload instability (uses paging)
  * - adds _debug to quickly identify wrong collection names/permissions
+ * - FIX: return totals not matching due to return_no referencing id vs return_number
+ * - FIX: return totals incorrect/negative due to stored negative totals
  */
 
 const RAW_DIRECTUS_URL =
@@ -27,125 +29,123 @@ type DirectusErrorItem = {
 };
 
 // --- 1. DIVISION MAPPING RULES ---
-const DIVISION_RULES: Record<
-    string,
-    { brands: string[]; sections: string[] }
-> = {
-    "Dry Goods": {
-        brands: [
-            "Lucky Me",
-            "Nescafe",
-            "Kopiko",
-            "Bear Brand",
-            "Maggi",
-            "Surf",
-            "Downy",
-            "Richeese",
-            "Richoco",
-            "Keratin",
-            "KeratinPlus",
-            "Dove",
-            "Palmolive",
-            "Safeguard",
-            "Sunsilk",
-            "Cream Silk",
-            "Head & Shoulders",
-            "Colgate",
-            "Close Up",
-            "Bioderm",
-            "Casino",
-            "Efficascent",
-            "Great Taste",
-            "Presto",
-            "Tide",
-            "Ariel",
-            "Champion",
-            "Callee",
-            "Systemack",
-            "Wings",
-            "Pride",
-            "Smart",
-        ],
-        sections: [
-            "Grocery",
-            "Canned",
-            "Noodles",
-            "Beverages",
-            "Non-Food",
-            "Personal Care",
-            "Snacks",
-            "Biscuits",
-            "Candy",
-            "Coffee",
-            "Milk",
-            "Powder",
-        ],
-    },
-    "Frozen Goods": {
-        brands: [
-            "CDO",
-            "Tender Juicy",
-            "Mekeni",
-            "Virginia",
-            "Purefoods",
-            "Aviko",
-            "Swift",
-            "Argentina",
-            "Star",
-            "Holiday",
-            "Highland",
-            "Bibbo",
-            "Home Made",
-            "Young Pork",
-        ],
-        sections: [
-            "Frozen",
-            "Meat",
-            "Processed Meat",
-            "Cold Cuts",
-            "Ice Cream",
-            "Hotdog",
-            "Chicken",
-            "Pork",
-        ],
-    },
-    Industrial: {
-        brands: [
-            "Mama Sita",
-            "Datu Puti",
-            "Silver Swan",
-            "Golden Fiesta",
-            "LPG",
-            "Solane",
-            "Gasul",
-            "Fiesta",
-            "UFC",
-            "Super Q",
-            "Biguerlai",
-            "Equal",
-            "Jufran",
-        ],
-        sections: [
-            "Condiments",
-            "Oil",
-            "Sacks",
-            "Sugar",
-            "Flour",
-            "Industrial",
-            "Gas",
-            "Rice",
-            "Salt",
-        ],
-    },
-    "Mama Pina's": {
-        brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
-        sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
-    },
-    Internal: {
-        brands: ["Internal", "Office Supplies", "House Account", "VOS"],
-        sections: ["Internal", "Office", "Supplies", "Use"],
-    },
-};
+const DIVISION_RULES: Record<string, { brands: string[]; sections: string[] }> =
+    {
+        "Dry Goods": {
+            brands: [
+                "Lucky Me",
+                "Nescafe",
+                "Kopiko",
+                "Bear Brand",
+                "Maggi",
+                "Surf",
+                "Downy",
+                "Richeese",
+                "Richoco",
+                "Keratin",
+                "KeratinPlus",
+                "Dove",
+                "Palmolive",
+                "Safeguard",
+                "Sunsilk",
+                "Cream Silk",
+                "Head & Shoulders",
+                "Colgate",
+                "Close Up",
+                "Bioderm",
+                "Casino",
+                "Efficascent",
+                "Great Taste",
+                "Presto",
+                "Tide",
+                "Ariel",
+                "Champion",
+                "Callee",
+                "Systemack",
+                "Wings",
+                "Pride",
+                "Smart",
+            ],
+            sections: [
+                "Grocery",
+                "Canned",
+                "Noodles",
+                "Beverages",
+                "Non-Food",
+                "Personal Care",
+                "Snacks",
+                "Biscuits",
+                "Candy",
+                "Coffee",
+                "Milk",
+                "Powder",
+            ],
+        },
+        "Frozen Goods": {
+            brands: [
+                "CDO",
+                "Tender Juicy",
+                "Mekeni",
+                "Virginia",
+                "Purefoods",
+                "Aviko",
+                "Swift",
+                "Argentina",
+                "Star",
+                "Holiday",
+                "Highland",
+                "Bibbo",
+                "Home Made",
+                "Young Pork",
+            ],
+            sections: [
+                "Frozen",
+                "Meat",
+                "Processed Meat",
+                "Cold Cuts",
+                "Ice Cream",
+                "Hotdog",
+                "Chicken",
+                "Pork",
+            ],
+        },
+        Industrial: {
+            brands: [
+                "Mama Sita",
+                "Datu Puti",
+                "Silver Swan",
+                "Golden Fiesta",
+                "LPG",
+                "Solane",
+                "Gasul",
+                "Fiesta",
+                "UFC",
+                "Super Q",
+                "Biguerlai",
+                "Equal",
+                "Jufran",
+            ],
+            sections: [
+                "Condiments",
+                "Oil",
+                "Sacks",
+                "Sugar",
+                "Flour",
+                "Industrial",
+                "Gas",
+                "Rice",
+                "Salt",
+            ],
+        },
+        "Mama Pina's": {
+            brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
+            sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
+        },
+        Internal: {
+            brands: ["Internal", "Office Supplies", "House Account", "VOS"],
+            sections: ["Internal", "Office", "Supplies", "Use"],
+        },
+    };
 
 // DIRECT SUPPLIER MAPPING
 const SUPPLIER_TO_DIVISION: Record<string, string> = {
@@ -193,8 +193,7 @@ function isTrue(field: any) {
     if (field === "1") return true;
     if (typeof field === "object" && field !== null) {
         if (field.data && field.data[0] === 1) return true;
-        if (field.type === "Buffer" && field.data && field.data[0] === 1)
-            return true;
+        if (field.type === "Buffer" && field.data && field.data[0] === 1) return true;
     }
     return false;
 }
@@ -208,6 +207,37 @@ function getDatesInRange(startDate: string, endDate: string) {
         date.setDate(date.getDate() + 1);
     }
     return dates;
+}
+
+function toKey(v: any) {
+    return String(v ?? "").trim();
+}
+
+/**
+ * Return FK in Directus can be:
+ * - number/string
+ * - object (expanded) containing id and/or return_number
+ * We'll extract all plausible keys so linking never misses.
+ */
+function extractReturnKeys(returnNoField: any): string[] {
+    const keys: string[] = [];
+    if (returnNoField == null) return keys;
+
+    if (typeof returnNoField === "object") {
+        // common shapes: { id }, { id, return_number }, { data: ... } etc
+        if ("id" in returnNoField && returnNoField.id != null) keys.push(toKey(returnNoField.id));
+        if ("return_number" in returnNoField && returnNoField.return_number != null)
+            keys.push(toKey(returnNoField.return_number));
+        if ("returnNo" in returnNoField && (returnNoField as any).returnNo != null)
+            keys.push(toKey((returnNoField as any).returnNo));
+        if ("return_no" in returnNoField && (returnNoField as any).return_no != null)
+            keys.push(toKey((returnNoField as any).return_no));
+    } else {
+        keys.push(toKey(returnNoField));
+    }
+
+    // unique + non-empty
+    return Array.from(new Set(keys.filter(Boolean)));
 }
 
 async function directusFetch<T>(
@@ -311,11 +341,7 @@ export async function GET(request: Request) {
             brands,
             sections,
         ] = await Promise.all([
-            fetchAllPaged<any>(
-                "sales_invoice",
-                "invoice_id,invoice_date",
-                errors
-            ),
+            fetchAllPaged<any>("sales_invoice", "invoice_id,invoice_date", errors),
             fetchAllPaged<any>(
                 "sales_invoice_details",
                 "invoice_no,product_id,quantity,total_amount,discount_amount",
@@ -326,22 +352,18 @@ export async function GET(request: Request) {
                 "product_id,product_name,product_brand,product_section,estimated_unit_cost,priceA,price_per_unit",
                 errors
             ),
-            fetchAllPaged<any>(
-                "product_per_supplier",
-                "product_id,supplier_id",
-                errors
-            ),
+            fetchAllPaged<any>("product_per_supplier", "product_id,supplier_id", errors),
             fetchAllPaged<any>("suppliers", "id,supplier_name", errors),
             fetchAllPaged<any>("salesman", "id,division_id", errors),
             fetchAllPaged<any>("division", "division_id,division_name", errors),
             fetchAllPaged<any>(
                 "sales_return",
-                "id,return_number,return_date",
+                "return_id,return_number,return_date,received_at,created_at,updated_at,total_amount",
                 errors
             ),
             fetchAllPaged<any>(
                 "sales_return_details",
-                "return_no,product_id,quantity,total_amount,unit_price",
+                "return_no,product_id,quantity,total_amount,gross_amount,discount_amount,unit_price",
                 errors
             ),
             fetchAllPaged<any>(
@@ -420,10 +442,7 @@ export async function GET(request: Request) {
                 section_name: sectionMap.get(p.product_section) || "",
             });
 
-            productPriceMap.set(
-                pid,
-                Number(p.priceA) || Number(p.price_per_unit) || 0
-            );
+            productPriceMap.set(pid, Number(p.priceA) || Number(p.price_per_unit) || 0);
         });
 
         const supplierNameMap = new Map<string, string>(
@@ -483,10 +502,14 @@ export async function GET(request: Request) {
                 }
             }
 
-            if (pSection.includes("FROZEN") || pName.includes("HOTDOG"))
-                return "Frozen Goods";
+            if (pSection.includes("FROZEN") || pName.includes("HOTDOG")) return "Frozen Goods";
 
             return "Dry Goods";
+        };
+
+        const isInternalSupplierName = (name: string) => {
+            const s = (name || "").toUpperCase();
+            return s.includes("INTERNAL") || s.includes("CLE ACE") || s.includes("OTHERS") || s === "VOS";
         };
 
         // --- 3. AGGREGATION SETUP ---
@@ -587,42 +610,80 @@ export async function GET(request: Request) {
             }
         });
 
-        // --- 6. PROCESS RETURNS (Robust logic) ---
-        const validReturnIds = new Set<string>();
+        // --- 6. PROCESS RETURNS (FIXED: matching + value) ---
+        // Build a set of ALL valid keys for returns within date range
+        // --- 6. PROCESS RETURNS (MATCH BY return_number + correct fields) ---
+
+        function pickReturnDate(ret: any): string | null {
+            const raw =
+                ret?.return_date ??
+                ret?.received_at ??
+                ret?.created_at ??
+                ret?.updated_at ??
+                null;
+
+            if (!raw) return null;
+            return String(raw).substring(0, 10);
+        }
+
+// Map: return_number -> return_date (or fallback date)
+        const returnNoToDate = new Map<string, string>();
+        const validReturnNos = new Set<string>();
 
         returns.forEach((ret: any) => {
-            if (!ret?.return_date) return;
-            const d = String(ret.return_date).substring(0, 10);
+            const rn = String(ret?.return_number ?? "").trim();
+            if (!rn) return;
 
+            const d = pickReturnDate(ret);
+            if (!d) return; // if no date at all, skip filtering-based matching (rare)
+
+            // apply date filter at header level
             if (fromDate && d < fromDate) return;
             if (toDate && d > toDate) return;
 
-            if (ret.id != null) validReturnIds.add(String(ret.id));
-            if (ret.return_number != null) validReturnIds.add(String(ret.return_number));
+            validReturnNos.add(rn);
+            returnNoToDate.set(rn, d);
         });
 
+// Debug counters (optional but recommended)
+        let matchedReturnDetails = 0;
+        let unmatchedReturnDetails = 0;
+        const unmatchedSamples: string[] = [];
+
+// Sum returns from details
         returnDetails.forEach((rd: any) => {
-            const returnRef =
-                typeof rd.return_no === "object"
-                    ? String(rd.return_no?.id ?? "")
-                    : String(rd.return_no ?? "");
+            const rn = String(rd?.return_no ?? "").trim();
+            if (!rn) return;
 
-            if (!returnRef || !validReturnIds.has(returnRef)) return;
+            if (!validReturnNos.has(rn)) {
+                unmatchedReturnDetails += 1;
+                if (unmatchedSamples.length < 10) unmatchedSamples.push(rn);
+                return;
+            }
 
-            const pId = String(rd.product_id);
-            const qty = Number(rd.quantity) || 0;
+            matchedReturnDetails += 1;
 
-            // Value estimate: qty * product price (fallback to return detail if needed)
-            const fallbackPrice =
-                Number(rd.unit_price) ||
-                (() => {
-                    const total = Number(rd.total_amount) || 0;
-                    return qty > 0 ? total / qty : 0;
-                })();
+            const qty = Math.abs(Number(rd.quantity) || 0);
 
-            const price = productPriceMap.get(pId) || fallbackPrice || 0;
-            const returnVal = qty * price;
+            // Prefer total_amount from details (this is correct in your sample)
+            const totalAmt = Number(rd.total_amount);
+            const grossAmt = Number(rd.gross_amount);
+            const discAmt = Number(rd.discount_amount);
 
+            let returnVal = 0;
+
+            if (Number.isFinite(totalAmt) && totalAmt !== 0) {
+                returnVal = Math.abs(totalAmt);
+            } else if (Number.isFinite(grossAmt) && Number.isFinite(discAmt)) {
+                // fallback: gross - discount
+                returnVal = Math.abs((grossAmt || 0) - (discAmt || 0));
+            } else {
+                // last fallback: unit_price * qty
+                const unitPrice = Number(rd.unit_price) || 0;
+                returnVal = Math.abs(unitPrice * qty);
+            }
+
+            const pId = String(rd.product_id ?? "");
             const div = getDivisionForProduct(pId);
             if (divisionFilter && div !== divisionFilter) return;
 
@@ -632,6 +693,15 @@ export async function GET(request: Request) {
                 divisionStats.get(div)!.returns += returnVal;
             }
         });
+
+// OPTIONAL: include this in _debug so you can confirm matching immediately
+        const returnsDebug = {
+            headersInRange: validReturnNos.size,
+            matchedReturnDetails,
+            unmatchedReturnDetails,
+            unmatchedSamples,
+        };
+
 
         // --- 7. PROCESS COLLECTIONS ---
         collections.forEach((col: any) => {
@@ -760,13 +830,13 @@ export async function GET(request: Request) {
             supplierSalesByDivision: chartFinal,
             heatmapDataByDivision: heatmapFinal,
 
-            // Debug payload (remove later if you want)
             _debug: {
                 directusUrl: DIRECTUS_BASE + "/",
                 hasToken: Boolean(DIRECTUS_TOKEN),
                 fromDate,
                 toDate,
                 division: divisionFilter || "all",
+                returnsDebug,
                 counts: {
                     invoices: invoices.length,
                     details: details.length,
@@ -783,6 +853,7 @@ export async function GET(request: Request) {
                 },
                 errors,
             },
+
         });
     } catch (err: any) {
         console.error("API Error", err);
@@ -792,7 +863,6 @@ export async function GET(request: Request) {
                 _debug: {
                     directusUrl: DIRECTUS_BASE + "/",
                     hasToken: Boolean(DIRECTUS_TOKEN),
-                    errors,
                 },
             },
             { status: 500 }

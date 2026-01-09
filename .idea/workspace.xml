@@ -4,23 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="sales bia">
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/executive-v2/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/executive-v2/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/manager-v2/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/executive-v2/RealPivotAnalysis.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/modules/bi/TargetAchievementChart.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/components/ui/date-picker-with-range.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" afterDir="false" />
+    <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="update again">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/shared/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/shared/Sidebar.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/executive/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/executive/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/api/login/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/login/route.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/shared/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/shared/Sidebar.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -147,7 +134,7 @@
       <workItem from="1766365091341" duration="12838000" />
       <workItem from="1766766247922" duration="46673000" />
       <workItem from="1767576778992" duration="8784000" />
-      <workItem from="1767768648180" duration="13280000" />
+      <workItem from="1767768648180" duration="30203000" />
     </task>
     <task id="LOCAL-00001" summary="sales">
       <option name="closed" value="true" />
@@ -181,7 +168,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767411740512</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="update again">
+      <option name="closed" value="true" />
+      <created>1767851192995</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1767851192995</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -215,7 +210,9 @@
     <MESSAGE value="salesgit" />
     <MESSAGE value="Merge branch 'main' of https://github.com/Erwinrillorta0830/VOS-WEB-ERP&#10;&#10;# Conflicts:&#10;#&#9;package-lock.json&#10;#&#9;src/modules/fleet-management-module/components/logistics/PendingDeliveries.tsx" />
     <MESSAGE value="sales bia" />
-    <option name="LAST_COMMIT_MESSAGE" value="sales bia" />
+    <MESSAGE value="Merge pull request #13 from Erwinrillorta0830/elijah-branch&#10;&#10;Elijah branch" />
+    <MESSAGE value="update again" />
+    <option name="LAST_COMMIT_MESSAGE" value="update again" />
   </component>
   <component name="github-copilot-workspace">
     <instructionFileLocations>
