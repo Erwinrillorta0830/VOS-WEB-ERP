@@ -6,8 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="update again">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/shared/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/shared/Sidebar.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/globals.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/globals.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/manager/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/manager/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/components/shared/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/shared/Sidebar.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,29 +59,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
-    "js.debugger.nextJs.config.created.client": "true",
-    "js.debugger.nextJs.config.created.server": "true",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP/src/components/ui",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.keymap",
-    "to.speed.mode.migration.done": "true",
-    "ts.external.directory.path": "C:\\Users\\Admin\\Desktop\\VOS\\VOS-WEB-ERP\\node_modules\\typescript\\lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;js.debugger.nextJs.config.created.client&quot;: &quot;true&quot;,
+    &quot;js.debugger.nextJs.config.created.server&quot;: &quot;true&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP/src/components/ui&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.keymap&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;C:\\Users\\Admin\\Desktop\\VOS\\VOS-WEB-ERP\\node_modules\\typescript\\lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -134,7 +138,12 @@
       <workItem from="1766365091341" duration="12838000" />
       <workItem from="1766766247922" duration="46673000" />
       <workItem from="1767576778992" duration="8784000" />
-      <workItem from="1767768648180" duration="30203000" />
+      <workItem from="1767768648180" duration="31454000" />
+      <workItem from="1768184411974" duration="5182000" />
+      <workItem from="1768197160082" duration="1180000" />
+      <workItem from="1768200556889" duration="2611000" />
+      <workItem from="1768204221349" duration="292000" />
+      <workItem from="1768205570844" duration="4587000" />
     </task>
     <task id="LOCAL-00001" summary="sales">
       <option name="closed" value="true" />
@@ -176,7 +185,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767851192995</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="update again">
+      <option name="closed" value="true" />
+      <created>1767950370084</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1767950370085</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
