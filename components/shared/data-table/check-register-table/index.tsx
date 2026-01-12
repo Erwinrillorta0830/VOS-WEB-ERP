@@ -11,6 +11,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  RowSelectionState,
 } from "@tanstack/react-table";
 import { Input } from "@/components/ui/input";
 import {
@@ -35,18 +36,17 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { TablePagination } from "./table-pagination";
 import { createColumns } from "./column";
 import { Check } from "./types";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle2 } from "lucide-react";
 
 interface DataTableProps {
   data: Check[];
@@ -62,18 +62,16 @@ export function CheckRegisterDataTable({
     []
   );
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
+
   const [showConfirmDialog, setShowConfirmDialog] = React.useState(false);
   const [isClearing, setIsClearing] = React.useState(false);
-  const [selectedCheck, setSelectedCheck] = React.useState<Check | null>(null);
 
   // Filter data based on active tab
-  // src/components/check-register-data-table/index.tsx
-
   const filteredData = React.useMemo(() => {
     if (statusFilter === "all") return data;
 
     if (statusFilter === "Pending") {
-      // UPDATED: Now looks for both specific strings sent by the route
       return data.filter(
         (row) =>
           row.status === "Pending" ||
@@ -92,12 +90,6 @@ export function CheckRegisterDataTable({
 
     return data.filter((row) => row.status === statusFilter);
   }, [data, statusFilter]);
-
-  // Handle checkbox click - immediately show dialog
-  const handleCheckboxClick = React.useCallback((check: Check) => {
-    setSelectedCheck(check);
-    setShowConfirmDialog(true);
-  }, []);
 
   const handleUndoCheck = async (check: Check) => {
     if (!check.origin_type) {
@@ -123,59 +115,15 @@ export function CheckRegisterDataTable({
       toast.error(error.message);
     }
   };
-  const handleClearCheck = async () => {
-    if (!selectedCheck) return;
 
-    setIsClearing(true);
-
-    try {
-      const response = await fetch("/api/check-register", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "clear",
-          updates: [
-            {
-              id: selectedCheck.id,
-              previous_type: selectedCheck.payment_type,
-            },
-          ],
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Failed to clear check");
-      }
-
-      // Success
-      toast.success("Successfully cleared the check");
-
-      // Refresh data
-      if (onDataRefresh) {
-        onDataRefresh();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to clear check");
-    } finally {
-      setIsClearing(false);
-      setShowConfirmDialog(false);
-      setSelectedCheck(null);
-    }
-  };
-
-  // Create columns with current statusFilter context and checkbox handler
+  // Create columns
   const columns = React.useMemo(
     () =>
       createColumns({
         statusFilter,
-        onCheckboxClick: handleCheckboxClick,
         onUndoClick: handleUndoCheck,
       }),
-    [statusFilter, handleCheckboxClick, handleUndoCheck]
+    [statusFilter]
   );
 
   const table = useReactTable({
@@ -184,7 +132,10 @@ export function CheckRegisterDataTable({
     state: {
       sorting,
       columnFilters,
+      rowSelection,
     },
+    enableRowSelection: (row) => row.original.status !== "Cleared",
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
@@ -192,6 +143,46 @@ export function CheckRegisterDataTable({
     onColumnFiltersChange: setColumnFilters,
     getFilteredRowModel: getFilteredRowModel(),
   });
+
+  // Calculate info for the selected checks
+  const selectedRows = table.getSelectedRowModel().rows;
+  const selectedCount = selectedRows.length;
+  const selectedTotalAmount = selectedRows.reduce(
+    (sum, row) => sum + row.original.amount,
+    0
+  );
+
+  const handleBulkClear = async () => {
+    if (selectedCount === 0) return;
+    setIsClearing(true);
+
+    try {
+      const updates = selectedRows.map((row) => ({
+        id: row.original.id,
+        previous_type: row.original.payment_type,
+      }));
+
+      const response = await fetch("/api/check-register", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "clear",
+          updates: updates,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to clear selected checks");
+
+      toast.success(`Successfully cleared ${selectedCount} check(s)`);
+      setRowSelection({}); // Clear checkboxes
+      if (onDataRefresh) onDataRefresh();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to clear checks");
+    } finally {
+      setIsClearing(false);
+      setShowConfirmDialog(false);
+    }
+  };
 
   const totalAmount = filteredData.reduce((sum, row) => sum + row.amount, 0);
 
@@ -203,6 +194,7 @@ export function CheckRegisterDataTable({
         className="w-full"
       >
         <div className="text-lg font-semibold">Check Register Details</div>
+
         <div className="grid grid-cols-[auto_1fr] sm:grid-cols-[1fr_500px] items-start sm:items-center justify-between gap-2">
           <div className="w-30 sm:hidden">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -240,9 +232,48 @@ export function CheckRegisterDataTable({
                 .getColumn("customer_name")
                 ?.setFilterValue(event.target.value)
             }
-            className="max-w-full "
+            className="max-w-full"
           />
         </div>
+
+        {/* BULK ACTION TOOLBAR - SHADCN STYLE */}
+        {selectedCount > 0 && (
+          <div className="flex items-center justify-between px-4 py-2 border rounded-lg bg-muted/50 animate-in fade-in slide-in-from-bottom-1">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                  {selectedCount}
+                </span>
+                <span className="text-muted-foreground">Checks selected</span>
+              </div>
+              <div className="h-4 w-[1px] bg-border" /> {/* Separator */}
+              <div className="text-sm font-semibold">
+                Total:{" "}
+                {new Intl.NumberFormat("en-PH", {
+                  style: "currency",
+                  currency: "PHP",
+                }).format(selectedTotalAmount)}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRowSelection({})}
+                className="h-8 text-xs"
+              >
+                Clear Selection
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowConfirmDialog(true)}
+                className="h-8 text-xs bg-primary hover:bg-primary/90"
+              >
+                Clear Selected
+              </Button>
+            </div>
+          </div>
+        )}
 
         <TabsContent
           value={statusFilter}
@@ -266,10 +297,13 @@ export function CheckRegisterDataTable({
                   </TableRow>
                 ))}
               </TableHeader>
-              <TableBody className="**:data-[slot=table-cell]:first:w-8">
+              <TableBody>
                 {table.getRowModel().rows?.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                    >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id} className="py-4">
                           {flexRender(
@@ -293,8 +327,11 @@ export function CheckRegisterDataTable({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={7} className="font-semibold">
-                    Total
+                  <TableCell
+                    colSpan={columns.length - 4}
+                    className="font-semibold"
+                  >
+                    Total Amount
                   </TableCell>
                   <TableCell className="font-semibold text-right">
                     {new Intl.NumberFormat("en-PH", {
@@ -311,45 +348,70 @@ export function CheckRegisterDataTable({
         </TabsContent>
       </Tabs>
 
-      {/* Confirmation Dialog */}
+      {/* MULTI-CHECK CONFIRMATION DIALOG */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear This Check?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to mark this check as cleared?
-              <br />
-              <br />
-              <strong>Check Number:</strong> {selectedCheck?.check_number}
-              <br />
-              <strong>Customer:</strong> {selectedCheck?.customer_name}
-              <br />
-              <strong>Amount:</strong>{" "}
-              {selectedCheck &&
-                new Intl.NumberFormat("en-PH", {
-                  style: "currency",
-                  currency: "PHP",
-                }).format(selectedCheck.amount)}
-              <br />
-              <br />
-              This will change the status to "Cleared" and update the type to
-              Cash on Bank.
+            <AlertDialogTitle>
+              Clear {selectedCount} Selected Checks?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>You are about to move these checks to "Cleared" status.</p>
+
+              <div className="rounded-md border bg-muted/50 p-2 text-xs max-h-[150px] overflow-y-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b text-muted-foreground text-[10px] uppercase">
+                      <th className="text-left py-1">Check #</th>
+                      <th className="text-right py-1">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedRows.map((row) => (
+                      <tr
+                        key={row.original.id}
+                        className="border-b last:border-0"
+                      >
+                        <td className="py-1">{row.original.check_number}</td>
+                        <td className="text-right py-1 font-mono">
+                          {row.original.amount.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 font-semibold text-foreground">
+                <span>Total Clearing:</span>
+                <span className="text-blue-600">
+                  {new Intl.NumberFormat("en-PH", {
+                    style: "currency",
+                    currency: "PHP",
+                  }).format(selectedTotalAmount)}
+                </span>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isClearing}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleClearCheck}
+              onClick={(e) => {
+                e.preventDefault();
+                handleBulkClear();
+              }}
               disabled={isClearing}
               className="bg-blue-600 hover:bg-blue-700"
             >
               {isClearing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Clearing...
+                  Processing...
                 </>
               ) : (
-                "Confirm"
+                "Confirm Clearing"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

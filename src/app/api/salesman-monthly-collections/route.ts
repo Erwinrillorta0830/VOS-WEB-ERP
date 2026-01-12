@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const base = API_BASE.replace(/\/$/, "");
 
     const collectionsRes = await fetch(
-      `${base}/items/collection?limit=-1&filter[salesman_id][_eq]=${salesmanId}`,
+      `${base}/items/collection?limit=-1&filter[salesman_id][_eq]=${salesmanId}&fields=id,salesman_id,collection_date,total_amount`,
       {
         method: "GET",
         headers: { "Content-Type": "application/json" },
@@ -44,66 +44,29 @@ export async function GET(req: NextRequest) {
       console.error("Collections API error:", errorJson);
       return NextResponse.json(
         {
-          message: errorJson?.errors?.[0]?.message || errorJson?.message || "Failed to fetch collections.",
+          message:
+            errorJson?.errors?.[0]?.message ||
+            errorJson?.message ||
+            "Failed to fetch collections.",
         },
         { status: collectionsRes.status }
       );
     }
 
     const collectionsJson = await collectionsRes.json();
-    const collections = (collectionsJson?.data ?? []) as CollectionRow[];
 
-    // Group by month
-    const monthlyData = new Map
-        <string, { total_amount: number; collection_count: number }>();
+    const collections = (collectionsJson?.data ?? []).map((c: any) => ({
+      ...c,
+      // Ensure date exists for the frontend hook
+      date: c.collection_date,
+      // Ensure amount is a number for useMemo calculations
+      total_amount:
+        typeof c.total_amount === "string"
+          ? parseFloat(c.total_amount)
+          : c.total_amount ?? 0,
+    }));
 
-    for (const c of collections) {
-      const date = new Date(c.collection_date);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      
-      const totalAmountNum =
-        typeof c.totalAmount === "number"
-          ? c.totalAmount
-          : c.totalAmount
-          ? Number.parseFloat(c.totalAmount as string)
-          : 0;
-
-      const existing = monthlyData.get(monthKey);
-      if (existing) {
-        existing.total_amount += totalAmountNum;
-        existing.collection_count += 1;
-      } else {
-        monthlyData.set(monthKey, {
-          total_amount: totalAmountNum,
-          collection_count: 1,
-        });
-      }
-    }
-
-    // Convert to array and sort by month
-    const chartData = Array.from(monthlyData.entries())
-      .map(([monthKey, data]) => {
-        const [year, month] = monthKey.split("-");
-        const date = new Date(parseInt(year), parseInt(month) - 1);
-        const monthName = date.toLocaleString("en-US", { month: "long" });
-        
-        return {
-          month: monthName,
-          monthKey, // For sorting
-          total_amount: data.total_amount,
-          average_amount: data.collection_count > 0 
-            ? data.total_amount / data.collection_count 
-            : 0,
-          collection_count: data.collection_count,
-        };
-      })
-      .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
-      .map(({ monthKey, ...rest }) => rest); // Remove monthKey from final output
-
-    return NextResponse.json(
-      { chartData },
-      { status: 200 }
-    );
+    return NextResponse.json({ collections }, { status: 200 });
   } catch (err: any) {
     console.error("Salesman monthly collections route error:", err);
     return NextResponse.json(
