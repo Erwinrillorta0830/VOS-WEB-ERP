@@ -1,49 +1,50 @@
-import { useEffect, useState } from "react";
-import {
-  RegionalAnalysis,
-  RegionalAnalysisResponseSchema,
-} from "@/components/shared/data-table/regional-analysis-data-table/types";
+// src/app/hooks/use-regional-analysis-data.ts
+import { useEffect, useState, useCallback } from "react";
 
 interface UseRegionalAnalysisDataReturn {
-  data: RegionalAnalysis[];
+  data: any[]; // These are raw transaction rows for client-side aggregation
   loading: boolean;
   error: string | null;
+  refresh: () => Promise<void>;
 }
 
 export function useRegionalAnalysisData(): UseRegionalAnalysisDataReturn {
-  const [data, setData] = useState<RegionalAnalysis[]>([]);
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        setError(null);
 
-        const response = await fetch("/api/regional-analysis");
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch data: ${response.statusText}`);
-        }
+      const response = await fetch(`/api/regional-analysis?t=${Date.now()}`, {
+        cache: "no-store",
+      });
 
-        const json = await response.json();
-
-        const validated = RegionalAnalysisResponseSchema.parse(json);
-        setData(validated.data);
-      } catch (err) {
-        console.error("Error fetching regional analysis data:", err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : "An unexpected error occurred while fetching data"
-        );
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch data: ${response.statusText}`);
       }
-    }
 
-    fetchData();
+      const json = await response.json();
+
+      // We expect { rows: [...] } from our optimized API
+      setData(json.rows || []);
+    } catch (err) {
+      console.error("Error fetching regional analysis data:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred while fetching data"
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return { data, loading, error };
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refresh: fetchData };
 }

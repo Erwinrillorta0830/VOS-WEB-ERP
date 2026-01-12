@@ -28,10 +28,7 @@ export function usePaymentMethodData(): UsePaymentMethodDataReturn {
         }
 
         const json = await response.json();
-
-        const validatedData = PaymentMethodApiResponseSchema.parse(json);
-
-        setData(validatedData.rows);
+        setData(json.rows || []);
       } catch (err) {
         console.error("Error fetching check register data:", err);
         setError(
