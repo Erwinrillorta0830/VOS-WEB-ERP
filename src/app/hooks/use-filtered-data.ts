@@ -5,7 +5,6 @@ import { useFilters } from "../contexts/filter-context";
 
 interface FilterableData {
   collection_date?: string;
-  date?: string;
   salesman_id?: number;
   status?: string;
   isPosted?: { data: number[] };
@@ -18,22 +17,24 @@ export function useFilteredData<T extends FilterableData>(data: T[]): T[] {
     let filtered = [...data];
 
     // Filter by date range
-    if (filters.dateFrom || filters.dateTo) {
-      const fromDate = filters.dateFrom ? new Date(filters.dateFrom) : null;
-      const toDate = filters.dateTo ? new Date(filters.dateTo) : null;
-
-      if (fromDate) fromDate.setHours(0, 0, 0, 0);
-      if (toDate) toDate.setHours(23, 59, 59, 999);
-
+    if (filters.dateFrom) {
+      const fromDate = new Date(filters.dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
       filtered = filtered.filter((item) => {
-        const dateStr = item.date || item.collection_date;
-        if (!dateStr) return true;
+        if (!item.collection_date) return true;
+        const itemDate = new Date(item.collection_date);
+        itemDate.setHours(0, 0, 0, 0);
+        return itemDate >= fromDate;
+      });
+    }
 
-        const itemDate = new Date(dateStr);
-        const matchesFrom = fromDate ? itemDate >= fromDate : true;
-        const matchesTo = toDate ? itemDate <= toDate : true;
-
-        return matchesFrom && matchesTo;
+    if (filters.dateTo) {
+      const toDate = new Date(filters.dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((item) => {
+        if (!item.collection_date) return true;
+        const itemDate = new Date(item.collection_date);
+        return itemDate <= toDate;
       });
     }
 

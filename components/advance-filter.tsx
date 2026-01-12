@@ -29,21 +29,21 @@ interface Salesman {
   salesman_name: string;
 }
 
-interface AdvancedFilterProps<T> {
-  filteredData: T[];
+interface AdvancedFilterProps {
+  filteredData: CollectionDetail[];
   salesmen?: Salesman[];
   showDateFilter?: boolean;
   showSalesmanFilter?: boolean;
   showStatusFilter?: boolean;
 }
 
-export function AdvancedFilter<T>({
+export function AdvancedFilter({
   filteredData,
   salesmen = [],
   showDateFilter = true,
   showSalesmanFilter = true,
   showStatusFilter = true,
-}: AdvancedFilterProps<T>) {
+}: AdvancedFilterProps) {
   const {
     filters,
     setDateRange,
@@ -69,8 +69,7 @@ export function AdvancedFilter<T>({
         dateFrom ? format(dateFrom, "yyyy-MM-dd") : null,
         dateTo ? format(dateTo, "yyyy-MM-dd") : null
       );
-      setIsOpen(false);
-      // await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
     } finally {
       setIsApplying(false);
     }
