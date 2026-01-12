@@ -1,17 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+// src/app/api/check-register/route.ts
+
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const API_BASE = process.env.API_BASE || process.env.NEXT_PUBLIC_API_BASE || "";
 
-// --- 1. Interfaces ---
+// --- Interfaces ---
 interface CollectionRow {
   id: number;
   collection_date: string;
   salesman_id: number;
   isCancelled: { data: number[] };
 }
+
 interface CollectionDetailRow {
   id: number;
   collection_id: number;
@@ -24,76 +27,92 @@ interface CollectionDetailRow {
   origin_type?: number | null;
 }
 
-// --- 2. Pagination Bypass Helper ---
-async function fetchAll(url: string) {
-  let allItems: any[] = [];
-  const limit = 1000;
-  let offset = 0;
-  let hasMore = true;
-  while (hasMore) {
-    const separator = url.includes("?") ? "&" : "?";
-    const response = await fetch(
-      `${url}${separator}limit=${limit}&offset=${offset}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-        },
-        cache: "no-store",
-      }
-    );
-    if (!response.ok) break;
-    const result = await response.json();
-    const data = result.data || [];
-    allItems = [...allItems, ...data];
-    if (data.length < limit) hasMore = false;
-    else offset += limit;
-  }
-  return allItems;
+interface ChartOfAccountRow {
+  coa_id: number;
+  account_title: string;
 }
 
-// --- 3. GET Route ---
+interface BankRow {
+  id: number;
+  bank_name: string;
+}
+
+interface CustomerRow {
+  customer_code: string;
+  customer_name: string;
+}
+
+interface SalesmanRow {
+  id: number;
+  salesman_name: string;
+}
+
+// --- GET Route ---
 export async function GET() {
-  if (!API_BASE)
+  if (!API_BASE) {
     return NextResponse.json({ message: "API_BASE missing" }, { status: 500 });
+  }
 
   try {
     const base = API_BASE.replace(/\/$/, "");
+    const timestamp = Date.now();
 
-    const [
-      collectionsRaw,
-      detailsRaw,
-      coaRaw,
-      banksRaw,
-      customersRaw,
-      salesmenRaw,
-    ] = await Promise.all([
-      fetchAll(`${base}/items/collection`),
-      fetchAll(`${base}/items/collection_details`),
-      fetchAll(`${base}/items/chart_of_accounts`),
-      fetchAll(`${base}/items/bank_names`),
-      fetchAll(`${base}/items/customer`),
-      fetchAll(`${base}/items/salesman`),
-    ]);
+    const fetchOptions: RequestInit = {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      },
+      cache: "no-store",
+    };
 
-    const collectionsMap = new Map();
-    (collectionsRaw as CollectionRow[]).forEach((c) => {
-      // Only include non-cancelled collections
-      if (c.isCancelled?.data?.[0] === 0) collectionsMap.set(c.id, c);
-    });
+    // Fetch all data in parallel
+    const [resColl, resDet, resCoa, resBank, resCust, resSales] =
+      await Promise.all([
+        fetch(`${base}/items/collection?limit=-1&t=${timestamp}`, fetchOptions),
+        fetch(
+          `${base}/items/collection_details?limit=-1&t=${timestamp}`,
+          fetchOptions
+        ),
+        fetch(
+          `${base}/items/chart_of_accounts?limit=-1&t=${timestamp}`,
+          fetchOptions
+        ),
+        fetch(`${base}/items/bank_names?limit=-1&t=${timestamp}`, fetchOptions),
+        fetch(`${base}/items/customer?limit=-1&t=${timestamp}`, fetchOptions),
+        fetch(`${base}/items/salesman?limit=-1&t=${timestamp}`, fetchOptions),
+      ]);
 
-    const coaMap = new Map(coaRaw.map((coa: any) => [coa.coa_id, coa]));
-    const banksMap = new Map(banksRaw.map((b: any) => [b.id, b.bank_name]));
-    const customersMap = new Map(
-      customersRaw.map((c: any) => [c.customer_code, c])
+    const collectionsRaw = await resColl.json();
+    const detailsRaw = await resDet.json();
+    const coaRaw = await resCoa.json();
+    const banksRaw = await resBank.json();
+    const customersRaw = await resCust.json();
+    const salesmenRaw = await resSales.json();
+
+    // Create lookup maps
+    const collectionsMap = new Map(
+      (collectionsRaw.data as CollectionRow[])
+        .filter((c) => c.isCancelled?.data?.[0] === 0)
+        .map((c) => [c.id, c])
     );
-    const salesmenMap = new Map(salesmenRaw.map((s: any) => [s.id, s]));
+    const coaMap = new Map(
+      (coaRaw.data as ChartOfAccountRow[]).map((coa) => [coa.coa_id, coa])
+    );
+    const banksMap = new Map(
+      (banksRaw.data as BankRow[]).map((b) => [b.id, b.bank_name])
+    );
+    const customersMap = new Map(
+      (customersRaw.data as CustomerRow[]).map((c) => [c.customer_code, c])
+    );
+    const salesmenMap = new Map(
+      (salesmenRaw.data as SalesmanRow[]).map((s) => [s.id, s])
+    );
 
     const checkCOAIds = [2, 96, 98];
     const checksData: any[] = [];
 
-    // Summary Aggregators
+    // Summary counters
     let totals = {
       amt: 0,
       count: 0,
@@ -105,23 +124,24 @@ export async function GET() {
       dtCnt: 0,
     };
 
-    (detailsRaw as CollectionDetailRow[]).forEach((detail) => {
+    (detailsRaw.data as CollectionDetailRow[]).forEach((detail) => {
       const header = collectionsMap.get(detail.collection_id);
       if (!header || !checkCOAIds.includes(detail.type)) return;
 
       const amount = Number(detail.amount) || 0;
-      const customer = detail.customer_code
-        ? customersMap.get(detail.customer_code)
-        : null;
 
-      // Update specific totals for summary
+      // Determine logical status
+      let status: string;
       if (detail.type === 2) {
+        status = "Cleared";
         totals.clrAmt += amount;
         totals.clrCnt++;
       } else if (detail.type === 96) {
+        status = "Post Dated Check";
         totals.pdcAmt += amount;
         totals.pdcCnt++;
-      } else if (detail.type === 98) {
+      } else {
+        status = "Dated Check";
         totals.dtAmt += amount;
         totals.dtCnt++;
       }
@@ -129,8 +149,10 @@ export async function GET() {
       totals.amt += amount;
       totals.count++;
 
-      // Use a safe ID to prevent "received undefined" error
-      const s_id = header.salesman_id ?? 0;
+      // Define labels for Origin
+      let originLabel = "Original";
+      if (detail.origin_type === 96) originLabel = "PDC";
+      if (detail.origin_type === 98) originLabel = "Dated";
 
       checksData.push({
         id: detail.id,
@@ -138,26 +160,24 @@ export async function GET() {
         date_received: header.collection_date,
         check_number: detail.check_no || "N/A",
         bank_name: banksMap.get(detail.bank) || "Unknown",
-        customer_name: customer?.customer_name || "Unidentified Customer",
+        customer_name:
+          customersMap.get(detail.customer_code || "")?.customer_name ||
+          "Unknown",
         customer_code: detail.customer_code || "N/A",
-        salesman_name: salesmenMap.get(s_id)?.salesman_name || "Unknown",
-        salesman_id: s_id, // Fix for Zod/frontend validation
+        salesman_name:
+          salesmenMap.get(header.salesman_id)?.salesman_name || "Unknown",
+        salesman_id: header.salesman_id,
         amount: amount,
         check_date: detail.chequeDate,
-        status:
-          detail.type === 2
-            ? "Cleared"
-            : detail.type === 96
-            ? "Post Dated Check"
-            : "Dated Check",
+        status: status,
         coa_title: coaMap.get(detail.type)?.account_title || "Unknown",
         is_cleared: detail.type === 2 ? 1 : 0,
-        origin_type_label:
-          detail.origin_type === 96
-            ? "PDC"
-            : detail.origin_type === 98
-            ? "Dated"
-            : "Original",
+
+        // CRITICAL: Logic for UI Undo button visibility and PATCH functionality
+        origin_type: detail.origin_type, // Used by frontend for 'hasOrigin' check
+        previous_type: detail.type === 2 ? detail.origin_type : detail.type, // Sent back in PATCH
+
+        origin_type_label: originLabel,
         payment_type: detail.type,
       });
     });
@@ -168,20 +188,19 @@ export async function GET() {
         new Date(a.date_received).getTime()
     );
 
-    // Response object matches frontend validation schema
     return NextResponse.json({
       checks: checksData,
       summary: {
         total_checks: totals.count,
-        total_amount: Number(totals.amt.toFixed(2)),
+        total_amount: totals.amt,
         cleared_count: totals.clrCnt,
-        cleared_amount: Number(totals.clrAmt.toFixed(2)),
+        cleared_amount: totals.clrAmt,
         pending_count: totals.pdcCnt + totals.dtCnt,
-        pending_amount: Number((totals.pdcAmt + totals.dtAmt).toFixed(2)),
+        pending_amount: totals.pdcAmt + totals.dtAmt,
         post_dated_count: totals.pdcCnt,
-        post_dated_amount: Number(totals.pdcAmt.toFixed(2)),
+        post_dated_amount: totals.pdcAmt,
         dated_check_count: totals.dtCnt,
-        dated_check_amount: Number(totals.dtAmt.toFixed(2)),
+        dated_check_amount: totals.dtAmt,
       },
       status_distribution: [
         {
@@ -215,22 +234,44 @@ export async function GET() {
   }
 }
 
-// --- 4. PATCH Route ---
+// --- PATCH Route ---
 export async function PATCH(request: Request) {
+  if (!API_BASE)
+    return NextResponse.json({ message: "API_BASE missing" }, { status: 500 });
+
   try {
     const { action, updates } = await request.json();
     const base = API_BASE.replace(/\/$/, "");
-    const promises = updates.map(async (item: any) => {
-      const payload =
-        action === "undo"
-          ? { is_cleared: 0, type: item.previous_type, origin_type: null }
-          : { is_cleared: 1, type: 2, origin_type: item.previous_type };
-      return fetch(`${base}/items/collection_details/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    });
+
+    const promises = updates.map(
+      async (item: { id: number; previous_type: number }) => {
+        let payload = {};
+
+        if (action === "undo") {
+          // Move origin_type back to main type, set is_cleared to 0
+          payload = {
+            is_cleared: 0,
+            type: item.previous_type,
+            origin_type: null,
+          };
+        } else {
+          // Clear: Move current type to origin_type, set main type to 2 (Cleared)
+          payload = {
+            is_cleared: 1,
+            type: 2,
+            origin_type: item.previous_type,
+          };
+        }
+
+        return fetch(`${base}/items/collection_details/${item.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          cache: "no-store",
+        });
+      }
+    );
+
     await Promise.all(promises);
     return NextResponse.json({ message: "Success" });
   } catch (err: any) {
