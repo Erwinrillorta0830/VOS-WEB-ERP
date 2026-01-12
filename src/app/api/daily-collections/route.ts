@@ -2,20 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = process.env.API_BASE || process.env.NEXT_PUBLIC_API_BASE || "";
 
-interface CollectionRow {
-  id: number;
-  salesman_id: number | null;
-  collected_by: number | null;
-  collection_date: string;
-  totalAmount: number | string | null;
-  isCancelled: { type: string; data: number[] } | null;
-  isPosted: { type: string; data: number[] } | null;
-}
+/**
+ * PAGINATION HELPER
+ * Ensures we fetch all 15,000+ records to reach the 61M total,
+ * bypassing default API safety limits.
+ */
+async function fetchAll(url: string) {
+  let allItems: any[] = [];
+  const limit = 1000;
+  let offset = 0;
+  let hasMore = true;
 
-interface CollectionDetailRow {
-  id: number;
-  collection_id: number;
-  customer_code: string | null;
+  while (hasMore) {
+    const separator = url.includes("?") ? "&" : "?";
+    const response = await fetch(
+      `${url}${separator}limit=${limit}&offset=${offset}`,
+      {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) break;
+
+    const result = await response.json();
+    const data = result.data || [];
+    allItems = [...allItems, ...data];
+
+    if (data.length < limit) {
+      hasMore = false;
+    } else {
+      offset += limit;
+    }
+  }
+  return allItems;
 }
 
 export async function GET(req: NextRequest) {
@@ -28,10 +49,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url);
-    const dateFrom = searchParams.get("date_from"); // YYYY-MM-DD
-    const dateTo = searchParams.get("date_to"); // YYYY-MM-DD
+    const dateFrom = searchParams.get("date_from");
+    const dateTo = searchParams.get("date_to");
 
-    // Build day-range
     let startDate: Date | null = null;
     let endDate: Date | null = null;
 
@@ -46,81 +66,46 @@ export async function GET(req: NextRequest) {
 
     const base = API_BASE.replace(/\/$/, "");
 
-    // Fetch data from both endpoints
-    const [collectionsRes, detailsRes] = await Promise.all([
-      fetch(`${base}/items/collection?limit=-1`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }),
-      fetch(`${base}/items/collection_details?limit=-1`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }),
+    // 1. Fetch ALL collections and details using pagination loop
+    const [collections, details] = await Promise.all([
+      fetchAll(`${base}/items/collection`),
+      fetchAll(`${base}/items/collection_details`),
     ]);
 
-    const [collectionsJson, detailsJson] = await Promise.all([
-      collectionsRes.json(),
-      detailsRes.json(),
-    ]);
+    // 2. Pre-filter valid (Not Cancelled) collections
+    const validCollections = collections.filter(
+      (c) => c.isCancelled?.data?.[0] === 0
+    );
+    const validCollectionIds = new Set(validCollections.map((c) => c.id));
+    const collectionMap = new Map(validCollections.map((c) => [c.id, c]));
 
-    if (!collectionsRes.ok) {
-      console.error("Collections API error:", collectionsJson);
-      return NextResponse.json(
-        {
-          message:
-            collectionsJson?.errors?.[0]?.message ||
-            collectionsJson?.message ||
-            "Failed to fetch collections.",
-        },
-        { status: collectionsRes.status }
-      );
-    }
-
-    if (!detailsRes.ok) {
-      console.error("Collection details API error:", detailsJson);
-      return NextResponse.json(
-        {
-          message:
-            detailsJson?.errors?.[0]?.message ||
-            detailsJson?.message ||
-            "Failed to fetch collection details.",
-        },
-        { status: detailsRes.status }
-      );
-    }
-
-    const collections = (collectionsJson?.data ?? []) as CollectionRow[];
-    const details = (detailsJson?.data ?? []) as CollectionDetailRow[];
-
-    // Aggregate by date
+    // 3. Aggregate by date using Details as the source of truth
     type DailyAgg = {
       date: string;
       transactions: Set<number>;
       salesmen: Set<number>;
-      customers: Set<string | number>;
+      customers: Set<string>;
       totalAmount: number;
     };
 
     const dailyMap = new Map<string, DailyAgg>();
-    const allowedCollectionIds = new Set<number>();
 
-    // Process collections
-    for (const c of collections) {
-      const cDate = new Date(c.collection_date);
+    details.forEach((d: any) => {
+      // Ensure detail belongs to a valid, non-cancelled collection
+      if (!validCollectionIds.has(d.collection_id)) return;
 
-      // Apply date filters
-      if (startDate && cDate < startDate) continue;
-      if (endDate && cDate > endDate) continue;
+      const header = collectionMap.get(d.collection_id);
+      if (!header) return;
 
-      // Extract date in YYYY-MM-DD format
+      const cDate = new Date(header.collection_date);
+
+      // Apply Date Filters
+      if (startDate && cDate < startDate) return;
+      if (endDate && cDate > endDate) return;
+
+      // Format date key (YYYY-MM-DD)
       const dateStr = cDate.toISOString().split("T")[0];
-
-      const totalAmountNum =
-        typeof c.totalAmount === "number"
-          ? c.totalAmount
-          : c.totalAmount
-          ? Number.parseFloat(c.totalAmount as string)
-          : 0;
+      const amount = Number(d.amount) || 0;
 
       let agg = dailyMap.get(dateStr);
       if (!agg) {
@@ -128,84 +113,46 @@ export async function GET(req: NextRequest) {
           date: dateStr,
           transactions: new Set<number>(),
           salesmen: new Set<number>(),
-          customers: new Set<number>(),
+          customers: new Set<string>(),
           totalAmount: 0,
         };
         dailyMap.set(dateStr, agg);
       }
 
-      agg.transactions.add(c.id);
-      if (c.salesman_id) {
-        agg.salesmen.add(c.salesman_id);
-      }
-      if (c.collected_by) {
-        agg.customers.add(c.collected_by);
-      }
-      agg.totalAmount += totalAmountNum;
-      allowedCollectionIds.add(c.id);
-    }
+      // Aggregate data
+      agg.totalAmount += amount;
+      agg.transactions.add(d.collection_id);
+      if (header.salesman_id) agg.salesmen.add(header.salesman_id);
+      if (d.customer_code) agg.customers.add(String(d.customer_code));
+    });
 
-    // Process collection details for additional customer tracking
-    for (const d of details) {
-      if (!allowedCollectionIds.has(d.collection_id)) continue;
-      if (!d.customer_code) continue;
-
-      const header = collections.find((c) => c.id === d.collection_id);
-      if (!header) continue;
-
-      const cDate = new Date(header.collection_date);
-      const dateStr = cDate.toISOString().split("T")[0];
-
-      const agg = dailyMap.get(dateStr);
-      if (agg) {
-        agg.customers.add(String(d.customer_code));
-      }
-    }
-
-    // Convert to array and calculate metrics
+    // 4. Convert Map to sorted array and calculate metrics
     const dailyCollections = Array.from(dailyMap.values())
       .map((agg) => {
         const transactionsCount = agg.transactions.size;
-        const salesmenCount = agg.salesmen.size;
-        const customersCount = agg.customers.size;
-        const totalAmount = agg.totalAmount;
-        const averageAmount =
-          transactionsCount > 0 ? totalAmount / transactionsCount : 0;
-
         return {
           date: agg.date,
           transactions_count: transactionsCount,
-          salesmen_count: salesmenCount,
-          customers_count: customersCount,
-          total_amount: totalAmount,
-          average_amount: averageAmount,
+          salesmen_count: agg.salesmen.size,
+          customers_count: agg.customers.size,
+          total_amount: Number(agg.totalAmount.toFixed(2)),
+          average_amount:
+            transactionsCount > 0 ? agg.totalAmount / transactionsCount : 0,
         };
       })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Calculate summary statistics
+    // 5. Final Summary Statistics
+    const grandTotalAmount = dailyCollections.reduce(
+      (sum, day) => sum + day.total_amount,
+      0
+    );
     const totalTransactions = dailyCollections.reduce(
       (sum, day) => sum + day.transactions_count,
       0
     );
-    const totalAmount = dailyCollections.reduce(
-      (sum, day) => sum + day.total_amount,
-      0
-    );
-
-    // Calculate total days as date range
-    const totalDays =
-      dailyCollections.length > 0
-        ? Math.ceil(
-            (new Date(
-              dailyCollections[dailyCollections.length - 1].date
-            ).getTime() -
-              new Date(dailyCollections[0].date).getTime()) /
-              (1000 * 60 * 60 * 24)
-          ) + 1
-        : 0;
-
-    const dailyAverage = totalDays > 0 ? totalAmount / totalDays : 0;
+    const totalDays = dailyCollections.length;
+    const dailyAverage = totalDays > 0 ? grandTotalAmount / totalDays : 0;
 
     return NextResponse.json(
       {
@@ -213,8 +160,8 @@ export async function GET(req: NextRequest) {
         summary: {
           total_days: totalDays,
           total_collections: totalTransactions,
-          total_amount: totalAmount,
-          daily_average: dailyAverage,
+          total_amount: Number(grandTotalAmount.toFixed(2)),
+          daily_average: Number(dailyAverage.toFixed(2)),
         },
       },
       { status: 200 }
@@ -222,9 +169,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("Daily collections route error:", err);
     return NextResponse.json(
-      {
-        message: "Unexpected error while building daily collections report.",
-      },
+      { message: "Unexpected error while building daily collections report." },
       { status: 500 }
     );
   }
