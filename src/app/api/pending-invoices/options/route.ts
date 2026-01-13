@@ -1,53 +1,34 @@
+// src/app/api/pending-invoices/options/route.ts
 import { NextResponse } from "next/server";
+import { directusGet, type DirectusListResponse } from "../_directus";
 
-type AnyRecord = Record<string, any>;
-
-const RAW_DIRECTUS_URL = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.DIRECTUS_URL || "";
-const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, "");
-
-async function fetchAllItems(collection: string): Promise<AnyRecord[]> {
-  const pageSize = 2000;
-  let page = 1;
-  const out: AnyRecord[] = [];
-
-  while (true) {
-    const url = `${DIRECTUS_BASE}/items/${collection}?limit=${pageSize}&page=${page}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return out;
-    const json = await res.json();
-    const rows: AnyRecord[] = json?.data || [];
-    out.push(...rows);
-    if (rows.length < pageSize) break;
-    page += 1;
-    if (page > 50) break;
-  }
-  return out;
-}
+type SalesmanRow = { id: number; salesman_name?: string | null };
+type CustomerRow = { customer_code: string; customer_name?: string | null };
 
 export async function GET() {
-  try {
-    if (!DIRECTUS_BASE) {
-      return NextResponse.json({ error: "Missing NEXT_PUBLIC_API_BASE_URL / DIRECTUS_URL" }, { status: 500 });
-    }
+  // Keep options small and fast; extend as needed.
+  const [salesmenRes, customersRes] = await Promise.all([
+    directusGet<DirectusListResponse<SalesmanRow>>("/salesman", {
+      fields: "id,salesman_name",
+      sort: "salesman_name",
+      limit: "-1",
+    }),
+    directusGet<DirectusListResponse<CustomerRow>>("/customer", {
+      fields: "customer_code,customer_name",
+      sort: "customer_name",
+      limit: "-1",
+    }),
+  ]);
 
-    const [salesmen, customers] = await Promise.all([
-      fetchAllItems("salesman"),
-      fetchAllItems("customer"),
-    ]);
-
-    const cleanSalesmen = (salesmen || [])
-      .map((s) => ({ id: Number(s.id), salesman_name: String(s.salesman_name ?? "").trim() }))
-      .filter((s) => s.id && s.salesman_name)
-      .sort((a, b) => a.salesman_name.localeCompare(b.salesman_name));
-
-    const cleanCustomers = (customers || [])
-      .map((c) => ({ customer_code: String(c.customer_code ?? "").trim(), customer_name: String(c.customer_name ?? "").trim() }))
-      .filter((c) => c.customer_code && c.customer_name)
-      .sort((a, b) => a.customer_name.localeCompare(b.customer_name));
-
-    return NextResponse.json({ salesmen: cleanSalesmen, customers: cleanCustomers });
-  } catch (e: any) {
-    console.error("pending-invoices options error", e);
-    return NextResponse.json({ error: e?.message || "Internal Server Error" }, { status: 500 });
-  }
+  return NextResponse.json({
+    salesmen: (salesmenRes.data ?? []).map((s) => ({
+      id: s.id,
+      label: `${s.id} - ${s.salesman_name ?? ""}`.trim(),
+    })),
+    customers: (customersRes.data ?? []).map((c) => ({
+      code: c.customer_code,
+      label: `${c.customer_name ?? c.customer_code}`.trim(),
+    })),
+    statuses: ["All", "Unlinked", "For Dispatch", "Inbound", "Cleared"],
+  });
 }

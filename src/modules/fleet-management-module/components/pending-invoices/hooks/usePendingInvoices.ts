@@ -1,55 +1,48 @@
-import { useEffect, useMemo, useState } from "react";
-import type { PendingInvoicesApiResponse } from "../types";
+// modules/fleet-management-module/components/pending-invoices/hooks/usePendingInvoices.ts
+"use client";
 
-export type PendingInvoiceFilters = {
-  search: string;
-  status: "all" | "Unlinked" | "For Dispatch" | "Inbound" | "Cleared";
-  salesmanId: string; // "all" or numeric string
-  customerCode: string; // "all" or code
-  dateFrom: string; // "" or YYYY-MM-DD
-  dateTo: string;   // "" or YYYY-MM-DD
-};
+import * as React from "react";
+import type { FiltersState, PendingInvoiceListResponse } from "../types";
 
-export function usePendingInvoices(page: number, limit: number, filters: PendingInvoiceFilters) {
-  const [data, setData] = useState<PendingInvoicesApiResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function qs(filters: FiltersState) {
+  const p = new URLSearchParams();
+  p.set("q", filters.q || "");
+  p.set("status", filters.status);
+  p.set("salesmanId", filters.salesmanId);
+  p.set("customerCode", filters.customerCode);
+  if (filters.dateFrom) p.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) p.set("dateTo", filters.dateTo);
+  p.set("page", String(filters.page));
+  p.set("pageSize", String(filters.pageSize));
+  return p.toString();
+}
 
-  const qs = useMemo(() => {
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(limit),
-      search: filters.search ?? "",
-      status: filters.status ?? "all",
-      salesmanId: filters.salesmanId ?? "all",
-      customerCode: filters.customerCode ?? "all",
-      dateFrom: filters.dateFrom ?? "",
-      dateTo: filters.dateTo ?? "",
-      _t: String(Date.now()),
-    });
-    return params.toString();
-  }, [page, limit, filters.search, filters.status, filters.salesmanId, filters.customerCode, filters.dateFrom, filters.dateTo]);
+export function usePendingInvoices(filters: FiltersState) {
+  const [data, setData] = React.useState<PendingInvoiceListResponse | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
-    const run = async () => {
-      setLoading(true);
-      setError(null);
+  React.useEffect(() => {
+    let mounted = true;
+
+    (async () => {
       try {
-        const res = await fetch(`/api/pending-invoices?${qs}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`Request failed: ${res.status} ${res.statusText}`);
-        const json = (await res.json()) as PendingInvoicesApiResponse;
-        setData(json);
-      } catch (e) {
-        console.error("pending-invoices:fetch failed", e);
-        setError(e instanceof Error ? e.message : "Unknown error");
+        setLoading(true);
+        const res = await fetch(`/api/pending-invoices?${qs(filters)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to load pending invoices");
+        const json = (await res.json()) as PendingInvoiceListResponse;
+        if (mounted) setData(json);
+      } catch (e: any) {
+        if (mounted) setError(e?.message ?? "Failed to load pending invoices");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
-    };
+    })();
 
-    const t = setTimeout(run, 250);
-    return () => clearTimeout(t);
-  }, [qs]);
+    return () => {
+      mounted = false;
+    };
+  }, [filters.q, filters.status, filters.salesmanId, filters.customerCode, filters.dateFrom, filters.dateTo, filters.page, filters.pageSize]);
 
   return { data, loading, error };
 }
