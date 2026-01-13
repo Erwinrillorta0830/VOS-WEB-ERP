@@ -73,6 +73,7 @@ export function Layout({ currentPage, onNavigate, children }: LayoutProps) {
                 { id: "statistics-dashboard" as PageType, label: "Delivery Statistics", icon: BarChart3 },
                 { id: "logistics-summary" as PageType, label: "Logistics Summary", icon: FileText },
                 { id: "pending-deliveries" as PageType, label: "Pending Deliveries", icon: PackageCheck },
+                { id: "pending-invoices" as PageType, label: "Pending Invoices", icon: FileText },
             ],
         },
         // {
