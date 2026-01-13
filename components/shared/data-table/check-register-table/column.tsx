@@ -33,6 +33,35 @@ export const createColumns = ({
 
   return [
     {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+          className="mx-2"
+        />
+      ),
+      cell: ({ row }) => {
+        if (row.original.status === "Cleared") {
+          return <div className="mx-2 w-4" />;
+        }
+        return (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+            className="mx-2"
+          />
+        );
+      },
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
       accessorKey: "date_received",
       header: ({ column }) => {
         return (
@@ -281,35 +310,6 @@ export const createColumns = ({
           </div>
         );
       },
-    },
-    {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-          className="mx-2"
-        />
-      ),
-      cell: ({ row }) => {
-        if (row.original.status === "Cleared") {
-          return <div className="mx-2 w-4" />;
-        }
-        return (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label="Select row"
-            className="mx-2"
-          />
-        );
-      },
-      enableSorting: false,
-      enableHiding: false,
     },
     {
       id: "actions",
