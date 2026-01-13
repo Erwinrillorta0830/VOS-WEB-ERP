@@ -4,9 +4,10 @@
 import * as React from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { PendingInvoiceOptions, PendingStatus } from "../types";
+import type { PendingInvoiceOptions } from "../types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { addDays, endOfMonth, endOfYear, format, startOfMonth, startOfYear, subDays } from "date-fns";
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -19,7 +20,57 @@ function yyyyMMdd(d: Date) {
 }
 
 function money(n: number) {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const x = Number(n ?? 0);
+  return x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function toNum(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+type ExportRow = {
+  invoice_no: string;
+  dispatch_date: string;
+  customer: string;
+  salesman: string;
+  dispatch_plan: string;
+  status: string;
+  product: string;
+  unit: string;
+  qty: number;
+  net: number;
+};
+function dateOnly(v: unknown) {
+  if (!v) return "";
+  const s = String(v);
+  // Fast path if already ISO string
+  if (s.includes("T")) return s.split("T")[0];
+  // If it's already YYYY-MM-DD, keep it
+  return s;
+}
+
+
+function normalizeApiRows(json: any): any[] {
+  if (Array.isArray(json)) return json;
+  if (Array.isArray(json?.rows)) return json.rows;
+  if (Array.isArray(json?.data)) return json.data;
+  return [];
+}
+
+function toExportRows(rows: any[]): ExportRow[] {
+  return rows.map((r) => ({
+    invoice_no: String(r.invoice_no ?? ""),
+    dispatch_date: String(dateOnly(r.dispatch_date)),
+    customer: String(r.customer ?? ""),
+    salesman: String(r.salesman ?? ""),
+    dispatch_plan: r.dispatch_plan && r.dispatch_plan !== "unlinked" ? String(r.dispatch_plan) : "",
+    status: String(r.status ?? ""),
+    product: String(r.product_name ?? ""),
+    unit: String(r.product_unit ?? ""),
+    qty: toNum(r.product_quantity),
+    net: toNum(r.product_net_amount),
+  }));
 }
 
 export function ExportDialog({
@@ -60,29 +111,38 @@ export function ExportDialog({
       setDateFrom(yyyyMMdd(startOfYear(now)));
       setDateTo(yyyyMMdd(endOfYear(now)));
     } else if (preset === "This Week") {
-      // lightweight week window (today-3 to today+3); adjust if you need ISO week.
+      // lightweight week window (today-3 to today+3)
       setDateFrom(yyyyMMdd(subDays(now, 3)));
       setDateTo(yyyyMMdd(addDays(now, 3)));
     }
   }, [preset]);
-
-  async function loadItemizedRows() {
+  
+  async function loadItemizedRows(): Promise<ExportRow[]> {
     const p = new URLSearchParams();
-    p.set("status", status);
-    p.set("salesmanId", salesmanId);
-    p.set("customerCode", customerCode);
-    p.set("dateFrom", dateFrom);
-    p.set("dateTo", dateTo);
 
-    const res = await fetch(`/api/pending-invoices/itemized?${p.toString()}`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to load itemized rows for export");
+    // ✅ IMPORTANT: only send filters when user selected a specific value
+    if (status !== "All") p.set("status", status);
+    if (salesmanId !== "All") p.set("salesmanId", salesmanId);
+    if (customerCode !== "All") p.set("customerCode", customerCode);
+
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo) p.set("dateTo", dateTo);
+
+    const url = `/api/pending-invoices/itemized?${p.toString()}`;
+
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(t || "Failed to load itemized rows for export");
+    }
+
     const json = await res.json();
-    return (json.rows ?? []) as any[];
+    const rawRows = normalizeApiRows(json);
+    return toExportRows(rawRows);
   }
 
   async function exportPdf() {
     const rows = await loadItemizedRows();
-
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: paper });
 
     doc.setFontSize(14);
@@ -95,33 +155,38 @@ export function ExportDialog({
       58
     );
 
-    const body = rows.map((r) => [
-      r.invoice_no,
-      r.dispatch_date ?? "",
-      r.customer ?? "",
-      r.salesman ?? "",
-      r.dispatch_plan && r.dispatch_plan !== "unlinked" ? r.dispatch_plan : "",
-      r.status ?? "",
-      r.product_name ?? "",
-      r.product_unit ?? "",
-      r.product_quantity ?? 0,
-      money(Number(r.product_net_amount ?? 0)),
-    ]);
+    const head = [[
+      "Invoice No",
+      "Date",
+      "Customer",
+      "Salesman",
+      "Dispatch Plan",
+      "Status",
+      "Product",
+      "Unit",
+      "Qty",
+      "Net",
+    ]];
+
+    const body =
+      rows.length > 0
+        ? rows.map((r) => [
+            r.invoice_no,
+            r.dispatch_date,
+            r.customer,
+            r.salesman,
+            r.dispatch_plan,
+            r.status,
+            r.product,
+            r.unit,
+            r.qty ? String(r.qty) : "0",
+            money(r.net),
+          ])
+        : [["No data found for the selected filters.", "", "", "", "", "", "", "", "", ""]];
 
     autoTable(doc, {
       startY: 80,
-      head: [[
-        "Invoice No",
-        "Date",
-        "Customer",
-        "Salesman",
-        "Dispatch Plan",
-        "Status",
-        "Product",
-        "Unit",
-        "Qty",
-        "Net",
-      ]],
+      head,
       body,
       styles: { fontSize: 8, cellPadding: 4 },
       headStyles: { fillColor: [245, 245, 245], textColor: 20 },
@@ -132,7 +197,7 @@ export function ExportDialog({
       },
     });
 
-    const total = rows.reduce((sum, r) => sum + Number(r.product_net_amount ?? 0), 0);
+    const total = rows.reduce((sum, r) => sum + (Number.isFinite(r.net) ? r.net : 0), 0);
     doc.setFontSize(10);
     doc.text(`Total: ${money(total)}`, 40, doc.internal.pageSize.getHeight() - 30);
 
@@ -141,11 +206,69 @@ export function ExportDialog({
 
   async function exportExcel() {
     const rows = await loadItemizedRows();
-    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const header = [
+      "Invoice No",
+      "Date",
+      "Customer",
+      "Salesman",
+      "Dispatch Plan",
+      "Status",
+      "Product",
+      "Unit",
+      "Qty",
+      "Net",
+    ];
+
+    const aoa: any[][] = [header];
+
+    if (rows.length > 0) {
+      for (const r of rows) {
+        aoa.push([
+          r.invoice_no,
+          r.dispatch_date,
+          r.customer,
+          r.salesman,
+          r.dispatch_plan,
+          r.status,
+          r.product,
+          r.unit,
+          r.qty,
+          r.net,
+        ]);
+      }
+    } else {
+      aoa.push(["No data found for the selected filters.", "", "", "", "", "", "", "", "", 0]);
+    }
+
+    const total = rows.reduce((sum, r) => sum + (Number.isFinite(r.net) ? r.net : 0), 0);
+    aoa.push([]);
+    aoa.push(["", "", "", "", "", "", "", "", "TOTAL", total]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // ✅ Make it readable (prevents “looks empty” issues)
+    (ws as any)["!cols"] = [
+      { wch: 14 }, // Invoice No
+      { wch: 12 }, // Date
+      { wch: 28 }, // Customer
+      { wch: 20 }, // Salesman
+      { wch: 18 }, // Dispatch Plan
+      { wch: 14 }, // Status
+      { wch: 34 }, // Product
+      { wch: 10 }, // Unit
+      { wch: 8 },  // Qty
+      { wch: 12 }, // Net
+    ];
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "PendingInvoices");
+
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `pending-invoices-${dateFrom}-to-${dateTo}.xlsx`);
+    saveAs(
+      new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      `pending-invoices-${dateFrom}-to-${dateTo}.xlsx`
+    );
   }
 
   async function handleExport() {
@@ -222,11 +345,21 @@ export function ExportDialog({
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2 pt-2">
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">From</div>
-                  <input className="w-full rounded-md border px-3 py-2 text-sm" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                  <input
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">To</div>
-                  <input className="w-full rounded-md border px-3 py-2 text-sm" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                  <input
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                  />
                 </div>
               </div>
             )}
@@ -248,9 +381,9 @@ export function ExportDialog({
             <Select value={paper} onValueChange={(v) => setPaper(v as any)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="legal">Legal</SelectItem>
-                <SelectItem value="letter">Letter</SelectItem>
                 <SelectItem value="a4">A4</SelectItem>
+                <SelectItem value="letter">Letter</SelectItem>
+                <SelectItem value="legal">Legal</SelectItem>
               </SelectContent>
             </Select>
             <div className="text-xs text-muted-foreground">Export is portrait.</div>

@@ -27,7 +27,7 @@ import PendingInvoicesModule from '../../../modules/fleet-management-module/comp
 import { CreateDispatchPlanModal } from '../../../modules/CreateDispatchPlanModal';
 
 export default function HomePage() {
-    const [currentPage, setCurrentPage] = useState<PageType>('dispatch-summary');
+    const [currentPage, setCurrentPage] = useState<PageType>('pending-invoices');
 
     const renderPage = () => {
         console.log('Current page:', currentPage); // Debug log

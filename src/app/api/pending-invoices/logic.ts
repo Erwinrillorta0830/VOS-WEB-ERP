@@ -88,7 +88,7 @@ export type ViewReplicaItemizedRow = {
   dispatch_plan: string; // group_concat doc_no OR 'unlinked'
   customer_code: string | null;
   customer: string | null;
-  dispatch_date: string | null;
+  dispatch_date: string | null; // DATE ONLY
   salesman: string | null;
 
   brgy: string | null;
@@ -122,7 +122,7 @@ export type ViewReplicaItemizedRow = {
 
 export type PendingInvoiceListRow = {
   invoice_no: string;
-  invoice_date: string | null; // dispatch_date in your screenshots
+  invoice_date: string | null; // DATE ONLY
   customer: string | null;
   salesman: string | null;
   net_amount: number;
@@ -147,6 +147,18 @@ function uniq<T>(arr: T[]) {
 
 function normalizeStr(s: unknown) {
   return (typeof s === "string" ? s : "").trim();
+}
+
+/** Convert ISO datetime -> YYYY-MM-DD (keeps YYYY-MM-DD as-is) */
+function dateOnlyIso(v: unknown) {
+  if (!v) return null;
+  const s = String(v);
+  if (s.includes("T")) return s.split("T")[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return s;
+  return d.toISOString().split("T")[0];
 }
 
 /**
@@ -178,28 +190,36 @@ export type ListFilters = {
   pageSize?: number;
 };
 
+function startOfDayIso(date: string) {
+  return `${date}T00:00:00.000Z`;
+}
+
+function nextDayIso(date: string) {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString();
+}
+
 async function fetchInvoicesBase(filters: ListFilters) {
-  // NOTE: You must confirm the actual Directus collection name.
-  // Common: "sales_invoice" (as in your SQL).
-  // If yours differs, adjust here.
   const collection = "/sales_invoice";
 
-  // Directus filter format is JSON. We’ll keep it conservative and do extra filtering in Node.
   const directusFilter: any = {
     _and: [{ sales_type: { _eq: 1 } }],
   };
 
-  if (filters.dateFrom) directusFilter._and.push({ dispatch_date: { _gte: filters.dateFrom } });
-  if (filters.dateTo) directusFilter._and.push({ dispatch_date: { _lte: filters.dateTo } });
+  // ✅ include full day range (handles dispatch_date stored as datetime)
+  if (filters.dateFrom) {
+    directusFilter._and.push({ dispatch_date: { _gte: startOfDayIso(filters.dateFrom) } });
+  }
+  if (filters.dateTo) {
+    // exclusive end = next day 00:00:00Z, so it includes all times within dateTo
+    directusFilter._and.push({ dispatch_date: { _lt: nextDayIso(filters.dateTo) } });
+  }
 
-  // If user searches invoice number, do server-side contains on invoice_no
   if (filters.q && filters.q.trim()) {
     const q = filters.q.trim();
     directusFilter._and.push({
-      _or: [
-        { invoice_no: { _icontains: q } },
-        { customer_code: { _icontains: q } },
-      ],
+      _or: [{ invoice_no: { _icontains: q } }, { customer_code: { _icontains: q } }],
     });
   }
 
@@ -284,7 +304,6 @@ async function fetchDispatchPlanDocsByInvoiceIds(invoiceIds: number[]) {
   type PdpRow = { id: number; doc_no?: string | null };
 
   for (const batch of chunk(invoiceIds, 200)) {
-    // 1) Fetch post_dispatch_invoices
     const pdiFilter = { invoice_id: { _in: batch } };
     const pdiRes = await directusGet<DirectusListResponse<PdiRow>>("/post_dispatch_invoices", {
       fields: "invoice_id,post_dispatch_plan_id",
@@ -299,7 +318,6 @@ async function fetchDispatchPlanDocsByInvoiceIds(invoiceIds: number[]) {
         .filter((x): x is number => Number.isFinite(x as any))
     );
 
-    // 2) Fetch post_dispatch_plan.doc_no by ids
     const planDocMap = new Map<number, string>();
     if (planIds.length > 0) {
       for (const planBatch of chunk(planIds, 200)) {
@@ -317,7 +335,6 @@ async function fetchDispatchPlanDocsByInvoiceIds(invoiceIds: number[]) {
       }
     }
 
-    // 3) Group by invoice_id (distinct + sort later)
     for (const r of pdiRows) {
       const invId = r.invoice_id;
       const planId = r.post_dispatch_plan_id ?? null;
@@ -332,7 +349,6 @@ async function fetchDispatchPlanDocsByInvoiceIds(invoiceIds: number[]) {
     }
   }
 
-  // distinct + sort
   for (const [k, arr] of out.entries()) {
     const uniqueSorted = uniq(arr).sort((a, b) => a.localeCompare(b));
     out.set(k, uniqueSorted);
@@ -353,7 +369,6 @@ export async function listPendingInvoices(filters: ListFilters) {
   const invoiceIds = invoices.map((i) => i.invoice_id).filter((x): x is number => Number.isFinite(x as any));
   const dispatchDocsMap = await fetchDispatchPlanDocsByInvoiceIds(invoiceIds);
 
-  // Enrich + apply remaining filters server-side
   let rows: PendingInvoiceListRow[] = invoices.map((inv) => {
     const cust = inv.customer_code ? customersMap.get(inv.customer_code) : undefined;
     const sm = inv.salesman_id ? salesmenMap.get(inv.salesman_id) : undefined;
@@ -362,12 +377,11 @@ export async function listPendingInvoices(filters: ListFilters) {
     const dispatch_plan = docs.length ? docs.join(", ") : "unlinked";
 
     const salesman = sm ? `${sm.id} - ${sm.salesman_name ?? ""}`.trim() : null;
-
     const pending_status = derivePendingStatus(dispatch_plan, inv.transaction_status ?? null);
 
     return {
       invoice_no: inv.invoice_no,
-      invoice_date: inv.dispatch_date ?? null,
+      invoice_date: dateOnlyIso(inv.dispatch_date), // ✅ DATE ONLY
       customer: cust?.customer_name ?? null,
       salesman,
       net_amount: toNum(inv.net_amount),
@@ -380,15 +394,12 @@ export async function listPendingInvoices(filters: ListFilters) {
     rows = rows.filter((r) => normalizeStr(r.salesman).startsWith(`${filters.salesmanId} -`));
   }
   if (filters.customerCode && filters.customerCode !== "All") {
-    rows = rows.filter((r) => normalizeStr(r.customer ?? "").length > 0); // keep safe
-    // if your UI uses customer_code, then expose it on list rows; currently list row doesn’t carry it.
-    // We’ll filter only if search text includes it (handled earlier), else keep.
+    rows = rows.filter((r) => normalizeStr(r.customer ?? "").length > 0);
   }
   if (filters.status && filters.status !== "All") {
     rows = rows.filter((r) => r.pending_status === filters.status);
   }
 
-  // Search across enriched fields (customer/salesman/dispatch_plan)
   if (filters.q && filters.q.trim()) {
     const q = filters.q.trim().toLowerCase();
     rows = rows.filter((r) => {
@@ -401,25 +412,26 @@ export async function listPendingInvoices(filters: ListFilters) {
     });
   }
 
-  // KPIs
   const by_status: PendingInvoiceKpis["by_status"] = {
     Unlinked: { count: 0, amount: 0 },
     "For Dispatch": { count: 0, amount: 0 },
     Inbound: { count: 0, amount: 0 },
     Cleared: { count: 0, amount: 0 },
   };
+
   for (const r of rows) {
     by_status[r.pending_status].count += 1;
     by_status[r.pending_status].amount += r.net_amount;
   }
+
   const kpis: PendingInvoiceKpis = {
     total_count: rows.length,
     total_amount: rows.reduce((sum, r) => sum + r.net_amount, 0),
     by_status,
   };
 
-  // Pagination
-  const pageSize = Number.isFinite(filters.pageSize) && (filters.pageSize as number) > 0 ? (filters.pageSize as number) : 25;
+  const pageSize =
+    Number.isFinite(filters.pageSize) && (filters.pageSize as number) > 0 ? (filters.pageSize as number) : 25;
   const page = Number.isFinite(filters.page) && (filters.page as number) > 0 ? (filters.page as number) : 1;
   const total = rows.length;
   const start = (page - 1) * pageSize;
@@ -432,52 +444,77 @@ export async function listPendingInvoices(filters: ListFilters) {
  * Itemized replica:
  * returns rows matching the SQL view output (one row per invoice line).
  */
-// ✅ Itemized "view replica" using sid.invoice_no = si.invoice_id AND sid.order_id = si.order_id
 export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewReplicaItemizedRow[]> {
-  const invoices = await fetchInvoicesBase(filters);
+  const invoicesAll = await fetchInvoicesBase(filters);
 
-  const customerCodes = uniq(invoices.map((i) => i.customer_code).filter(Boolean) as string[]);
-  const salesmanIds = uniq(invoices.map((i) => i.salesman_id).filter((x): x is number => Number.isFinite(x as any)));
-  const operationIds = uniq(invoices.map((i) => i.sales_type).filter((x): x is number => Number.isFinite(x as any)));
+  const customerCodes = uniq(invoicesAll.map((i) => i.customer_code).filter(Boolean) as string[]);
+  const salesmanIds = uniq(
+    invoicesAll.map((i) => i.salesman_id).filter((x): x is number => Number.isFinite(Number(x)))
+  );
+  const operationIds = uniq(
+    invoicesAll.map((i) => i.sales_type).filter((x): x is number => Number.isFinite(Number(x)))
+  );
 
   const customersMap = await fetchCustomersByCodes(customerCodes);
   const salesmenMap = await fetchSalesmenByIds(salesmanIds);
   const operationsMap = await fetchOperationsByIds(operationIds);
 
-  const invoiceIds = invoices.map((i) => i.invoice_id).filter((x): x is number => Number.isFinite(x as any));
-  const dispatchDocsMap = await fetchDispatchPlanDocsByInvoiceIds(invoiceIds);
+  const invoiceIdsAll = invoicesAll.map((i) => i.invoice_id).filter((x): x is number => Number.isFinite(Number(x)));
+  const dispatchDocsMap = await fetchDispatchPlanDocsByInvoiceIds(invoiceIdsAll);
 
-  // --- IMPORTANT FIX:
-  // SQL: sid.invoice_no = si.invoice_id AND sid.order_id = si.order_id
-  // So we fetch details where invoice_no IN invoiceIds (invoice_no stores invoice_id)
+  let invoices = invoicesAll;
+
+  if (filters.salesmanId && filters.salesmanId !== "All") {
+    const sid = Number(filters.salesmanId);
+    invoices = invoices.filter((inv) => Number(inv.salesman_id) === sid);
+  }
+
+  if (filters.customerCode && filters.customerCode !== "All") {
+    invoices = invoices.filter((inv) => (inv.customer_code ?? "") === filters.customerCode);
+  }
+
+  if (filters.status && filters.status !== "All") {
+    invoices = invoices.filter((inv) => {
+      const docs = dispatchDocsMap.get(inv.invoice_id) ?? [];
+      const dispatch_plan = docs.length ? docs.join(", ") : "unlinked";
+      const pending = derivePendingStatus(dispatch_plan, inv.transaction_status ?? null);
+      return pending === filters.status;
+    });
+  }
+
+  const invoiceIds = invoices.map((i) => i.invoice_id).filter((x): x is number => Number.isFinite(Number(x)));
+
+  // ✅ invoice_no stores invoice_id (often string in Directus)
   const details: SalesInvoiceDetailRow[] = [];
   for (const batch of chunk(invoiceIds, 150)) {
-    const filter = { invoice_no: { _in: batch } };
+    const batchAsStrings = batch.map(String);
+    const filter = { invoice_no: { _in: batchAsStrings } };
+
     const res = await directusGet<DirectusListResponse<SalesInvoiceDetailRow>>("/sales_invoice_details", {
       fields: "id,invoice_no,order_id,product_id,unit_price,quantity,unit,total_amount,discount_amount",
       limit: "-1",
       filter: JSON.stringify(filter),
     });
+
     details.push(...(res.data ?? []));
   }
 
-  // Composite key map: `${invoice_id}:${order_id}`
   const detailsByKey = new Map<string, SalesInvoiceDetailRow[]>();
   for (const d of details) {
-    const invId = (d as any).invoice_no; // invoice_no is actually invoice_id
-    const ordId = (d as any).order_id;
+    const invIdRaw = (d as any).invoice_no;
+    const invId = typeof invIdRaw === "string" ? Number(invIdRaw) : Number(invIdRaw);
+    const ordId = typeof (d as any).order_id === "string" ? Number((d as any).order_id) : Number((d as any).order_id);
 
-    if (!Number.isFinite(invId as any)) continue;
-    if (!Number.isFinite(ordId as any)) continue;
+    if (!Number.isFinite(invId)) continue;
+    if (!Number.isFinite(ordId)) continue;
 
-    const key = `${Number(invId)}:${Number(ordId)}`;
+    const key = `${invId}:${ordId}`;
     const arr = detailsByKey.get(key) ?? [];
     arr.push(d);
     detailsByKey.set(key, arr);
   }
 
-  // Fetch products referenced by details
-  const productIds = uniq(details.map((d) => d.product_id).filter((x): x is number => Number.isFinite(x as any)));
+  const productIds = uniq(details.map((d) => d.product_id).filter((x): x is number => Number.isFinite(Number(x))));
 
   const productsMap = new Map<number, ProductRow>();
   for (const batch of chunk(productIds, 200)) {
@@ -493,12 +530,13 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
   const categoryIds = uniq(
     Array.from(productsMap.values())
       .map((p) => p.product_category)
-      .filter((x): x is number => Number.isFinite(x as any))
+      .filter((x): x is number => Number.isFinite(Number(x)))
   );
+
   const brandIds = uniq(
     Array.from(productsMap.values())
       .map((p) => p.product_brand)
-      .filter((x): x is number => Number.isFinite(x as any))
+      .filter((x): x is number => Number.isFinite(Number(x)))
   );
 
   const categoriesMap = new Map<number, CategoryRow>();
@@ -523,8 +561,7 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
     for (const b of res.data ?? []) brandsMap.set(b.brand_id, b);
   }
 
-  // Units from details
-  const unitIds = uniq(details.map((d) => d.unit).filter((x): x is number => Number.isFinite(x as any)));
+  const unitIds = uniq(details.map((d) => d.unit).filter((x): x is number => Number.isFinite(Number(x))));
   const unitsMap = new Map<number, UnitRow>();
   for (const batch of chunk(unitIds, 200)) {
     const filter = { unit_id: { _in: batch } };
@@ -536,14 +573,13 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
     for (const u of res.data ?? []) unitsMap.set(u.unit_id, u);
   }
 
-  // Supplier mapping (first supplier per (parent_id ?? product_id))
   const parentOrSelfIds = uniq(
     Array.from(productsMap.values())
       .map((p) => (p.parent_id ? p.parent_id : p.product_id))
-      .filter((x): x is number => Number.isFinite(x as any))
+      .filter((x): x is number => Number.isFinite(Number(x)))
   );
 
-  const supplierNameByProduct = new Map<number, string>(); // key = parentOrSelfId
+  const supplierNameByProduct = new Map<number, string>();
   for (const batch of chunk(parentOrSelfIds, 150)) {
     const filter = { product_id: { _in: batch } };
     const res = await directusGet<DirectusListResponse<ProductPerSupplierRow>>("/product_per_supplier", {
@@ -554,8 +590,8 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
     });
 
     for (const pps of res.data ?? []) {
-      const pid = (pps as any).product_id;
-      if (!Number.isFinite(pid as any) || supplierNameByProduct.has(pid)) continue;
+      const pid = Number((pps as any).product_id);
+      if (!Number.isFinite(pid) || supplierNameByProduct.has(pid)) continue;
 
       let name = "";
       const sup = (pps as any).supplier_id;
@@ -564,7 +600,6 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
     }
   }
 
-  // Build itemized rows exactly like the SQL view
   const out: ViewReplicaItemizedRow[] = [];
 
   for (const inv of invoices) {
@@ -575,9 +610,12 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
     const docs = dispatchDocsMap.get(inv.invoice_id) ?? [];
     const dispatch_plan = docs.length ? docs.join(", ") : "unlinked";
 
-    // --- IMPORTANT FIX:
-    // join key must be `${si.invoice_id}:${si.order_id}`
-    const key = `${Number(inv.invoice_id)}:${Number(inv.order_id ?? 0)}`;
+    const invIdNum = Number(inv.invoice_id);
+    const ordIdNum = Number(inv.order_id);
+
+    if (!Number.isFinite(invIdNum) || !Number.isFinite(ordIdNum)) continue;
+
+    const key = `${invIdNum}:${ordIdNum}`;
     const lines = detailsByKey.get(key) ?? [];
 
     for (const line of lines) {
@@ -599,7 +637,7 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
         dispatch_plan,
         customer_code: inv.customer_code ?? null,
         customer: cust?.customer_name ?? null,
-        dispatch_date: inv.dispatch_date ?? null,
+        dispatch_date: dateOnlyIso(inv.dispatch_date), // ✅ DATE ONLY
         salesman: sm ? `${sm.id} - ${sm.salesman_name ?? ""}`.trim() : null,
 
         brgy: cust?.brgy ?? null,
@@ -633,7 +671,6 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
     }
   }
 
-  // Optional enriched search filter
   if (filters.q && filters.q.trim()) {
     const q = filters.q.trim().toLowerCase();
     return out.filter((r) => {
@@ -650,10 +687,8 @@ export async function fetchItemizedReplica(filters: ListFilters): Promise<ViewRe
   return out;
 }
 
-
 // ✅ Invoice details fetch using sid.invoice_no = si.invoice_id AND sid.order_id = si.order_id
 export async function fetchInvoiceDetails(invoiceNo: string) {
-  // Invoice header by invoice_no (string)
   const filter = { _and: [{ sales_type: { _eq: 1 } }, { invoice_no: { _eq: invoiceNo } }] };
 
   const invRes = await directusGet<DirectusListResponse<PendingInvoiceHeaderRow>>("/sales_invoice", {
@@ -674,14 +709,42 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
   const docs = dispatchDocsMap.get(inv.invoice_id) ?? [];
   const dispatch_plan = docs.length ? docs.join(", ") : "unlinked";
 
-  // --- IMPORTANT FIX:
-  // SQL join: sid.invoice_no = si.invoice_id AND sid.order_id = si.order_id
-  // So filter details by invoice_no == inv.invoice_id AND order_id == inv.order_id
+  const invIdNum = Number(inv.invoice_id);
+  const ordIdNum = Number(inv.order_id);
+
+  if (!Number.isFinite(invIdNum) || !Number.isFinite(ordIdNum)) {
+    const cust = inv.customer_code ? customersMap.get(inv.customer_code) : undefined;
+    const sm = inv.salesman_id ? salesmenMap.get(inv.salesman_id) : undefined;
+    const op = inv.sales_type ? opsMap.get(inv.sales_type) : undefined;
+
+    return {
+      header: {
+        invoice_no: inv.invoice_no,
+        invoice_date: dateOnlyIso(inv.dispatch_date), // ✅ DATE ONLY
+        dispatch_date: dateOnlyIso(inv.dispatch_date), // ✅ DATE ONLY
+        customer_code: inv.customer_code ?? null,
+        customer_name: cust?.customer_name ?? null,
+        address: [cust?.brgy, cust?.city, cust?.province].filter(Boolean).join(", "),
+        salesman: sm ? `${sm.id} - ${sm.salesman_name ?? ""}`.trim() : null,
+        sales_type: op?.operation_name ?? null,
+        price_type: sm?.price_type ?? null,
+        status: derivePendingStatus(dispatch_plan, inv.transaction_status ?? null),
+        dispatch_plan,
+      },
+      lines: [],
+      summary: {
+        discount: toNum(inv.discount_amount),
+        vatable: toNum(inv.net_amount) - toNum(inv.vat_amount),
+        net: toNum(inv.net_amount),
+        vat: toNum(inv.vat_amount),
+        total: toNum(inv.net_amount),
+        balance: toNum(inv.net_amount),
+      },
+    };
+  }
+
   const detailsFilter: any = {
-    _and: [
-      { invoice_no: { _eq: inv.invoice_id } },
-      { order_id: { _eq: inv.order_id } },
-    ],
+    _and: [{ invoice_no: { _eq: String(invIdNum) } }, { order_id: { _eq: ordIdNum } }],
   };
 
   const detailsRes = await directusGet<DirectusListResponse<SalesInvoiceDetailRow>>("/sales_invoice_details", {
@@ -691,7 +754,7 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
   });
   const lines = detailsRes.data ?? [];
 
-  const productIds = uniq(lines.map((d) => d.product_id).filter((x): x is number => Number.isFinite(x as any)));
+  const productIds = uniq(lines.map((d) => d.product_id).filter((x): x is number => Number.isFinite(Number(x))));
   const productsMap = new Map<number, ProductRow>();
   if (productIds.length) {
     const prodRes = await directusGet<DirectusListResponse<ProductRow>>("/products", {
@@ -702,7 +765,7 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
     for (const p of prodRes.data ?? []) productsMap.set(p.product_id, p);
   }
 
-  const unitIds = uniq(lines.map((d) => d.unit).filter((x): x is number => Number.isFinite(x as any)));
+  const unitIds = uniq(lines.map((d) => d.unit).filter((x): x is number => Number.isFinite(Number(x))));
   const unitsMap = new Map<number, UnitRow>();
   if (unitIds.length) {
     const unitRes = await directusGet<DirectusListResponse<UnitRow>>("/units", {
@@ -751,8 +814,8 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
   return {
     header: {
       invoice_no: inv.invoice_no,
-      invoice_date: inv.dispatch_date ?? null,
-      dispatch_date: inv.dispatch_date ?? null,
+      invoice_date: dateOnlyIso(inv.dispatch_date), // ✅ DATE ONLY
+      dispatch_date: dateOnlyIso(inv.dispatch_date), // ✅ DATE ONLY
       customer_code: inv.customer_code ?? null,
       customer_name: customer?.customer_name ?? null,
       address: [customer?.brgy, customer?.city, customer?.province].filter(Boolean).join(", "),
@@ -766,4 +829,3 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
     summary,
   };
 }
-
