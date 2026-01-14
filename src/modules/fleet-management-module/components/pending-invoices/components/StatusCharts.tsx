@@ -3,28 +3,30 @@
 import * as React from "react";
 import type { PendingInvoiceKpis } from "../types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, Tooltip, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Tooltip, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 
 function money(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function StatusCharts({ kpis }: { kpis: PendingInvoiceKpis }) {
+  // 1. Define Consistent Colors
+  // ✅ CHANGED: Gray -> Blue (#3b82f6), Black -> Dark Blue (#1d4ed8)
+  // Inbound (Orange), Cleared (Green) remain the same.
+  const COLORS = ["#d32525", "#1d4ed8", "#f59e0b", "#22c55e"];
+
   const pieData = [
-    { name: "Unlinked", value: kpis.by_status.Unlinked.count },
-    { name: "For Dispatch", value: kpis.by_status["For Dispatch"].count },
-    { name: "Inbound", value: kpis.by_status.Inbound.count },
-    { name: "Cleared", value: kpis.by_status.Cleared.count },
+    { name: "Unlinked", value: kpis.by_status.Unlinked.count, fill: COLORS[0] },
+    { name: "For Dispatch", value: kpis.by_status["For Dispatch"].count, fill: COLORS[2] },
+    { name: "Inbound", value: kpis.by_status.Inbound.count, fill: COLORS[1] },
+    { name: "Cleared", value: kpis.by_status.Cleared.count, fill: COLORS[3] },
   ];
 
-  // Colors: Gray, Black, Orange, Green
-  const colors = ["#94a3b8", "#0f172a", "#f97316", "#22c55e"];
-
   const barData = [
-    { name: "Unlinked", amount: kpis.by_status.Unlinked.amount, fill: "#94a3b8" },
-    { name: "For Dispatch", amount: kpis.by_status["For Dispatch"].amount, fill: "#0f172a" },
-    { name: "Inbound", amount: kpis.by_status.Inbound.amount, fill: "#f97316" },
-    { name: "Cleared", amount: kpis.by_status.Cleared.amount, fill: "#22c55e" },
+    { name: "Unlinked", amount: kpis.by_status.Unlinked.amount, fill: COLORS[0] },
+    { name: "For Dispatch", amount: kpis.by_status["For Dispatch"].amount, fill: COLORS[2] },
+    { name: "Inbound", amount: kpis.by_status.Inbound.amount, fill: COLORS[1] },
+    { name: "Cleared", amount: kpis.by_status.Cleared.amount, fill: COLORS[3] },
   ];
 
   return (
@@ -42,16 +44,20 @@ export function StatusCharts({ kpis }: { kpis: PendingInvoiceKpis }) {
                 dataKey="value" 
                 nameKey="name" 
                 cx="50%" 
-                cy="50%" 
+                cy="45%" 
+                innerRadius={60} 
                 outerRadius={80} 
-                label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
-                labelLine={false}
               >
-                {pieData.map((_, idx) => (
-                  <Cell key={idx} fill={colors[idx]} />
+                {pieData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
               </Pie>
               <Tooltip formatter={(value: number) => [value, "Invoices"]} />
+              <Legend 
+                verticalAlign="bottom" 
+                height={36} 
+                iconType="circle"
+              />
             </PieChart>
           </ResponsiveContainer>
         </CardContent>
@@ -62,10 +68,7 @@ export function StatusCharts({ kpis }: { kpis: PendingInvoiceKpis }) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">Pending Invoice Volume by Status</CardTitle>
         </CardHeader>
-        {/* ✅ FIX 2: Increased container height to 300px to fit everything */}
         <CardContent className="h-[300px] flex flex-col justify-between">
-          
-          {/* Chart takes up most space but leaves room at bottom */}
           <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={barData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -97,7 +100,6 @@ export function StatusCharts({ kpis }: { kpis: PendingInvoiceKpis }) {
             </ResponsiveContainer>
           </div>
 
-          {/* Text is now safely inside the padded container */}
           <div className="mt-2 text-right text-xs text-slate-500 border-t pt-2">
             Total Amount: <span className="font-bold text-slate-900 text-sm ml-1">{money(kpis.total_amount)}</span>
           </div>
