@@ -7,268 +7,132 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { InvoiceDetailsResponse } from "../types";
 
-function money(n: number) {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+function money(n: number) { return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-function fmtDateOnly(v: unknown) {
-  const s = typeof v === "string" ? v : "";
-  if (!s) return "-";
-  return s.includes("T") ? s.split("T")[0] : s;
-}
-
-function field(v: unknown) {
-  const s = typeof v === "string" ? v.trim() : "";
-  return s ? s : "-";
-}
-
-function statusBadgeClass(status: unknown) {
-  const s = (typeof status === "string" ? status : "").toLowerCase();
-  if (s.includes("unlinked")) return "border-muted-foreground/30 text-muted-foreground";
-  if (s.includes("dispatch")) return "border-blue-200 text-blue-700 bg-blue-50";
-  if (s.includes("inbound")) return "border-amber-200 text-amber-700 bg-amber-50";
-  if (s.includes("clear")) return "border-emerald-200 text-emerald-700 bg-emerald-50";
-  return "border-muted-foreground/30 text-muted-foreground";
-}
-
-function FieldSingle({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function ReadonlyField({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
   return (
-    <div className="space-y-1">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="h-10 w-full rounded-md bg-muted/30 px-3 flex items-center text-sm overflow-hidden whitespace-nowrap text-ellipsis">
-        {value}
+    <div className={`space-y-1 ${className}`}>
+      <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">{label}</div>
+      <div className="flex min-h-[2.25rem] w-full items-center rounded-md bg-slate-50 border border-slate-200 px-3 py-1 text-sm text-slate-800">
+        {value || "-"}
       </div>
     </div>
   );
 }
 
-function FieldMulti({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      {/* IMPORTANT: no fixed height; allow wrapping for long text */}
-      <div className="min-h-10 w-full rounded-md bg-muted/30 px-3 py-2 text-sm leading-5 whitespace-normal break-words">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-export function InvoiceDetailsDialog({
-  open,
-  invoiceNo,
-  onClose,
-}: {
-  open: boolean;
-  invoiceNo: string | null;
-  onClose: () => void;
-}) {
+export function InvoiceDetailsDialog({ open, invoiceNo, onClose }: { open: boolean; invoiceNo: string | null; onClose: () => void; }) {
   const [data, setData] = React.useState<InvoiceDetailsResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    let mounted = true;
-
-    if (!open || !invoiceNo) {
-      setData(null);
-      setErr(null);
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        setLoading(true);
-        setErr(null);
-
-        const res = await fetch(`/api/pending-invoices/${encodeURIComponent(invoiceNo)}`, {
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          throw new Error(t || "Failed to load invoice details");
-        }
-
-        const json = (await res.json()) as InvoiceDetailsResponse;
-        if (mounted) setData(json);
-      } catch (e: any) {
-        if (mounted) setErr(e?.message ?? "Failed to load invoice details");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
+    if (!open || !invoiceNo) return;
+    setLoading(true);
+    fetch(`/api/pending-invoices/${invoiceNo}`)
+      .then(res => res.json())
+      .then(setData)
+      .finally(() => setLoading(false));
   }, [open, invoiceNo]);
 
-  const header: any = data?.header ?? null;
+  const h = data?.header;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      {/* Wide, like Image #2 */}
-      <DialogContent className="w-[95vw] max-w-6xl max-h-[92vh] overflow-hidden p-0">
-        <DialogHeader className="px-6 pt-6 pb-3">
-          <DialogTitle className="text-blue-600 text-2xl font-semibold">
-            {invoiceNo ? `Invoice #${invoiceNo}` : "Invoice"}
-          </DialogTitle>
+      <DialogContent className="max-w-[95vw] md:max-w-[1300px] h-[90vh] flex flex-col p-0 gap-0 bg-white">
+        
+        {/* Header Bar */}
+        <DialogHeader className="px-6 py-4 border-b bg-white shrink-0 flex flex-row items-center justify-between">
+          <DialogTitle className="text-blue-600 text-xl font-bold">Invoice #{invoiceNo}</DialogTitle>
+          {h && (
+             <div className="flex gap-2">
+                <Badge className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1">{h.status}</Badge>
+                {h.dispatch_plan !== "unlinked" && (
+                    <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
+                       Plan: {h.dispatch_plan}
+                    </Badge>
+                )}
+             </div>
+          )}
         </DialogHeader>
 
-        <div className="px-6 pb-6 overflow-auto max-h-[calc(92vh-4.5rem)]">
-          {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
-          {err && !loading && <div className="text-sm text-red-600">{err}</div>}
-
-          {!loading && !err && data && (
-            <div className="space-y-5">
-              {/* Top: Left details + Right summary */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-                {/* LEFT */}
-                <div className="space-y-4">
-                  {/* Customer Name (multi-line safe) */}
-                  <FieldMulti label="Customer Name" value={field(header?.customer_name)} />
-
-                  {/* No / Date / Due */}
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <FieldSingle label="No." value={field(header?.invoice_no)} />
-                    <FieldSingle
-                      label="Date"
-                      value={fmtDateOnly(header?.invoice_date ?? header?.dispatch_date)}
-                    />
-                    <FieldSingle
-                      label="Due"
-                      value={fmtDateOnly(header?.due_date ?? header?.dispatch_date)}
-                    />
-                  </div>
-
-                  {/* Customer Code / Dispatch Date */}
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <FieldSingle label="Customer Code" value={field(header?.customer_code)} />
-                    <FieldSingle label="Dispatch Date" value={fmtDateOnly(header?.dispatch_date)} />
-                    <div className="hidden md:block" />
-                  </div>
-
-                  {/* Salesman / Location / Sales Type / Receipt / Price */}
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-                    <FieldSingle label="Salesman" value={field(header?.salesman)} />
-                    {/* Location should also be multi-line safe */}
-                    <FieldMulti label="Location" value={field(header?.address)} />
-                    <FieldSingle label="Sales Type" value={field(header?.sales_type)} />
-                    <FieldSingle label="Receipt Type" value={field(header?.receipt_type)} />
-                    <FieldSingle label="Price Type" value={field(header?.price_type)} />
-                  </div>
-
-                  {/* Status + Dispatch Plan */}
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <div className="text-xs text-muted-foreground">Status</div>
-                    <Badge className={statusBadgeClass(header?.status)} variant="outline">
-                      {field(header?.status)}
-                    </Badge>
-
-                    <div className="ml-2 text-xs text-muted-foreground">Dispatch Plan</div>
-                    <span className="text-sm text-muted-foreground">
-                      {header?.dispatch_plan && header?.dispatch_plan !== "unlinked"
-                        ? header?.dispatch_plan
-                        : "—"}
-                    </span>
-                  </div>
+        <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
+          {loading && <div className="text-center py-10">Loading...</div>}
+          
+          {!loading && data && h && (
+            <div className="space-y-6">
+              {/* Form Section */}
+              <div className="bg-white p-5 rounded-lg border shadow-sm space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <ReadonlyField label="Customer Name" value={h.customer_name} className="md:col-span-3" />
+                  <ReadonlyField label="No." value={h.invoice_no} />
                 </div>
-
-                {/* RIGHT SUMMARY */}
-                <Card className="shadow-sm">
-                  <CardHeader className="pb-2">
-                    <ShadCardTitle className="text-sm font-semibold">Summary</ShadCardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Discount</span>
-                      <span>{money(data.summary.discount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Vatable</span>
-                      <span>{money(data.summary.vatable)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Net</span>
-                      <span className="text-blue-600">{money(data.summary.net)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">VAT</span>
-                      <span>{money(data.summary.vat)}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between font-semibold">
-                      <span>TOTAL</span>
-                      <span>{money(data.summary.total)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Balance</span>
-                      <span className="text-red-600">{money(data.summary.balance)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <ReadonlyField label="Customer Code" value={h.customer_code} />
+                  <ReadonlyField label="Date" value={h.invoice_date} />
+                  <ReadonlyField label="Due" value={h.invoice_date} /> {/* Assuming same for now */}
+                  <ReadonlyField label="Dispatch Date" value={h.dispatch_date} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <ReadonlyField label="Salesman" value={h.salesman} />
+                  <ReadonlyField label="Location" value={h.address} />
+                  <ReadonlyField label="Sales Type" value={h.sales_type} />
+                  <ReadonlyField label="Receipt Type" value="Cash" />
+                  <ReadonlyField label="Price Type" value={h.price_type} />
+                </div>
               </div>
 
-              {/* Invoice Details */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-base font-semibold">Invoice Details</div>
-                </div>
-
-                <div className="rounded-md border bg-background">
-                  <div className="overflow-auto">
-                    <table className="min-w-[1100px] w-full text-sm">
-                      <thead className="bg-muted/40">
-                        <tr className="text-left">
-                          <th className="px-3 py-2 font-semibold">Description</th>
-                          <th className="px-3 py-2 font-semibold">Unit</th>
-                          <th className="px-3 py-2 text-right font-semibold">Qty</th>
-                          <th className="px-3 py-2 text-right font-semibold">Price</th>
-                          <th className="px-3 py-2 text-right font-semibold">Gross</th>
-                          <th className="px-3 py-2 font-semibold">Disc Type</th>
-                          <th className="px-3 py-2 text-right font-semibold">Disc Amt</th>
-                          <th className="px-3 py-2 text-right font-semibold">Net Total</th>
+              {/* Table & Summary Section */}
+              <div className="flex flex-col xl:flex-row gap-6">
+                {/* Table */}
+                <div className="flex-1 rounded-lg border bg-white shadow-sm overflow-hidden min-h-[300px]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-100 text-slate-600 uppercase text-xs font-semibold">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Code</th>
+                        <th className="px-4 py-3 text-left">Description</th>
+                        <th className="px-4 py-3 text-center">Unit</th>
+                        <th className="px-4 py-3 text-right">Qty</th>
+                        <th className="px-4 py-3 text-right">Price</th>
+                        <th className="px-4 py-3 text-right">Gross</th>
+                        <th className="px-4 py-3 text-center">Disc Type</th>
+                        <th className="px-4 py-3 text-right">Disc Amt</th>
+                        <th className="px-4 py-3 text-right">Net Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {data.lines.map((l) => (
+                        <tr key={l.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-700">{l.product_id}</td>
+                          <td className="px-4 py-3 text-slate-600">{l.product_name}</td>
+                          <td className="px-4 py-3 text-center">{l.unit}</td>
+                          <td className="px-4 py-3 text-right">{l.qty}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">{money(l.price)}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">{money(l.gross)}</td>
+                          <td className="px-4 py-3 text-center text-xs text-slate-400">{l.disc_type}</td>
+                          <td className="px-4 py-3 text-right text-slate-500">{money(l.disc_amt)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">{money(l.net_total)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {data.lines.map((l) => (
-                          <tr key={l.id} className="border-t">
-                            <td className="px-3 py-2">{l.product_name ?? "-"}</td>
-                            <td className="px-3 py-2">{l.unit ?? "-"}</td>
-                            <td className="px-3 py-2 text-right">{l.qty}</td>
-                            <td className="px-3 py-2 text-right">{money(l.price)}</td>
-                            <td className="px-3 py-2 text-right">{money(l.gross)}</td>
-                            <td className="px-3 py-2">{l.disc_type}</td>
-                            <td className="px-3 py-2 text-right">{money(l.disc_amt)}</td>
-                            <td className="px-3 py-2 text-right">{money(l.net_total)}</td>
-                          </tr>
-                        ))}
-
-                        {data.lines.length === 0 && (
-                          <tr>
-                            <td colSpan={8} className="px-3 py-10 text-center text-muted-foreground">
-                              No invoice lines.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+
+                {/* Summary Box */}
+                <Card className="w-full xl:w-[320px] shadow-sm h-fit">
+                  <CardHeader className="bg-slate-50 py-3 border-b">
+                    <ShadCardTitle className="text-sm font-semibold text-blue-700">Summary</ShadCardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pt-4 text-sm">
+                    <div className="flex justify-between"><span className="text-slate-500">Discount</span><span>{money(data.summary.discount)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Vatable</span><span>{money(data.summary.vatable)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Memo</span><span>0.00</span></div>
+                    <Separator />
+                    <div className="flex justify-between text-blue-600 font-medium"><span>Net</span><span>{money(data.summary.net)}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">VAT</span><span>{money(data.summary.vat)}</span></div>
+                    <Separator className="bg-slate-200 h-[2px]" />
+                    <div className="flex justify-between font-bold text-lg text-slate-900"><span>TOTAL</span><span>{money(data.summary.total)}</span></div>
+                    <div className="flex justify-between font-medium text-red-600"><span>Balance</span><span>{money(data.summary.balance)}</span></div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           )}
