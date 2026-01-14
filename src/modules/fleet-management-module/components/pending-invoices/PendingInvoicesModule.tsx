@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+// ✅ FIX: Restored Button import for Pagination
+import { Button } from "@/components/ui/button"; 
 
 import type { FiltersState } from "./types";
 import { usePendingInvoices } from "./hooks/usePendingInvoices";
@@ -33,38 +33,36 @@ export default function PendingInvoicesModule() {
   const [detailsInvoiceNo, setDetailsInvoiceNo] = React.useState<string | null>(null);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 p-6 md:p-8">
       <div>
-        <div className="text-xl font-semibold">Pending Invoice Monitoring Dashboard</div>
-        <div className="text-sm text-muted-foreground">Track undelivered and uncleared printed receipts</div>
+        <div className="text-2xl font-bold tracking-tight">Pending Invoice Monitoring Dashboard</div>
+        <div className="text-sm text-muted-foreground mt-1">Track undelivered and uncleared printed receipts</div>
       </div>
 
       {data?.kpis && <DashboardCards kpis={data.kpis} />}
 
       {data?.kpis && <StatusCharts kpis={data.kpis} />}
 
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-sm font-semibold">Pending Invoice Monitoring</CardTitle>
-          </div>
-          <Button size="sm" onClick={() => setExportOpen(true)}>
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-        </CardHeader>
+      <Card className="shadow-sm border-slate-200">
+        
+        {/* Added 'pt-6' to top padding since header is gone */}
+        <CardContent className="p-6 space-y-4">
+          
+          <FiltersBar 
+            filters={filters} 
+            setFilters={setFilters} 
+            options={options} 
+            onExport={() => setExportOpen(true)} 
+          />
 
-        <CardContent className="space-y-3">
-          <FiltersBar filters={filters} setFilters={setFilters} options={options} />
-
-          {error && <div className="text-sm text-red-600">{error}</div>}
-          {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
+          {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</div>}
+          {loading && <div className="text-sm text-muted-foreground py-4 text-center">Loading data...</div>}
 
           {!loading && data && (
             <>
               <PendingInvoicesTable rows={data.rows} onOpenInvoice={(inv) => setDetailsInvoiceNo(inv)} />
 
-              <div className="flex items-center justify-between pt-3 text-sm text-muted-foreground">
+              <div className="flex items-center justify-between pt-4 text-sm text-muted-foreground border-t mt-4">
                 <div>
                   Showing <span className="font-medium text-foreground">{data.rows.length}</span> of{" "}
                   <span className="font-medium text-foreground">{data.total}</span>

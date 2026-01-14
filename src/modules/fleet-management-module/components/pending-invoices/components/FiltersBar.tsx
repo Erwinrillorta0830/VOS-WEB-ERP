@@ -1,9 +1,9 @@
-// modules/fleet-management-module/components/pending-invoices/components/FiltersBar.tsx
 "use client";
 
 import * as React from "react";
-import { Search } from "lucide-react";
+import { Search, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import type { FiltersState, PendingInvoiceOptions } from "../types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -11,13 +11,16 @@ export function FiltersBar({
   filters,
   setFilters,
   options,
+  onExport, // ✅ NEW: Receive export handler
 }: {
   filters: FiltersState;
   setFilters: (next: FiltersState) => void;
   options: PendingInvoiceOptions | null;
+  onExport: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      {/* Search Bar */}
       <div className="relative w-full md:flex-1">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
@@ -28,19 +31,28 @@ export function FiltersBar({
         />
       </div>
 
-      <div className="w-full md:w-[220px]">
-        <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v as any, page: 1 })}>
-          <SelectTrigger>
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            {(options?.statuses ?? ["All", "Unlinked", "For Dispatch", "Inbound", "Cleared"]).map((s) => (
-              <SelectItem key={s} value={s}>
-                {s === "All" ? "All Statuses" : s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Right Side: Status + Export Button */}
+      <div className="flex items-center gap-2">
+        <div className="w-full md:w-[125px]">
+          <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v as any, page: 1 })}>
+            <SelectTrigger>
+              <SelectValue placeholder="All Statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              {(options?.statuses ?? ["All", "Unlinked", "For Dispatch", "Inbound", "Cleared"]).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s === "All" ? "All Statuses" : s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* ✅ MOVED: Export Button is now here */}
+        <Button onClick={onExport} className="bg-slate-900 text-white hover:bg-slate-800 shrink-0">
+            <Download className="mr-2 h-4 w-4" />
+            Export
+        </Button>
       </div>
     </div>
   );

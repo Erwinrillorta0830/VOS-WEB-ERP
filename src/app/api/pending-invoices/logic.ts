@@ -49,6 +49,14 @@ function dateOnlyIso(v: unknown) {
   return s.includes("T") ? s.split("T")[0] : s;
 }
 
+// ✅ NEW HELPER: Get the next calendar day string (YYYY-MM-DD)
+// This ensures we cover the full 24 hours of the selected end date.
+function getNextDay(dateStr: string) {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+}
+
 export function derivePendingStatus(
   dispatch_plan: string,
   transaction_status: string | null
@@ -72,8 +80,12 @@ async function fetchInvoicesBase(filters: ListFilters) {
   if (filters.dateFrom && filters.dateFrom !== "") {
     directusFilter._and.push({ dispatch_date: { _gte: filters.dateFrom } });
   }
+  
+  // ✅ CRITICAL FIX: Use strictly LESS THAN (<) the NEXT day.
+  // This catches records like "2026-01-12 14:30:00" which failed the previous check.
   if (filters.dateTo && filters.dateTo !== "") {
-    directusFilter._and.push({ dispatch_date: { _lte: filters.dateTo } });
+    const nextDay = getNextDay(filters.dateTo);
+    directusFilter._and.push({ dispatch_date: { _lt: nextDay } });
   }
 
   // Basic Search (Only affects dashboard, not export if q is empty)
@@ -291,8 +303,6 @@ export async function fetchItemizedReplica(filters: ListFilters) {
 
 // ... (fetchInvoiceDetails remains the same as previous) ...
 export async function fetchInvoiceDetails(invoiceNo: string) {
-    // ... (Keep existing working code for fetchInvoiceDetails)
-    // Placeholder to keep file valid if you copy-paste:
     const headRes = await directusGet<DirectusListResponse<any>>("/sales_invoice", {
         fields: "*",
         filter: JSON.stringify({_and: [{ invoice_no: { _eq: invoiceNo } },{ sales_type: { _eq: 1 } }]}),

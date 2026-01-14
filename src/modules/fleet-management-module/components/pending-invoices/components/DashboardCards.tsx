@@ -44,9 +44,6 @@ export function DashboardCards({ kpis }: { kpis: PendingInvoiceKpis }) {
       <StatCard title="For Dispatch" value={kpis.by_status["For Dispatch"].count} icon={Send} accent="text-blue-600" />
       <StatCard title="Inbound" value={kpis.by_status.Inbound.count} icon={Package} accent="text-orange-600" />
       <StatCard title="Cleared" value={kpis.by_status.Cleared.count} icon={CheckCircle2} accent="text-green-600" />
-      <div className="md:col-span-5 -mt-2 text-right text-sm text-muted-foreground">
-        Total Amount: <span className="font-semibold text-foreground">{money(kpis.total_amount)}</span>
-      </div>
     </div>
   );
 }

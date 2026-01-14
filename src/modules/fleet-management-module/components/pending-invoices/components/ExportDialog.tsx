@@ -18,13 +18,11 @@ function money(n: number) { return Number(n || 0).toLocaleString(undefined, { mi
 
 type Preset = "All Time" | "Yesterday" | "Today" | "Tomorrow" | "This Week" | "This Month" | "This Year" | "Custom";
 
-// ✅ REMOVED 'currentFilters' prop
 export function ExportDialog({ open, onClose, options }: { open: boolean; onClose: () => void; options: PendingInvoiceOptions | null; }) {
   const [salesmanId, setSalesmanId] = React.useState<string>("All");
   const [customerCode, setCustomerCode] = React.useState<string>("All");
   const [status, setStatus] = React.useState<string>("All");
   
-  // ✅ Default to "All Time" so data is not hidden
   const [preset, setPreset] = React.useState<Preset>("All Time");
   const [dateFrom, setDateFrom] = React.useState<string>("");
   const [dateTo, setDateTo] = React.useState<string>("");
@@ -58,24 +56,31 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     }
   }, [preset]);
 
-  async function loadItemizedRows() {
+  // ✅ UPDATED: Fetch from the MAIN list API (headers only), not itemized
+  async function loadReportRows() {
     const p = new URLSearchParams();
     if (status !== "All") p.set("status", status);
     if (salesmanId !== "All") p.set("salesmanId", salesmanId);
     if (customerCode !== "All") p.set("customerCode", customerCode);
     if (dateFrom) p.set("dateFrom", dateFrom);
     if (dateTo) p.set("dateTo", dateTo);
+    
+    // Ensure we get all rows for the report
+    p.set("page", "1");
+    p.set("pageSize", "100000");
 
-    const res = await fetch(`/api/pending-invoices/itemized?${p.toString()}`);
+    // Calling the main list API
+    const res = await fetch(`/api/pending-invoices?${p.toString()}`);
     if (!res.ok) throw new Error("Failed to fetch report data");
     const json = await res.json();
-    return Array.isArray(json?.rows) ? json.rows : (Array.isArray(json) ? json : []);
+    
+    return Array.isArray(json?.rows) ? json.rows : [];
   }
 
   async function handleExport() {
     try {
       setIsExporting(true);
-      const rows = await loadItemizedRows();
+      const rows = await loadReportRows();
 
       if (rows.length === 0) {
         alert("No data found for the selected criteria.");
@@ -84,43 +89,64 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       }
 
       if (formatType === "Excel") {
-        const header = ["Invoice No", "Date", "Customer", "Salesman", "Dispatch Plan", "Status", "Product", "Unit", "Qty", "Net"];
+        // ✅ UPDATED: Columns match the Dashboard Table
+        const header = ["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Dispatch Plan", "Status"];
         const body = rows.map((r: any) => [
-          r.invoice_no, r.dispatch_date, r.customer, r.salesman, 
-          r.dispatch_plan === 'unlinked' ? '' : r.dispatch_plan, 
-          r.status, r.product_name, r.product_unit, Number(r.product_quantity), Number(r.product_net)
+          r.invoice_no, 
+          r.invoice_date, 
+          r.customer, 
+          r.salesman, 
+          Number(r.net_amount),
+          r.dispatch_plan === 'unlinked' ? '-' : r.dispatch_plan, 
+          r.pending_status
         ]);
         
         const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+        
+        // Auto-width columns for better visibility
+        (ws as any)["!cols"] = [
+            { wch: 15 }, // Invoice
+            { wch: 12 }, // Date
+            { wch: 30 }, // Customer
+            { wch: 20 }, // Salesman
+            { wch: 15 }, // Amount
+            { wch: 20 }, // Plan
+            { wch: 15 }, // Status
+        ];
+
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        XLSX.utils.book_append_sheet(wb, ws, "PendingInvoices");
         const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
         saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `PendingInvoices-${preset}.xlsx`);
       } else {
-        const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+        // ✅ UPDATED: PDF Columns match the Dashboard Table
+        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" }); // Landscape for better fit
         doc.setFontSize(14);
         doc.text("Pending Invoice Report", 40, 40);
         doc.setFontSize(10);
         
         const dateStr = preset === "All Time" ? "All Time" : `${dateFrom} to ${dateTo}`;
-        doc.text(`Range: ${dateStr} | Status: ${status} | Search: None`, 40, 55);
+        doc.text(`Range: ${dateStr} | Status: ${status}`, 40, 55);
 
         const body = rows.map((r: any) => [
             r.invoice_no, 
-            String(r.customer ?? "").substring(0, 20), 
+            r.invoice_date,
+            String(r.customer ?? "").substring(0, 30), // Truncate long names
+            String(r.salesman ?? "").substring(0, 20),
+            money(r.net_amount),
             r.dispatch_plan === 'unlinked' ? '-' : r.dispatch_plan,
-            String(r.status ?? "").substring(0, 15),
-            String(r.product_name ?? "").substring(0, 25),
-            r.product_quantity,
-            money(r.product_net)
+            r.pending_status
         ]);
 
         autoTable(doc, {
             startY: 70,
-            head: [["Inv #", "Customer", "Plan", "Status", "Product", "Qty", "Net"]],
+            head: [["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Plan", "Status"]],
             body: body,
-            styles: { fontSize: 8 },
-            headStyles: { fillColor: [20, 20, 20] }
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [20, 20, 20] }, // Black header
+            columnStyles: {
+                4: { halign: 'right' }, // Right align amount
+            }
         });
         doc.save(`PendingInvoices-${preset}.pdf`);
       }
@@ -133,6 +159,7 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     }
   }
 
+  // --- Render (No changes needed here) ---
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-[700px] p-0 overflow-hidden gap-0 bg-white">
