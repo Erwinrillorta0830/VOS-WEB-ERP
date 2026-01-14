@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
-// ✅ FIX: Restored Button import for Pagination
 import { Button } from "@/components/ui/button"; 
 
 import type { FiltersState } from "./types";
@@ -32,6 +31,9 @@ export default function PendingInvoicesModule() {
   const [exportOpen, setExportOpen] = React.useState(false);
   const [detailsInvoiceNo, setDetailsInvoiceNo] = React.useState<string | null>(null);
 
+  // Helper to safely calculate total pages
+  const totalPages = data ? Math.ceil(data.total / filters.pageSize) : 1;
+
   return (
     <div className="space-y-6 p-6 md:p-8">
       <div>
@@ -45,7 +47,6 @@ export default function PendingInvoicesModule() {
 
       <Card className="shadow-sm border-slate-200">
         
-        {/* Added 'pt-6' to top padding since header is gone */}
         <CardContent className="p-6 space-y-4">
           
           <FiltersBar 
@@ -63,10 +64,12 @@ export default function PendingInvoicesModule() {
               <PendingInvoicesTable rows={data.rows} onOpenInvoice={(inv) => setDetailsInvoiceNo(inv)} />
 
               <div className="flex items-center justify-between pt-4 text-sm text-muted-foreground border-t mt-4">
+                {/* ✅ FIX: Changed to "Page X of Y" format */}
                 <div>
-                  Showing <span className="font-medium text-foreground">{data.rows.length}</span> of{" "}
-                  <span className="font-medium text-foreground">{data.total}</span>
+                  Page <span className="font-medium text-foreground">{filters.page}</span> of{" "}
+                  <span className="font-medium text-foreground">{totalPages || 1}</span>
                 </div>
+                
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -79,7 +82,7 @@ export default function PendingInvoicesModule() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={filters.page * filters.pageSize >= data.total}
+                    disabled={filters.page >= totalPages}
                     onClick={() => setFilters({ ...filters, page: filters.page + 1 })}
                   >
                     Next
