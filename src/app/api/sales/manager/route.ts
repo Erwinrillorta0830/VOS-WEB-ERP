@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
-// ---- ENV / BASE URL (SAFE) ----
 const RAW_DIRECTUS_URL = process.env.DIRECTUS_URL || "";
-const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, ""); // remove trailing slash
+const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, ""); // trim trailing slashes
 
 const DIRECTUS_TOKEN =
     process.env.DIRECTUS_TOKEN ||
@@ -17,6 +16,11 @@ type DirectusErrorItem = {
     url: string;
 };
 
+if (!DIRECTUS_BASE) {
+    console.error("Missing DIRECTUS_URL in .env.local");
+}
+
+// --- 1. CONFIGURATION RULES ---
 const DIVISION_RULES: Record<string, { brands: string[]; sections: string[] }> = {
     "Dry Goods": {
         brands: [
@@ -148,17 +152,14 @@ const INTERNAL_CUSTOMER_KEYWORDS = [
     "USE",
 ];
 
-// ---- HELPERS ----
+// --- HELPERS ---
 function normalizeDate(d: string | null) {
-    // expects YYYY-MM-DD (your UI can pass this format)
-    return d ? d : null;
+    return d ? d : null; // expects YYYY-MM-DD
 }
 
 function getSafeId(val: any): string {
     if (val === null || val === undefined) return "";
-    if (typeof val === "object" && val !== null) {
-        return val.id ? String(val.id) : "";
-    }
+    if (typeof val === "object" && val !== null) return val.id ? String(val.id) : "";
     return String(val);
 }
 
@@ -176,7 +177,7 @@ function getDatesInRange(startDate: string, endDate: string) {
 function withDateFilters(baseQuery: string, dateField: string, fromDate: string | null, toDate: string | null) {
     if (!fromDate || !toDate) return baseQuery;
 
-    // More robust than _between, and avoids spaces/unencoded strings.
+    // Avoid `_between` with spaces; use ISO and encode it.
     const from = encodeURIComponent(`${fromDate}T00:00:00`);
     const to = encodeURIComponent(`${toDate}T23:59:59`);
     return (
@@ -212,7 +213,17 @@ async function directusFetchList<T>(
         const url = `${DIRECTUS_BASE}/items/${collection}?limit=${pageSize}&offset=${offset}${query}`;
 
         try {
-            const res = await fetch(url, { cache: "no-store", headers });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+            const res = await fetch(url, {
+                cache: "no-store",
+                headers,
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
             if (!res.ok) {
                 const text = await res.text().catch(() => "");
                 errors.push({
@@ -249,7 +260,6 @@ export async function GET(request: Request) {
 
     try {
         const { searchParams } = new URL(request.url);
-
         const rawFrom = searchParams.get("fromDate");
         const rawTo = searchParams.get("toDate");
         const activeTab = searchParams.get("activeTab") || "Overview";
@@ -257,7 +267,7 @@ export async function GET(request: Request) {
         const fromDate = normalizeDate(rawFrom);
         const toDate = normalizeDate(rawTo);
 
-        // ---- FETCH DATA ----
+        // --- FETCH DATA (stable + filtered) ---
         const invoiceQueryBase = `&fields=${encodeURIComponent(
             "invoice_id,invoice_date,total_amount,salesman_id,customer_code"
         )}`;
@@ -300,7 +310,7 @@ export async function GET(request: Request) {
             directusFetchList<any>("sections", `&fields=${encodeURIComponent("section_id,section_name")}`, errors),
         ]);
 
-        // ---- MAPS ----
+        // --- MAPS ---
         const supplierNameMap = new Map<string, string>();
         suppliers.forEach((s: any) => {
             const id = getSafeId(s.id);
@@ -323,13 +333,11 @@ export async function GET(request: Request) {
         const productMap = new Map<string, any>();
         products.forEach((p: any) => {
             const pId = getSafeId(p.product_id);
-            const stockCount = Number(p.stock) || Number(p.inventory) || Number(p.quantity) || 0;
-
             productMap.set(pId, {
                 ...p,
                 brand_name: brandMap.get(getSafeId(p.product_brand)) || "",
                 section_name: sectionMap.get(getSafeId(p.product_section)) || "",
-                stock: stockCount,
+                stock: Number(p.stock) || Number(p.inventory) || Number(p.quantity) || 0,
             });
         });
 
@@ -337,13 +345,12 @@ export async function GET(request: Request) {
         salesmen.forEach((s: any) => salesmanMap.set(getSafeId(s.id), String(s.salesman_name || "")));
 
         const customerMap = new Map<string, string>();
-        customers.forEach((c: any) => {
-            customerMap.set(String(c.customer_code), String(c.store_name || "").toUpperCase());
-        });
+        customers.forEach((c: any) =>
+            customerMap.set(String(c.customer_code), String(c.store_name || "").toUpperCase())
+        );
 
         const invoiceLookup = new Map<string, any>();
         invoices.forEach((inv: any) => {
-            // Key by invoice_id and also by Directus relational id if present
             const key1 = getSafeId(inv.invoice_id);
             const key2 = getSafeId(inv.id);
             if (key1) invoiceLookup.set(key1, inv);
@@ -356,28 +363,30 @@ export async function GET(request: Request) {
             if (k) returnLookup.set(k, r);
         });
 
-        // ---- AGGREGATION SETUP ----
+        // --- AGGREGATION SETUP ---
         const divisionStats = new Map<string, { good: number; bad: number }>();
         ALL_DIVISIONS.forEach((div) => divisionStats.set(div, { good: 0, bad: 0 }));
 
         const trendMap = new Map<string, { good: number; bad: number }>();
+
         const supplierSales = new Map<string, number>();
         const salesmanSales = new Map<string, number>();
         const productSales = new Map<string, number>();
         const customerSales = new Map<string, number>();
 
+        // Structure: Map<SupplierName, Map<SalesmanName, TotalAmount>>
+        const supplierSalesmanMap = new Map<string, Map<string, number>>();
+
         let totalGoodStockOutflow = 0;
         let totalBadStockInflow = 0;
 
-        // ---- IDENTIFICATION LOGIC ----
         const getSupplierName = (pId: string) => {
             const sId = productToSupplierMap.get(pId);
             if (sId && supplierNameMap.has(sId)) return supplierNameMap.get(sId)!;
 
             const pName = String(productMap.get(pId)?.product_name || "").toUpperCase();
             if (pName.includes("MEN2")) return "MEN2 MARKETING";
-            if (pName.includes("PUREFOODS") || pName.includes("PF")) return "FOODSPHERE INC";
-            if (pName.includes("CDO")) return "FOODSPHERE INC";
+            if (pName.includes("PUREFOODS") || pName.includes("PF") || pName.includes("CDO")) return "FOODSPHERE INC";
             if (pName.includes("VIRGINIA")) return "VIRGINIA FOOD INC";
             if (pName.includes("MEKENI")) return "MEKENI FOOD CORP";
             if (pName.includes("MAMA PINA")) return "MAMA PINA'S";
@@ -385,16 +394,15 @@ export async function GET(request: Request) {
         };
 
         const getTransactionDivision = (pId: string, invoiceId: string) => {
-            // 1) CUSTOMER-FIRST internal tagging
             const inv = invoiceLookup.get(invoiceId);
+
+            // 1) Internal tagging via customer keywords
             if (inv) {
                 const custName = customerMap.get(String(inv.customer_code)) || "";
-                if (INTERNAL_CUSTOMER_KEYWORDS.some((k) => custName.includes(k))) {
-                    return "Internal";
-                }
+                if (INTERNAL_CUSTOMER_KEYWORDS.some((k) => custName.includes(k))) return "Internal";
             }
 
-            // 2) BRAND/SECTION tagging
+            // 2) Brand/Section tagging
             const prod = productMap.get(pId);
             if (!prod) return "Dry Goods";
 
@@ -403,11 +411,7 @@ export async function GET(request: Request) {
             const pName = String(prod.product_name || "").toUpperCase();
 
             for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
-                if (
-                    rules.brands.some(
-                        (b) => pBrand.includes(b.toUpperCase()) || pName.includes(b.toUpperCase())
-                    )
-                )
+                if (rules.brands.some((b) => pBrand.includes(b.toUpperCase()) || pName.includes(b.toUpperCase())))
                     return divName;
                 if (rules.sections.some((s) => pSection.includes(s.toUpperCase()))) return divName;
             }
@@ -419,14 +423,12 @@ export async function GET(request: Request) {
             return realDivision === currentTab;
         };
 
-        // Init Trend (if range given)
+        // Init trend keys when range exists
         if (fromDate && toDate) {
-            for (const d of getDatesInRange(fromDate, toDate)) {
-                if (!trendMap.has(d)) trendMap.set(d, { good: 0, bad: 0 });
-            }
+            getDatesInRange(fromDate, toDate).forEach((d) => trendMap.set(d, { good: 0, bad: 0 }));
         }
 
-        // ---- PROCESS INVOICES ----
+        // --- PROCESS INVOICES ---
         invoiceDetails.forEach((det: any) => {
             const invId = getSafeId(det.invoice_no);
             const parent = invoiceLookup.get(invId);
@@ -435,8 +437,8 @@ export async function GET(request: Request) {
             const pId = getSafeId(det.product_id);
             const qty = Number(det.quantity) || 0;
             const amt = Number(det.total_amount) || 0;
-
             const realDivision = getTransactionDivision(pId, invId);
+
             if (divisionStats.has(realDivision)) divisionStats.get(realDivision)!.good += qty;
 
             if (isTabMatch(realDivision, activeTab)) {
@@ -456,13 +458,17 @@ export async function GET(request: Request) {
                 const smName = salesmanMap.get(getSafeId(parent.salesman_id)) || "Unknown Salesman";
                 salesmanSales.set(smName, (salesmanSales.get(smName) || 0) + amt);
 
-                const cName =
-                    customerMap.get(String(parent.customer_code)) || `Customer ${parent.customer_code}`;
+                const cName = customerMap.get(String(parent.customer_code)) || `Customer ${parent.customer_code}`;
                 customerSales.set(cName, (customerSales.get(cName) || 0) + amt);
+
+                // Supplier → Salesman breakdown
+                if (!supplierSalesmanMap.has(sName)) supplierSalesmanMap.set(sName, new Map());
+                const smMap = supplierSalesmanMap.get(sName)!;
+                smMap.set(smName, (smMap.get(smName) || 0) + amt);
             }
         });
 
-        // ---- PROCESS RETURNS ----
+        // --- PROCESS RETURNS ---
         returnDetails.forEach((ret: any) => {
             const retId = String(ret.return_no);
             const parent = returnLookup.get(retId);
@@ -471,18 +477,19 @@ export async function GET(request: Request) {
             const pId = getSafeId(ret.product_id);
             const qty = Number(ret.quantity) || 0;
 
-            // product-based fallback
+            // Product-based fallback
             const prod = productMap.get(pId);
             let realDivision = "Dry Goods";
+
             if (prod) {
                 const pBrand = String(prod.brand_name || "").toUpperCase();
                 const pSection = String(prod.section_name || "").toUpperCase();
+
                 for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
-                    if (rules.brands.some((b) => pBrand.includes(b.toUpperCase()))) {
-                        realDivision = divName;
-                        break;
-                    }
-                    if (rules.sections.some((s) => pSection.includes(s.toUpperCase()))) {
+                    if (
+                        rules.brands.some((b) => pBrand.includes(b.toUpperCase())) ||
+                        rules.sections.some((s) => pSection.includes(s.toUpperCase()))
+                    ) {
                         realDivision = divName;
                         break;
                     }
@@ -501,7 +508,7 @@ export async function GET(request: Request) {
             }
         });
 
-        // ---- CURRENT STOCK + VELOCITY ----
+        // --- CALCULATE STOCK ---
         let totalCurrentStock = 0;
 
         productMap.forEach((prod: any) => {
@@ -510,11 +517,10 @@ export async function GET(request: Request) {
             const pSection = String(prod.section_name || "").toUpperCase();
 
             for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
-                if (rules.brands.some((b) => pBrand.includes(b.toUpperCase()))) {
-                    prodDiv = divName;
-                    break;
-                }
-                if (rules.sections.some((s) => pSection.includes(s.toUpperCase()))) {
+                if (
+                    rules.brands.some((b) => pBrand.includes(b.toUpperCase())) ||
+                    rules.sections.some((s) => pSection.includes(s.toUpperCase()))
+                ) {
                     prodDiv = divName;
                     break;
                 }
@@ -525,76 +531,38 @@ export async function GET(request: Request) {
 
         const totalMoved = totalGoodStockOutflow + totalCurrentStock;
         const velocityRate = totalMoved > 0 ? (totalGoodStockOutflow / totalMoved) * 100 : 0;
-
-        let velocityStatus = "Stagnant";
-        if (velocityRate > 50) velocityStatus = "Fast Moving";
-        else if (velocityRate > 20) velocityStatus = "Healthy";
-        else if (velocityRate > 5) velocityStatus = "Slow Moving";
-
         const returnRate =
             totalGoodStockOutflow > 0 ? (totalBadStockInflow / totalGoodStockOutflow) * 100 : 0;
 
-        let badStockStatus = "Normal";
-        if (returnRate > 5) badStockStatus = "Critical";
-        else if (returnRate > 2) badStockStatus = "High";
-        else if (returnRate > 0) badStockStatus = "Normal";
-        else badStockStatus = "Excellent";
+        // --- FORMAT OUTPUT ---
+        const trendData = Array.from(trendMap.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([date, vals]) => ({
+                date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                goodStockOutflow: vals.good,
+                badStockInflow: vals.bad,
+            }));
 
-        // ---- FORMAT TREND ----
-        const trendData =
-            fromDate && toDate
-                ? getDatesInRange(fromDate, toDate).map((date) => ({
-                    date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-                    goodStockOutflow: trendMap.get(date)?.good || 0,
-                    badStockInflow: trendMap.get(date)?.bad || 0,
-                }))
-                : Array.from(trendMap.entries())
-                    .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([date, vals]) => ({
-                        date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-                        goodStockOutflow: vals.good,
-                        badStockInflow: vals.bad,
-                    }));
+        const supplierBreakdown = Array.from(supplierSalesmanMap.entries())
+            .map(([sName, smMap]) => {
+                const totalSales = Array.from(smMap.values()).reduce((a, b) => a + b, 0);
+                const salesmen = Array.from(smMap.entries())
+                    .map(([name, amount]) => ({
+                        name,
+                        amount,
+                        percent: totalSales > 0 ? ((amount / totalSales) * 100).toFixed(1) : "0",
+                    }))
+                    .sort((a, b) => b.amount - a.amount);
 
-        // ---- CHART LISTS ----
-        const allSupplierSales = Array.from(supplierSales.entries())
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-
-        const salesBySupplier = allSupplierSales.slice(0, 10);
-
-        const salesBySalesman = Array.from(salesmanSales.entries())
-            .map(([name, value]) => ({ name, sales: value }))
-            .sort((a, b) => b.sales - a.sales)
-            .slice(0, 10);
-
-        const topProducts = Array.from(productSales.entries())
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 50);
-
-        const topCustomers = Array.from(customerSales.entries())
-            .filter(([name]) => {
-                const upper = String(name || "").toUpperCase();
-                return !upper.includes("MEN2") && !INTERNAL_CUSTOMER_KEYWORDS.some((k) => upper.includes(k));
+                return { id: sName, name: sName, totalSales, salesmen };
             })
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 50);
-
-        const supplierBreakdown = allSupplierSales.map((s) => ({
-            id: s.name,
-            name: s.name,
-            totalSales: s.value,
-            salesmen: [{ name: "Total Sales", amount: s.value, percent: 100 }],
-        }));
+            .sort((a, b) => b.totalSales - a.totalSales);
 
         const divisionBreakdown = ALL_DIVISIONS.map((divName) => {
             const stats = divisionStats.get(divName) || { good: 0, bad: 0 };
             return {
                 division: divName,
                 goodStock: {
-                    velocityRate: 0,
                     totalOutflow: stats.good,
                     status: stats.good > 5000 ? "Healthy" : "Warning",
                 },
@@ -606,21 +574,37 @@ export async function GET(request: Request) {
             division: activeTab,
             goodStock: {
                 velocityRate: Math.round(velocityRate * 100) / 100,
-                status: velocityStatus,
+                status: velocityRate > 50 ? "Fast Moving" : velocityRate > 20 ? "Healthy" : "Slow Moving",
                 totalOutflow: totalGoodStockOutflow,
                 totalInflow: totalMoved,
             },
             badStock: {
                 accumulated: totalBadStockInflow,
-                status: badStockStatus,
+                status: returnRate > 5 ? "Critical" : "Normal",
                 totalInflow: totalBadStockInflow,
             },
             trendData,
-            salesBySupplier,
-            salesBySalesman,
+            salesBySupplier: supplierBreakdown.slice(0, 10).map((s) => ({ name: s.name, value: s.totalSales })),
+            salesBySalesman: Array.from(salesmanSales.entries())
+                .map(([name, value]) => ({ name, value }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, 10),
             supplierBreakdown,
             divisionBreakdown,
-            pareto: { products: topProducts, customers: topCustomers },
+            pareto: {
+                products: Array.from(productSales.entries())
+                    .map(([name, value]) => ({ name, value }))
+                    .sort((a, b) => b.value - a.value)
+                    .slice(0, 50),
+                customers: Array.from(customerSales.entries())
+                    .filter(([name]) => {
+                        const upper = String(name || "").toUpperCase();
+                        return !INTERNAL_CUSTOMER_KEYWORDS.some((k) => upper.includes(k));
+                    })
+                    .map(([name, value]) => ({ name, value }))
+                    .sort((a, b) => b.value - a.value)
+                    .slice(0, 50),
+            },
             _debug: {
                 directusUrl: DIRECTUS_BASE ? DIRECTUS_BASE + "/" : null,
                 hasToken: Boolean(DIRECTUS_TOKEN),
@@ -633,6 +617,7 @@ export async function GET(request: Request) {
                     returns: returns.length,
                     returnDetails: returnDetails.length,
                     products: products.length,
+                    supplierBreakdown: supplierBreakdown.length,
                 },
                 errors,
             },
@@ -644,7 +629,6 @@ export async function GET(request: Request) {
                 _debug: {
                     directusUrl: DIRECTUS_BASE ? DIRECTUS_BASE + "/" : null,
                     hasToken: Boolean(DIRECTUS_TOKEN),
-                    errors,
                 },
             },
             { status: 500 }
