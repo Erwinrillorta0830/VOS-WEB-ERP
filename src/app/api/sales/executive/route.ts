@@ -611,7 +611,7 @@ export async function GET(request: Request) {
         });
 
         // --- 6. PROCESS RETURNS (FIXED: matching + value) ---
-        // Build a set of ALL valid keys for returns within date range
+        // Build a set of ALL valid keys for return-management within date range
         // --- 6. PROCESS RETURNS (MATCH BY return_number + correct fields) ---
 
         function pickReturnDate(ret: any): string | null {
@@ -650,7 +650,7 @@ export async function GET(request: Request) {
         let unmatchedReturnDetails = 0;
         const unmatchedSamples: string[] = [];
 
-// Sum returns from details
+// Sum return-management from details
         returnDetails.forEach((rd: any) => {
             const rn = String(rd?.return_no ?? "").trim();
             if (!rn) return;
@@ -742,7 +742,7 @@ export async function GET(request: Request) {
         const collectionRate =
             netSales > 0 ? (grandTotalCollected / netSales) * 100 : 0;
 
-        // Division breakdown reflects net sales (minus returns)
+        // Division breakdown reflects net sales (minus return-management)
         const divisionSalesFormatted = Array.from(divisionTotals.entries())
             .map(([division, grossSales]) => {
                 const divReturns = divisionStats.get(division)?.returns || 0;

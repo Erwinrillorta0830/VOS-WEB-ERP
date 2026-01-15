@@ -63,7 +63,7 @@ export const useExecutiveData = () => {
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [dataSource, setDataSource] = useState<"directus" | "mock">("directus");
 
-    // Optional: if your API returns warnings (recommended), keep them here.
+    // Optional: if your API return-management warnings (recommended), keep them here.
     const [warnings, setWarnings] = useState<string[]>([]);
 
     const fetchDashboardData = useCallback(async () => {
@@ -91,7 +91,7 @@ export const useExecutiveData = () => {
             // First attempt
             let response = await fetchWithTimeout(url, undefined, 90_000);
 
-            // Optional one retry if the API returns transient server error
+            // Optional one retry if the API return-management transient server error
             if (!response.ok && (response.status === 500 || response.status === 503)) {
                 console.warn(`⚠️ Transient error (${response.status}). Retrying once...`);
                 response = await fetchWithTimeout(url, undefined, 90_000);

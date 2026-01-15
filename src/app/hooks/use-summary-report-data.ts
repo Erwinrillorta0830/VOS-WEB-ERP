@@ -58,7 +58,7 @@ export function useSummaryReportData(): UseSummaryReportDataReturn {
         if (salesmenResponse.ok) {
           const salesmenData = await salesmenResponse.json();
 
-          // API returns 'rows' not 'data'
+          // API return-management 'rows' not 'data'
           const salesmenArray = salesmenData.rows || salesmenData.data || [];
 
           const mappedSalesmen = salesmenArray.map((s: any) => ({
