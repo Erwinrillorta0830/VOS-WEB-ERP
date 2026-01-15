@@ -306,14 +306,25 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
     ]);
     const detailsRes = await directusGet<DirectusListResponse<any>>("/sales_invoice_details", {fields: "*",filter: JSON.stringify({invoice_no: { _eq: head.invoice_id }}),limit: "-1"});
     const rawLines = detailsRes.data ?? [];
+    
+    // --- Collect IDs for side-loading ---
     const productIds = [...new Set(rawLines.map((l: any) => l.product_id).filter(Boolean))];
     const unitIds = [...new Set(rawLines.map((l: any) => l.unit).filter(Boolean))];
-    const [productsRes, unitsRes] = await Promise.all([
+    // ✅ 1. Collect Discount Type IDs
+    const discountTypeIds = [...new Set(rawLines.map((l: any) => l.discount_type).filter(Boolean))];
+
+    const [productsRes, unitsRes, discountsRes] = await Promise.all([
         productIds.length > 0 ? directusGet<DirectusListResponse<any>>("/products", {fields: "product_id,product_name",filter: JSON.stringify({ product_id: { _in: productIds } }),limit: "-1"}) : { data: [] },
         unitIds.length > 0 ? directusGet<DirectusListResponse<any>>("/units", {fields: "unit_id,unit_name",filter: JSON.stringify({ unit_id: { _in: unitIds } }),limit: "-1"}) : { data: [] },
+        // ✅ 2. Fetch Discount Type Labels
+        discountTypeIds.length > 0 ? directusGet<DirectusListResponse<any>>("/discount_type", {fields: "id,discount_type",filter: JSON.stringify({ id: { _in: discountTypeIds } }),limit: "-1"}) : { data: [] },
     ]);
+
     const prodMap = new Map((productsRes.data ?? []).map((p: any) => [p.product_id, p.product_name]));
     const unitMap = new Map((unitsRes.data ?? []).map((u: any) => [u.unit_id, u.unit_name]));
+    // ✅ 3. Map Discount ID -> Label
+    const discountMap = new Map((discountsRes.data ?? []).map((d: any) => [d.id, d.discount_type]));
+
     const cust = custRes.data?.[0];
     const sale = saleRes.data?.[0];
     const docs = dispatchMap.get(head.invoice_id) ?? [];
@@ -341,13 +352,15 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
             unit: unitMap.get(l.unit) || String(l.unit),
             qty: toNum(l.quantity),
             price: toNum(l.unit_price),
-            gross: toNum(l.total_amount),
-            disc_type: toNum(l.discount_amount) > 0 ? "Discount" : "No Discount",
+            gross: toNum(l.gross_amount) > 0 ? toNum(l.gross_amount) : toNum(l.total_amount), // Use gross_amount from line if available
+            
+            // ✅ 4. Use the fetched label. Fallback to logic if not found.
+            disc_type: discountMap.get(l.discount_type) ?? (toNum(l.discount_amount) > 0 ? "Discount" : "No Discount"),
+            
             disc_amt: toNum(l.discount_amount),
             net_total: toNum(l.total_amount) - toNum(l.discount_amount),
         })),
         summary: {
-            // ✅ ADDED: Gross Amount
             gross: toNum(head.gross_amount),
             discount: toNum(head.discount_amount),
             vatable: toNum(head.net_amount) / 1.12,
