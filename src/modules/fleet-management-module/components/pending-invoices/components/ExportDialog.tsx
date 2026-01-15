@@ -56,7 +56,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     }
   }, [preset]);
 
-  // ✅ UPDATED: Fetch from the MAIN list API (headers only), not itemized
   async function loadReportRows() {
     const p = new URLSearchParams();
     if (status !== "All") p.set("status", status);
@@ -65,11 +64,9 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     if (dateFrom) p.set("dateFrom", dateFrom);
     if (dateTo) p.set("dateTo", dateTo);
     
-    // Ensure we get all rows for the report
     p.set("page", "1");
     p.set("pageSize", "100000");
 
-    // Calling the main list API
     const res = await fetch(`/api/pending-invoices?${p.toString()}`);
     if (!res.ok) throw new Error("Failed to fetch report data");
     const json = await res.json();
@@ -89,7 +86,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       }
 
       if (formatType === "Excel") {
-        // ✅ UPDATED: Columns match the Dashboard Table
         const header = ["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Dispatch Plan", "Status"];
         const body = rows.map((r: any) => [
           r.invoice_no, 
@@ -103,7 +99,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
         
         const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
         
-        // Auto-width columns for better visibility
         (ws as any)["!cols"] = [
             { wch: 15 }, // Invoice
             { wch: 12 }, // Date
@@ -119,8 +114,7 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
         const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
         saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `PendingInvoices-${preset}.xlsx`);
       } else {
-        // ✅ UPDATED: PDF Columns match the Dashboard Table
-        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" }); // Landscape for better fit
+        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
         doc.setFontSize(14);
         doc.text("Pending Invoice Report", 40, 40);
         doc.setFontSize(10);
@@ -131,7 +125,7 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
         const body = rows.map((r: any) => [
             r.invoice_no, 
             r.invoice_date,
-            String(r.customer ?? "").substring(0, 30), // Truncate long names
+            String(r.customer ?? "").substring(0, 30),
             String(r.salesman ?? "").substring(0, 20),
             money(r.net_amount),
             r.dispatch_plan === 'unlinked' ? '-' : r.dispatch_plan,
@@ -143,9 +137,9 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
             head: [["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Plan", "Status"]],
             body: body,
             styles: { fontSize: 9 },
-            headStyles: { fillColor: [20, 20, 20] }, // Black header
+            headStyles: { fillColor: [20, 20, 20] }, 
             columnStyles: {
-                4: { halign: 'right' }, // Right align amount
+                4: { halign: 'right' }, 
             }
         });
         doc.save(`PendingInvoices-${preset}.pdf`);
@@ -159,7 +153,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     }
   }
 
-  // --- Render (No changes needed here) ---
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-[700px] p-0 overflow-hidden gap-0 bg-white">
@@ -175,7 +168,23 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
                     <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="All">All Salesmen</SelectItem>
-                        {options?.salesmen?.map((s) => (<SelectItem key={s.id} value={String(s.id)}>{s.label}</SelectItem>))}
+                        {options?.salesmen?.map((s) => {
+                            // ✅ FIX: Enhanced Logic to clean up "83 -"
+                            const parts = s.label.split(" - ");
+                            // Try to grab name (part after dash)
+                            let displayName = parts.length > 1 ? parts.slice(1).join(" - ").trim() : s.label;
+                            
+                            // If resulting name is empty (e.g. input was "83 - "), use the ID (first part)
+                            if (!displayName) {
+                                displayName = parts[0].trim();
+                            }
+
+                            return (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                    {displayName}
+                                </SelectItem>
+                            );
+                        })}
                     </SelectContent>
                 </Select>
             </div>

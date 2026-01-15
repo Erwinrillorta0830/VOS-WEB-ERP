@@ -5,11 +5,12 @@ import { chunk, directusGet, type DirectusListResponse } from "./_directus";
 export type PendingStatus = "Unlinked" | "For Dispatch" | "Inbound" | "Cleared";
 
 export type PendingInvoiceListRow = {
-  id: number; // ✅ CRITICAL: Used for joining lines
+  id: number;
   invoice_no: string;
   invoice_date: string | null;
   customer: string | null;
   salesman: string | null;
+  salesman_id: number | null;
   net_amount: number;
   dispatch_plan: string;
   pending_status: PendingStatus;
@@ -49,8 +50,6 @@ function dateOnlyIso(v: unknown) {
   return s.includes("T") ? s.split("T")[0] : s;
 }
 
-// ✅ NEW HELPER: Get the next calendar day string (YYYY-MM-DD)
-// This ensures we cover the full 24 hours of the selected end date.
 function getNextDay(dateStr: string) {
     const d = new Date(dateStr);
     d.setDate(d.getDate() + 1);
@@ -76,19 +75,15 @@ async function fetchInvoicesBase(filters: ListFilters) {
     _and: [{ sales_type: { _eq: 1 } }],
   };
 
-  // ✅ Only apply date filters if they are NOT empty strings
-  if (filters.dateFrom && filters.dateFrom !== "") {
+  if (filters.dateFrom && filters.dateFrom.trim() !== "") {
     directusFilter._and.push({ dispatch_date: { _gte: filters.dateFrom } });
   }
   
-  // ✅ CRITICAL FIX: Use strictly LESS THAN (<) the NEXT day.
-  // This catches records like "2026-01-12 14:30:00" which failed the previous check.
-  if (filters.dateTo && filters.dateTo !== "") {
+  if (filters.dateTo && filters.dateTo.trim() !== "") {
     const nextDay = getNextDay(filters.dateTo);
     directusFilter._and.push({ dispatch_date: { _lt: nextDay } });
   }
 
-  // Basic Search (Only affects dashboard, not export if q is empty)
   if (filters.q?.trim()) {
     directusFilter._and.push({
       _or: [
@@ -179,11 +174,12 @@ export async function listPendingInvoices(filters: ListFilters) {
     const salesmanName = salesMap.get(inv.salesman_id);
 
     return {
-      id: inv.invoice_id, // ✅ ID used for matching details
+      id: inv.invoice_id,
       invoice_no: inv.invoice_no,
       invoice_date: dateOnlyIso(inv.dispatch_date),
       customer: custMap.get(inv.customer_code) ?? inv.customer_code,
-      salesman: salesmanName ? `${inv.salesman_id} - ${salesmanName}` : String(inv.salesman_id || ""),
+      salesman: salesmanName ?? "", 
+      salesman_id: inv.salesman_id,
       net_amount: toNum(inv.net_amount),
       dispatch_plan,
       pending_status: status,
@@ -194,7 +190,7 @@ export async function listPendingInvoices(filters: ListFilters) {
     rows = rows.filter((r) => r.pending_status === filters.status);
   }
   if (filters.salesmanId && filters.salesmanId !== "All") {
-    rows = rows.filter((r) => r.salesman?.startsWith(`${filters.salesmanId} -`));
+    rows = rows.filter((r) => String(r.salesman_id) === filters.salesmanId);
   }
   if (filters.customerCode && filters.customerCode !== "All") {
     rows = rows.filter((r) => {
@@ -231,20 +227,16 @@ export async function listPendingInvoices(filters: ListFilters) {
 
 // --- Itemized Replica (For Export) ---
 export async function fetchItemizedReplica(filters: ListFilters) {
-  // 1. Get filtered headers FIRST (Independent of dashboard state)
   const listResult = await listPendingInvoices({
     ...filters,
-    q: "", // ✅ Force search to empty, ignoring dashboard search
+    q: "",
     page: 1,
     pageSize: 100000,
   });
 
-  // 2. Extract Invoice IDs (Integers) for the join
   const validInvoiceIds = new Set(listResult.rows.map((r) => r.id));
-  
   if (validInvoiceIds.size === 0) return [];
 
-  // 3. Fetch Lines using Invoice IDs
   const invoiceIdArray = Array.from(validInvoiceIds);
   const allLines = [];
 
@@ -252,7 +244,6 @@ export async function fetchItemizedReplica(filters: ListFilters) {
      const detailsRes = await directusGet<DirectusListResponse<any>>("/sales_invoice_details", {
         fields: "invoice_no,product_id,unit,quantity,unit_price,total_amount,discount_amount",
         limit: "-1",
-        // ✅ Match by Invoice ID (stored in invoice_no column of details table)
         filter: JSON.stringify({ invoice_no: { _in: batch } }), 
      });
      if (detailsRes.data) {
@@ -260,7 +251,6 @@ export async function fetchItemizedReplica(filters: ListFilters) {
      }
   }
 
-  // 4. Fetch Metadata
   const productIds = [...new Set(allLines.map((l) => l.product_id).filter(Boolean))];
   const unitIds = [...new Set(allLines.map((l) => l.unit).filter(Boolean))];
 
@@ -280,7 +270,6 @@ export async function fetchItemizedReplica(filters: ListFilters) {
   const prodMap = new Map((productsRes.data ?? []).map((p) => [p.product_id, p.product_name]));
   const unitMap = new Map((unitsRes.data ?? []).map((u) => [u.unit_id, u.unit_name]));
 
-  // 5. Merge Header + Line
   const exportRows = [];
   const headersMap = new Map(listResult.rows.map((r) => [r.id, r]));
 
@@ -301,7 +290,7 @@ export async function fetchItemizedReplica(filters: ListFilters) {
   return exportRows;
 }
 
-// ... (fetchInvoiceDetails remains the same as previous) ...
+// --- Invoice Details (Single View) ---
 export async function fetchInvoiceDetails(invoiceNo: string) {
     const headRes = await directusGet<DirectusListResponse<any>>("/sales_invoice", {
         fields: "*",
@@ -339,7 +328,7 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
             customer_code: head.customer_code,
             customer_name: cust?.customer_name,
             address: [cust?.brgy, cust?.city, cust?.province].filter(Boolean).join(", "),
-            salesman: sale ? `${sale.id} - ${sale.salesman_name}` : "",
+            salesman: sale?.salesman_name ?? "", 
             sales_type: "Regular",
             price_type: sale?.price_type,
             status,
@@ -358,6 +347,8 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
             net_total: toNum(l.total_amount) - toNum(l.discount_amount),
         })),
         summary: {
+            // ✅ ADDED: Gross Amount
+            gross: toNum(head.gross_amount),
             discount: toNum(head.discount_amount),
             vatable: toNum(head.net_amount) / 1.12,
             net: toNum(head.net_amount),
