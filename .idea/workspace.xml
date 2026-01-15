@@ -5,121 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="update again">
-      <change afterPath="$PROJECT_DIR$/components/ui/accordion.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/command.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/dialog.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/form.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/pagination.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/progress.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/scroll-area.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/textarea.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/ui/toggle.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/favicon.ico" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/globals.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/inventory-reports/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/layout.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/return-to-supplier/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/sales-return-summary/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/sales-return/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/returns/sales-returnv3/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/[...path]/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/inventory-options/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/inventory-reports/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales-invoice/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales-return-summary/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/theme-provider.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/accordion.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/alert-dialog.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/alert.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/badge.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/button.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/card.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/checkbox.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/command.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/dialog.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/dropdown-menu.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/form.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/input.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/label.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/pagination.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/popover.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/progress.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/scroll-area.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/select.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/separator.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/sheet.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/sidebar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/skeleton.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/table.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/tabs.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/textarea.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/toggle.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/components/ui/tooltip.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/hooks/use-mobile.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/InventoryMonitoringModule.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/components/InventoryCharts.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/components/InventoryColumns.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/components/InventoryFilters.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/components/InventoryTable.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/hooks/useInventory.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/providers/fetchProviders.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/inventory-reports/types.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/layout/AppShell.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/layout/components/AppSidebar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/lib/invoice-helper.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/lib/prisma.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/lib/utils.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/lib/validator/sales-return.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/ReturnToSupplierModule.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/components/CreateReturnModal.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/components/PrintableReturnSlip.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/components/ProductPicker.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/components/ReturnReviewPanel.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/components/ReturnToSupplierList.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/providers/api.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/return-to-supplier/type.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-summary/SalesReturnModule.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-summary/components/SalesReturnPrintSlip.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-summary/components/SalesReturnSummary.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-summary/provider/api.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-summary/type.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-v2/SalesReturnModule.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-v2/components/SalesReturnForm.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-v2/components/SalesReturnList.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-v2/provider/api.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return-v2/types.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/SalesReturnModule.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/AddProductModal.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/CreateReturnDialog.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/DataTable.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/FilterToolbar.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/Header.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/PaginationFooter.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/SalesReturnForm.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/SalesReturnList.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/SalesReturnTable.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/components/StatusBadge.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/data/mock-data.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/data/mock-sales-returns.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/providers/SalesReturnProvider.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/providers/fetchProvider.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/types.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-return/types/index.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/SalesReturnModule.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/components/CreateSalesReturnModal.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/components/ProductLookupModal.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/components/SalesReturnHistory.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/components/SalesReturnPrintSlip.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/provider/api.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/modules/return-management/sales-returnv3/type.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/executive/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/hooks/use-summary-report-data.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/hooks/use-summary-report-data.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/hooks/use-executive-data.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks/use-executive-data.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -178,7 +65,7 @@
     "js.debugger.nextJs.config.created.client": "true",
     "js.debugger.nextJs.config.created.server": "true",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP/src/app/api",
+    "last_opened_file_path": "C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP/public",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -201,11 +88,11 @@
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\public" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\components\ui" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\modules\return-management" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\(app)\returns" />
-      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\components\ui" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api" />
@@ -254,7 +141,7 @@
       <workItem from="1768205570844" duration="15526000" />
       <workItem from="1768441369735" duration="2979000" />
       <workItem from="1768458930648" duration="456000" />
-      <workItem from="1768462873253" duration="1472000" />
+      <workItem from="1768462873253" duration="1777000" />
     </task>
     <task id="LOCAL-00001" summary="sales">
       <option name="closed" value="true" />
@@ -320,7 +207,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768442907361</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="update again">
+      <option name="closed" value="true" />
+      <created>1768464593996</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1768464593996</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

@@ -60,11 +60,11 @@ const MODULES: AppModule[] = [
     },
     {
         key: "purchase",
-        name: "Purchase",
-        href: "/app/purchase",
+        name: "Returns",
+        href: "/returns",
         icon: Package,
         accent: "from-emerald-400 to-teal-500",
-        available: false,
+        available: true,
     },
     {
         key: "inventory",
