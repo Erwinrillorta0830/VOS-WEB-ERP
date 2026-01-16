@@ -14,7 +14,9 @@ import type { PendingInvoiceOptions } from "../types";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-// ✅ REMOVED: XLSX import is no longer needed
+
+// ✅ ADDED: Sonner Toast for notifications
+import { toast } from "sonner";
 
 function yyyyMMdd(d: Date) { return format(d, "yyyy-MM-dd"); }
 function money(n: number) { return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -107,7 +109,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
   const [dateFrom, setDateFrom] = React.useState<string>("");
   const [dateTo, setDateTo] = React.useState<string>("");
 
-  // ✅ REMOVED: Format state (PDF/Excel) is gone.
   const [isExporting, setIsExporting] = React.useState(false);
 
   const salesmanOptions = React.useMemo(() => {
@@ -174,13 +175,14 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       const rows = await loadReportRows();
 
       if (rows.length === 0) {
-        alert("No data found for the selected criteria.");
+        // ✅ CHANGED: Used toast.error instead of alert()
+        toast.error("No data found", {
+          description: "There are no invoices matching your selected criteria."
+        });
         setIsExporting(false);
         return;
       }
 
-      // ✅ REMOVED: Excel Logic Block
-      // ✅ DEFAULT: Proceed directly to PDF generation
       const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       doc.setFontSize(14);
       doc.text("Pending Invoice Report", 40, 40);
@@ -212,9 +214,15 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       doc.save(`PendingInvoices-${preset}.pdf`);
       
       onClose();
+      // ✅ OPTIONAL: Success Toast
+      toast.success("Report Generated", { description: "Your PDF has been downloaded." });
+
     } catch (e) {
       console.error(e);
-      alert("Failed to export report");
+      // ✅ CHANGED: Used toast.error instead of alert()
+      toast.error("Export Failed", {
+        description: "An error occurred while generating the report. Please try again."
+      });
     } finally {
       setIsExporting(false);
     }
@@ -285,8 +293,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
                      </div>
                 )}
             </div>
-
-            {/* ✅ REMOVED: Format Selection Section */}
         </div>
 
         <DialogFooter className="bg-slate-50 p-4 border-t gap-3">
