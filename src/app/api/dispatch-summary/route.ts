@@ -4,36 +4,39 @@ import { NextResponse } from "next/server";
 const BASE_URL = process.env.REMOTE_API_BASE;
 const CACHE_TTL_SECONDS = 300; // Cache static data for 5 minutes
 
-// --- SIMPLE IN-MEMORY CACHE ---
-// In a serverless environment (Vercel), this cache persists only as long as the container is warm.
-// For production clusters, consider Redis. For now, this fixes the immediate crash.
+// --- IN-MEMORY CACHE SYSTEM ---
 const globalCache: Record<string, { data: any; timestamp: number }> = {};
 
 const getCachedData = async (key: string, fetcher: () => Promise<any>) => {
   const now = Date.now();
   const cached = globalCache[key];
 
-  // If cached and valid (less than 5 mins old), return it
+  // If cached data exists and is less than 5 minutes old, use it.
   if (cached && (now - cached.timestamp < CACHE_TTL_SECONDS * 1000)) {
     return cached.data;
   }
 
-  // Otherwise fetch, cache, and return
+  // Otherwise, fetch fresh data from the upstream API
   console.log(`[API] Cache MISS for ${key}. Fetching upstream...`);
-  const data = await fetcher();
-  globalCache[key] = { data, timestamp: now };
-  return data;
+  try {
+    const data = await fetcher();
+    globalCache[key] = { data, timestamp: now };
+    return data;
+  } catch (error) {
+    console.error(`[API] Failed to fetch ${key}`, error);
+    return { data: [] }; // Return empty structure on failure to prevent crash
+  }
 };
 
 // --- ENDPOINTS ---
 const API_ENDPOINTS = {
-  // Transactional Data (We still fetch these, but ideally filter by date if upstream supports it)
-  PLANS: (limit: string) => `${BASE_URL}/post_dispatch_plan?limit=${limit}`, 
+  // Live Data (Always fetched fresh)
+  PLANS: (limit: string) => `${BASE_URL}/post_dispatch_plan?limit=${limit}`,
   STAFF: (limit: string) => `${BASE_URL}/post_dispatch_plan_staff?limit=${limit}`,
   INVOICES: (limit: string) => `${BASE_URL}/post_dispatch_invoices?limit=${limit}`,
   
-  // Lookup Data (These rarely change, perfect for Caching)
-  SALES_INVOICES: `${BASE_URL}/sales_invoice?limit=-1`, // Warning: Heavy
+  // Static/Heavy Data (Cached)
+  SALES_INVOICES: `${BASE_URL}/sales_invoice?limit=-1`,
   VEHICLES: `${BASE_URL}/vehicles?limit=-1`,
   USERS: `${BASE_URL}/user?limit=-1`,
   CUSTOMERS: `${BASE_URL}/customer?limit=-1`,
@@ -45,14 +48,11 @@ const normalizeCode = (code: string) => code ? code.replace(/\s+/g, '') : '';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    // OPTIMIZATION: Allow frontend to request smaller chunks if needed. 
-    // Defaulting to -1 for now to maintain logic, but in V2, remove limit=-1.
     const limit = searchParams.get('limit') || '-1'; 
 
     console.log("[API] Starting Optimized Dispatch Summary Fetch...");
 
-    // 1. Parallel Fetch with Strategy
-    // We group "Live" data (needs to be fresh) vs "Static" data (can be cached)
+    // 1. Parallel Fetch with Caching Strategy
     const [
       plansData,
       staffData,
@@ -63,12 +63,12 @@ export async function GET(request: Request) {
       customersData,
       salesmenData
     ] = await Promise.all([
-      // --- LIVE DATA (Always fetch fresh) ---
+      // Live Data
       fetch(API_ENDPOINTS.PLANS(limit), { cache: 'no-store' }).then(r => r.json()),
       fetch(API_ENDPOINTS.STAFF(limit), { cache: 'no-store' }).then(r => r.json()),
       fetch(API_ENDPOINTS.INVOICES(limit), { cache: 'no-store' }).then(r => r.json()),
 
-      // --- CACHED DATA (Fetch once every 5 mins) ---
+      // Cached Data
       getCachedData('sales_invoices', () => fetch(API_ENDPOINTS.SALES_INVOICES).then(r => r.json())),
       getCachedData('vehicles', () => fetch(API_ENDPOINTS.VEHICLES).then(r => r.json())),
       getCachedData('users', () => fetch(API_ENDPOINTS.USERS).then(r => r.json())),
@@ -76,19 +76,16 @@ export async function GET(request: Request) {
       getCachedData('salesmen', () => fetch(API_ENDPOINTS.SALESMEN).then(r => r.json())),
     ]);
 
-    // 2. Optimized Processing
-    // We use Maps to avoid O(N^2) complexity.
-    
     const rawPlans = plansData.data || [];
     if (rawPlans.length === 0) return NextResponse.json({ data: [] });
 
-    // Build Maps
+    // 2. High-Performance Mapping (O(N) Complexity)
+    // Create Hash Maps for instant lookups instead of finding in arrays
     const userMap = new Map((usersData.data || []).map((u: any) => [String(u.user_id), `${u.user_fname} ${u.user_lname}`.trim()]));
     const vehicleMap = new Map((vehiclesData.data || []).map((v: any) => [String(v.vehicle_id), v.vehicle_plate]));
     const salesmanMap = new Map((salesmenData.data || []).map((s: any) => [String(s.id), s.salesman_name]));
     const salesInvoiceMap = new Map((salesInvoicesData.data || []).map((si: any) => [String(si.invoice_id), si]));
     
-    // Optimize Customer Map (Normalize keys once)
     const customerMap = new Map();
     (customersData.data || []).forEach((c: any) => {
         if (c.customer_code) customerMap.set(normalizeCode(c.customer_code), c);
@@ -109,21 +106,23 @@ export async function GET(request: Request) {
         if (s.role === 'Driver') driverByPlan.set(String(s.post_dispatch_plan_id), String(s.user_id));
     });
 
-    // 3. Mapping Logic
+    // 3. Assemble the Data
     const mappedPlans = rawPlans.map((plan: any) => {
         const planIdStr = String(plan.id);
+        
+        // Lookup Driver
         const driverUserId = driverByPlan.get(planIdStr) || String(plan.driver_id);
         const driverName = userMap.get(driverUserId) || 'Unknown Driver';
+        
+        // Lookup Vehicle
         const vehicleIdStr = plan.vehicle_id ? String(plan.vehicle_id) : '';
         const vehiclePlateNo = vehicleMap.get(vehicleIdStr) || 'Unknown Plate';
 
         const planInvoices = invoicesByPlan.get(planIdStr) || [];
         
-        // Find salesman from the first valid invoice to avoid looping all
+        // Identify Salesman (from first valid invoice)
         let foundSalesmanName = 'Unknown Salesman';
         let foundSalesmanId = 'N/A';
-        
-        // Optimization: Only look for salesman until found
         const representativeInvoice = planInvoices.find(inv => {
             const si = salesInvoiceMap.get(String(inv.invoice_id));
             return si && si.salesman_id;
@@ -136,6 +135,7 @@ export async function GET(request: Request) {
             foundSalesmanId = sIdStr;
         }
 
+        // Map Transactions
         const customerTransactions = planInvoices.map((inv: any) => {
             const salesInv = salesInvoiceMap.get(String(inv.invoice_id));
             let customerName = 'Unknown Customer';
@@ -156,7 +156,7 @@ export async function GET(request: Request) {
                 id: String(inv.id),
                 customerName,
                 address,
-                itemsOrdered: 'N/A', // Reduced payload if not used
+                itemsOrdered: 'N/A', 
                 amount,
                 status: inv.status
             };
@@ -183,8 +183,7 @@ export async function GET(request: Request) {
         };
     });
 
-    console.log(`[API] Successfully mapped ${mappedPlans.length} plans.`);
-    
+    console.log(`[API] Mapped ${mappedPlans.length} plans successfully.`);
     return NextResponse.json({ data: mappedPlans });
 
   } catch (err: any) {

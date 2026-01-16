@@ -5,8 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent, CardHeader, CardTitle as ShadCardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-// Ensure this type is updated to reflect the new fields if it's imported from an external file
-// For this example, I will assume the data structure matches the view.
 import type { InvoiceDetailsResponse } from "../types"; 
 
 function money(n: number) { return n?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "0.00"; }
@@ -23,7 +21,6 @@ function ReadonlyField({ label, value, className }: { label: string; value: Reac
 }
 
 export function InvoiceDetailsDialog({ open, invoiceNo, onClose }: { open: boolean; invoiceNo: string | null; onClose: () => void; }) {
-  // If InvoiceDetailsResponse doesn't include the new fields yet, you might need to update it or use 'any' temporarily
   const [data, setData] = React.useState<any | null>(null); 
   const [loading, setLoading] = React.useState(false);
 
@@ -79,7 +76,10 @@ export function InvoiceDetailsDialog({ open, invoiceNo, onClose }: { open: boole
                   <ReadonlyField label="Salesman" value={h.salesman} />
                   <ReadonlyField label="Location" value={h.address} />
                   <ReadonlyField label="Sales Type" value={h.sales_type} />
-                  <ReadonlyField label="Receipt Type" value="Cash" />
+                  
+                  {/* ✅ FIX: Display Dynamic Receipt Type */}
+                  <ReadonlyField label="Receipt Type" value={h.invoice_type} />
+                  
                   <ReadonlyField label="Price Type" value={h.price_type} />
                 </div>
               </div>
@@ -112,7 +112,6 @@ export function InvoiceDetailsDialog({ open, invoiceNo, onClose }: { open: boole
                           <td className="px-4 py-3 text-right text-slate-500">{money(l.product_unit_price || l.price)}</td>
                           <td className="px-4 py-3 text-right text-slate-500">{money(l.product_gross_amount || l.gross)}</td>
                           <td className="px-4 py-3 text-center text-xs text-slate-400">
-                              {/* Displaying discount type label from the view */}
                               {l.discount_type_label || l.disc_type || "-"}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-500">{money(l.product_discount_amount || l.disc_amt)}</td>
@@ -129,7 +128,6 @@ export function InvoiceDetailsDialog({ open, invoiceNo, onClose }: { open: boole
                     <ShadCardTitle className="text-sm font-semibold text-blue-700">Summary</ShadCardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3 pt-4 text-sm">
-                    {/* Added Gross Amount */}
                     <div className="flex justify-between">
                         <span className="text-slate-500">Gross Amount</span>
                         <span>{money(data.summary.gross_amount || data.summary.gross)}</span>
