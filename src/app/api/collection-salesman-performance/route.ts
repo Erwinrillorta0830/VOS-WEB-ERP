@@ -3,41 +3,38 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = process.env.API_BASE || process.env.NEXT_PUBLIC_API_BASE || "";
 
-interface CollectionRow {
-  id: number;
-  salesman_id: number | null;
-  collection_date: string;
-  totalAmount: number | string | null;
-}
+/**
+ * Helper to fetch all records across all pages.
+ * Essential for reaching the full 61M total.
+ */
+async function fetchAll(url: string) {
+  let allItems: any[] = [];
+  const limit = 1000;
+  let offset = 0;
+  let hasMore = true;
 
-interface CollectionDetailRow {
-  id: number;
-  collection_id: number;
-  customer_code: string | null;
-}
+  while (hasMore) {
+    const separator = url.includes("?") ? "&" : "?";
+    const response = await fetch(`${url}${separator}limit=${limit}&offset=${offset}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: 'no-store'
+    });
 
-interface SalesmanRow {
-  id: number;
-  salesman_name: string;
-}
+    if (!response.ok) break;
 
-interface CollectionResponse {
-  data: CollectionRow[];
-}
+    const result = await response.json();
+    const data = result.data || [];
+    allItems = [...allItems, ...data];
 
-interface DetailResponse {
-  data: CollectionDetailRow[];
+    if (data.length < limit) {
+      hasMore = false;
+    } else {
+      offset += limit;
+    }
+  }
+  return allItems;
 }
-
-interface SalesmanResponse {
-  data: SalesmanRow[];
-}
-
-const parseTotalAmount = (amount: CollectionRow["totalAmount"]): number => {
-  if (typeof amount === "number") return amount;
-  if (typeof amount === "string" && amount) return Number.parseFloat(amount);
-  return 0;
-};
 
 export async function GET(req: NextRequest) {
   if (!API_BASE) {
@@ -49,14 +46,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url);
-    const dateFrom = searchParams.get("date_from"); // YYYY-MM-DD
-    const dateTo = searchParams.get("date_to"); // YYYY-MM-DD
+    const dateFrom = searchParams.get("date_from");
+    const dateTo = searchParams.get("date_to");
     const salesmanIdParam = searchParams.get("salesman_id");
-    const salesmanIdFilter = salesmanIdParam
-      ? Number.parseInt(salesmanIdParam, 10)
-      : null;
+    const salesmanIdFilter = salesmanIdParam ? Number.parseInt(salesmanIdParam, 10) : null;
 
-    // Build day-range
     let startDate: Date | null = null;
     let endDate: Date | null = null;
 
@@ -71,181 +65,108 @@ export async function GET(req: NextRequest) {
 
     const base = API_BASE.replace(/\/$/, "");
 
-    const [collectionsRes, detailsRes, salesmenRes] = await Promise.all([
-      fetch(`${base}/items/collection?limit=-1`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }),
-      fetch(`${base}/items/collection_details?limit=-1`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }),
-      fetch(`${base}/items/salesman?limit=-1`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      }),
+    // 1. Fetch ALL data via pagination helper
+    const [collections, details, salesmen] = await Promise.all([
+      fetchAll(`${base}/items/collection`),
+      fetchAll(`${base}/items/collection_details`),
+      fetchAll(`${base}/items/salesman`),
     ]);
 
-    const handleApiError = async (res: Response, name: string) => {
-      const json = await res.json();
-      console.error(`${name} API error:`, json);
-      return NextResponse.json(
-        {
-          message:
-            json?.errors?.[0]?.message ||
-            json?.message ||
-            `Failed to fetch ${name}.`,
-        },
-        { status: res.status }
-      );
-    };
+    const salesmanMap = new Map(salesmen.map((s: any) => [s.id, s]));
 
-    if (!collectionsRes.ok)
-      return handleApiError(collectionsRes, "Collections");
-    if (!detailsRes.ok) return handleApiError(detailsRes, "Collection details");
-    if (!salesmenRes.ok) return handleApiError(salesmenRes, "Salesman list");
+    // 2. Filter for VALID (Not Cancelled) Collections
+    // This matches the logic in summary-report
+    const validCollections = collections.filter(c => c.isCancelled?.data?.[0] === 0);
+    const collectionMap = new Map(validCollections.map(c => [c.id, c]));
+    const validCollectionIds = new Set(validCollections.map(c => c.id));
 
-    const [collectionsData, detailsData, salesmenData] = await Promise.all([
-      collectionsRes.json() as Promise<CollectionResponse>,
-      detailsRes.json() as Promise<DetailResponse>,
-      salesmenRes.json() as Promise<SalesmanResponse>,
-    ]);
-
-    const collections = collectionsData?.data ?? [];
-    const details = detailsData?.data ?? [];
-    const salesmen = salesmenData?.data ?? [];
-
-    // Map salesmen for quick lookup
-    const salesmanMap = new Map<number, SalesmanRow>();
-    for (const s of salesmen) {
-      salesmanMap.set(s.id, s);
-    }
-
-    // Aggregate
+    // 3. Aggregate from DETAILS
+    // Using details ensures we match the Summary Report total exactly
     type Agg = {
       salesman_id: number;
       salesman_name: string;
       totalAmount: number;
-      collectionCount: number;
+      collectionIds: Set<number>;
       customers: Set<string>;
     };
 
     const aggs = new Map<number, Agg>();
-    
-    const allowedCollectionIds = new Set<number>();
+    let grandTotal = 0;
 
-    for (const c of collections) {
-      if (!c.salesman_id) continue;
+    details.forEach((d: any) => {
+      // Must belong to a non-cancelled collection
+      if (!validCollectionIds.has(d.collection_id)) return;
 
-      // filter by salesman
-      if (salesmanIdFilter && c.salesman_id !== salesmanIdFilter) continue;
+      const header = collectionMap.get(d.collection_id);
+      if (!header || !header.salesman_id) return;
 
-      const cDate = new Date(c.collection_date);
-      if (startDate && cDate < startDate) continue;
-      if (endDate && cDate > endDate) continue;
+      // Apply Salesman Filter
+      if (salesmanIdFilter && header.salesman_id !== salesmanIdFilter) return;
 
-      const salesman_id = c.salesman_id;
-      const sm = salesmanMap.get(salesman_id);
-      const salesman_name = sm?.salesman_name || `Salesman #${salesman_id}`;
+      // Apply Date Filter
+      const cDate = new Date(header.collection_date);
+      if (startDate && cDate < startDate) return;
+      if (endDate && cDate > endDate) return;
 
-      const totalAmountNum =
-        typeof c.totalAmount === "number"
-          ? c.totalAmount
-          : c.totalAmount
-          ? Number.parseFloat(c.totalAmount as string)
-          : 0;
+      const salesman_id = header.salesman_id;
+      const amount = Number(d.amount) || 0;
+
+      grandTotal += amount;
 
       let agg = aggs.get(salesman_id);
       if (!agg) {
         agg = {
           salesman_id,
-          salesman_name,
+          salesman_name: salesmanMap.get(salesman_id)?.salesman_name || `Salesman #${salesman_id}`,
           totalAmount: 0,
-          collectionCount: 0,
-          customers: new Set<string>(),
+          collectionIds: new Set(),
+          customers: new Set(),
         };
         aggs.set(salesman_id, agg);
       }
 
-      agg.totalAmount += totalAmountNum;
-      agg.collectionCount += 1;
-      allowedCollectionIds.add(c.id);
-    }
-
-    // Attach customers from collection_details
-    for (const d of details) {
-      if (!allowedCollectionIds.has(d.collection_id)) continue;
-      if (!d.customer_code) continue;
-
-      // Get salesman via header collection
-      const header = collections.find((c) => c.id === d.collection_id);
-      if (!header || !header.salesman_id) continue;
-      if (salesmanIdFilter && header.salesman_id !== salesmanIdFilter) continue;
-
-      const agg = aggs.get(header.salesman_id);
-      if (!agg) continue;
-      agg.customers.add(String(d.customer_code));
-    }
+      agg.totalAmount += amount;
+      agg.collectionIds.add(d.collection_id);
+      if (d.customer_code) agg.customers.add(String(d.customer_code));
+    });
 
     const aggList = Array.from(aggs.values());
 
-    const totalOverall = aggList.reduce((sum, a) => sum + a.totalAmount, 0);
-
+    // 4. Build Final Rows
     const rows = aggList
-      .map((a) => {
-        const collectionsCount = a.collectionCount;
-        const customersCount = a.customers.size;
-        const avgAmount =
-          collectionsCount > 0 ? a.totalAmount / collectionsCount : 0;
-        const percentOfTotal =
-          totalOverall > 0 ? (a.totalAmount / totalOverall) * 100 : 0;
-
-        return {
-          salesman_id: a.salesman_id,
-          salesman_name: a.salesman_name,
-          collections_count: collectionsCount,
-          customers_count: customersCount,
-          total_amount: a.totalAmount,
-          average_amount: avgAmount,
-          percent_of_total: percentOfTotal,
-        };
-      })
+      .map((a) => ({
+        salesman_id: a.salesman_id,
+        salesman_name: a.salesman_name,
+        collections_count: a.collectionIds.size,
+        customers_count: a.customers.size,
+        total_amount: Number(a.totalAmount.toFixed(2)),
+        average_amount: a.collectionIds.size > 0 ? a.totalAmount / a.collectionIds.size : 0,
+        percent_of_total: grandTotal > 0 ? (a.totalAmount / grandTotal) * 100 : 0,
+      }))
       .sort((a, b) => b.total_amount - a.total_amount);
 
-    const activeSalesmen = rows.length;
-    const avgPerSalesman =
-      activeSalesmen > 0 ? totalOverall / activeSalesmen : 0;
-    const topPerformer = rows[0]
-      ? {
+    return NextResponse.json({
+      rows,
+      summary: {
+        activeSalesmen: rows.length,
+        totalAmount: Number(grandTotal.toFixed(2)),
+        avgPerSalesman: rows.length > 0 ? grandTotal / rows.length : 0,
+        topPerformer: rows[0] ? {
           salesman_id: rows[0].salesman_id,
           salesman_name: rows[0].salesman_name,
-          total_amount: rows[0].total_amount,
-        }
-      : null;
+          total_amount: rows[0].total_amount
+        } : null,
+      },
+      salesmen: salesmen.map((s: any) => ({
+        id: s.id,
+        salesman_name: s.salesman_name,
+      })),
+    }, { status: 200 });
 
-    return NextResponse.json(
-      {
-        rows,
-        summary: {
-          activeSalesmen,
-          totalAmount: totalOverall,
-          avgPerSalesman,
-          topPerformer,
-        },
-        salesmen: salesmen.map((s) => ({
-          id: s.id,
-          salesman_name: s.salesman_name,
-        })),
-      },
-      { status: 200 }
-    );
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: "Failed to fetch salesman collection",
-        details: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: "Failed to fetch salesman performance",
+      details: error instanceof Error ? error.message : String(error),
+    }, { status: 500 });
   }
 }

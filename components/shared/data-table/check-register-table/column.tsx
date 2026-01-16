@@ -9,13 +9,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 interface CreateColumnsParams {
   statusFilter: string;
-  onCheckboxClick: (check: Check) => void;
   onUndoClick: (check: Check) => void;
 }
 
 export const createColumns = ({
   statusFilter,
-  onCheckboxClick,
   onUndoClick,
 }: CreateColumnsParams): ColumnDef<Check>[] => {
   // Function to get display status based on current tab and payment type
@@ -34,6 +32,35 @@ export const createColumns = ({
   };
 
   return [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+          className="mx-2"
+        />
+      ),
+      cell: ({ row }) => {
+        if (row.original.status === "Cleared") {
+          return <div className="mx-2 w-4" />;
+        }
+        return (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+            className="mx-2"
+          />
+        );
+      },
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       accessorKey: "date_received",
       header: ({ column }) => {
@@ -263,7 +290,6 @@ export const createColumns = ({
         );
       },
     },
-
     {
       accessorKey: "coa_title",
       header: ({ column }) => {
@@ -287,32 +313,21 @@ export const createColumns = ({
     },
     {
       id: "actions",
-      header: "Action",
+      header: ({ column }) => {
+        return <div className="text-center">Actions</div>;
+      },
       cell: ({ row }) => {
         const data = row.original;
         const isCleared = data.is_cleared === 1;
         const hasOrigin =
           data.origin_type !== null && data.origin_type !== undefined;
 
-        // CLEAR LOGIC: Show Checkbox if not cleared
-        if (
-          !isCleared &&
-          (data.payment_type === 96 || data.payment_type === 98)
-        ) {
-          return (
-            <Checkbox
-              onCheckedChange={() => onCheckboxClick(data)}
-              className="mx-2"
-            />
-          );
-        }
-        // 2. UNDO LOGIC: Show Undo button only if it has an origin (not legacy)
         if (isCleared && hasOrigin) {
           return (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onUndoClick(row.original)}
+              onClick={() => onUndoClick(data)}
               className="h-8 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50"
             >
               <RotateCcw className="mr-1 h-3 w-3" />
@@ -320,7 +335,6 @@ export const createColumns = ({
             </Button>
           );
         }
-
         return null;
       },
     },

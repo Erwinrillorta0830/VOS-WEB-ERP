@@ -1,378 +1,330 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+const RAW_DIRECTUS_URL = process.env.DIRECTUS_URL || "";
+const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, "");
 
-const DIRECTUS_URL = (process.env.DIRECTUS_URL ?? "http://100.110.197.61:8091")
-    .replace(/\/+$/, "");
-const DIRECTUS_TOKEN = process.env.DIRECTUS_TOKEN ?? "";
+const DIRECTUS_TOKEN =
+    process.env.DIRECTUS_TOKEN ||
+    process.env.DIRECTUS_ACCESS_TOKEN ||
+    process.env.DIRECTUS_STATIC_TOKEN ||
+    "";
 
-/* -------------------------------------------------------------------------- */
-/* DIRECTUS FETCH                                                             */
-/* -------------------------------------------------------------------------- */
+type DirectusErrorItem = {
+    collection: string;
+    status?: number;
+    message: string;
+    url: string;
+};
 
-function getHeaders(): HeadersInit {
-    const headers: HeadersInit = { "Content-Type": "application/json" };
-    if (DIRECTUS_TOKEN) headers["Authorization"] = `Bearer ${DIRECTUS_TOKEN}`;
-    return headers;
+function getSafeId(val: any): string {
+    if (val === null || val === undefined) return "";
+    if (typeof val === "object" && val !== null) return val.id ? String(val.id) : "";
+    return String(val);
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function normalizeDate(d: string | null) {
+    return d ? d : null; // expects YYYY-MM-DD
+}
 
-async function directusFetch(path: string, attempt = 1): Promise<any> {
-    const url = `${DIRECTUS_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-    const res = await fetch(url, { headers: getHeaders(), cache: "no-store" });
+function buildDateFilter(field: string, fromDate: string, toDate: string) {
+    // Use ISO gte/lte (avoid _between with spaces)
+    const from = encodeURIComponent(`${fromDate}T00:00:00`);
+    const to = encodeURIComponent(`${toDate}T23:59:59`);
+    return `&filter[${encodeURIComponent(field)}][_gte]=${from}&filter[${encodeURIComponent(field)}][_lte]=${to}`;
+}
 
-    // Retry only on transient “under pressure” responses
-    if ((res.status === 503 || res.status === 429) && attempt < 4) {
-        await sleep(400 * attempt);
-        return directusFetch(path, attempt + 1);
+async function directusFetchList<T>(
+    collection: string,
+    query: string,
+    errors: DirectusErrorItem[],
+    pageSize = 500
+): Promise<T[]> {
+    if (!DIRECTUS_BASE) {
+        errors.push({
+            collection,
+            status: undefined,
+            message: "Missing DIRECTUS_URL in environment",
+            url: "DIRECTUS_URL is empty",
+        });
+        return [];
     }
 
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(
-            `Directus request failed (${res.status}) for ${url}. Response: ${text.slice(
-                0,
-                900
-            )}`
-        );
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (DIRECTUS_TOKEN) headers.Authorization = `Bearer ${DIRECTUS_TOKEN}`;
+
+    const out: T[] = [];
+    let offset = 0;
+
+    for (let page = 0; page < 200; page++) {
+        const url = `${DIRECTUS_BASE}/items/${collection}?limit=${pageSize}&offset=${offset}${query}`;
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+            const res = await fetch(url, {
+                cache: "no-store",
+                headers,
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                errors.push({
+                    collection,
+                    status: res.status,
+                    message: `Directus request failed. ${text}`,
+                    url,
+                });
+                return out;
+            }
+
+            const json = await res.json();
+            const chunk = ((json?.data as T[]) || []) as T[];
+            out.push(...chunk);
+
+            if (chunk.length < pageSize) break;
+            offset += pageSize;
+        } catch (e: any) {
+            errors.push({
+                collection,
+                status: undefined,
+                message: e?.message || "Unknown fetch error",
+                url,
+            });
+            return out;
+        }
     }
 
-    return res.json();
+    return out;
 }
-
-function toMoney(v: any): number {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-}
-
-function safeNet(inv: any): number {
-    const total = toMoney(inv.total_amount);
-    const disc = toMoney(inv.discount_amount);
-    const net = total - disc;
-    return Number.isFinite(net) ? net : 0;
-}
-
-function monthKey(isoOrDate: string | null | undefined): string {
-    if (!isoOrDate) return "Unknown";
-    const s = String(isoOrDate);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 7);
-    return "Unknown";
-}
-
-/* -------------------------------------------------------------------------- */
-/* ROUTE                                                                      */
-/* -------------------------------------------------------------------------- */
 
 export async function GET(request: Request) {
+    const errors: DirectusErrorItem[] = [];
+
     try {
         const { searchParams } = new URL(request.url);
-        const fromDate = searchParams.get("fromDate"); // yyyy-MM-dd
-        const toDate = searchParams.get("toDate"); // yyyy-MM-dd
+        const fromDate = normalizeDate(searchParams.get("fromDate"));
+        const toDate = normalizeDate(searchParams.get("toDate"));
 
-        /* ---------------------------------------------------------------------- */
-        /* 1) FETCH (SAFE FIELDS ONLY)                                             */
-        /* ---------------------------------------------------------------------- */
+        if (!fromDate || !toDate) {
+            return NextResponse.json(
+                { success: false, error: "Missing date parameters" },
+                { status: 400 }
+            );
+        }
 
-        // Salesmen: keep it minimal to avoid field permission issues
-        const salesmenPromise = directusFetch(
-            `/items/salesman?fields=id,salesman_name&limit=-1`
-        ).catch(() => ({ data: [] }));
-
-        // Invoices: only fields we know exist and are commonly permitted
-        const invoicesPromise = directusFetch(
-            `/items/sales_invoice?fields=${encodeURIComponent(
-                [
-                    "invoice_id",
-                    "invoice_no",
-                    "invoice_date",
-                    "salesman_id",
-                    "total_amount",
-                    "discount_amount",
-                ].join(",")
-            )}&limit=-1`
-        ).catch(() => ({ data: [] }));
-
-        // Invoice details: optional, used for top products
-        const detailsPromise = directusFetch(
-            `/items/sales_invoice_details?fields=${encodeURIComponent(
-                ["invoice_no", "product_id", "total_amount", "quantity"].join(",")
-            )}&limit=-1`
-        ).catch(() => ({ data: [] }));
-
-        // Products: optional product map
-        const productsPromise = directusFetch(
-            `/items/products?fields=${encodeURIComponent(
-                ["product_id", "product_name"].join(",")
-            )}&limit=-1`
-        ).catch(() => ({ data: [] }));
-
-        // Customers: optional coverage (store_name)
-        const customersPromise = directusFetch(
-            `/items/customer?fields=${encodeURIComponent(["id", "store_name"].join(","))}&limit=-1`
-        ).catch(() => ({ data: [] }));
-
-        const [salesmenJson, invoicesJson, detailsJson, productsJson, customersJson] =
-            await Promise.all([
-                salesmenPromise,
-                invoicesPromise,
-                detailsPromise,
-                productsPromise,
-                customersPromise,
-            ]);
-
-        const salesmen = Array.isArray(salesmenJson?.data) ? salesmenJson.data : [];
-        const invoicesAll = Array.isArray(invoicesJson?.data) ? invoicesJson.data : [];
-        const invoiceDetails = Array.isArray(detailsJson?.data) ? detailsJson.data : [];
-        const products = Array.isArray(productsJson?.data) ? productsJson.data : [];
-        const customers = Array.isArray(customersJson?.data) ? customersJson.data : [];
-
-        /* ---------------------------------------------------------------------- */
-        /* 2) MAPS                                                                 */
-        /* ---------------------------------------------------------------------- */
-
-        const productNameById = new Map<string | number, string>(
-            products.map((p: any) => [p.product_id, String(p.product_name ?? "Unknown")])
+        const invoiceFields = encodeURIComponent(
+            "invoice_id,total_amount,discount_amount,net_amount,salesman_id,customer_code,invoice_date"
         );
+        const invoiceQuery = `&fields=${invoiceFields}${buildDateFilter(
+            "invoice_date",
+            fromDate,
+            toDate
+        )}`;
 
-        /* ---------------------------------------------------------------------- */
-        /* 3) FILTER INVOICES BY DATE RANGE                                        */
-        /* ---------------------------------------------------------------------- */
+        const invoiceDetailsQuery = `&fields=${encodeURIComponent(
+            "invoice_no,product_id,quantity,total_amount"
+        )}`;
 
-        const filteredInvoices = invoicesAll.filter((inv: any) => {
-            if (!inv.invoice_date) return false;
-            const d = String(inv.invoice_date).substring(0, 10);
-            if (fromDate && d < fromDate) return false;
-            if (toDate && d > toDate) return false;
-            return true;
+        const returnsQuery = `&fields=${encodeURIComponent(
+            "total_amount,return_date"
+        )}${buildDateFilter("return_date", fromDate, toDate)}`;
+
+        const rtsQuery = `&fields=${encodeURIComponent(
+            "supplier_id,transaction_date"
+        )}${buildDateFilter("transaction_date", fromDate, toDate)}`;
+
+        const [
+            salesmen,
+            invoices,
+            invoiceDetails,
+            returns,
+            customers,
+            products,
+            rtsData,
+            storeTypes,
+        ] = await Promise.all([
+            directusFetchList<any>(
+                "salesman",
+                `&fields=${encodeURIComponent("id,salesman_name,isActive")}`,
+                errors
+            ),
+            directusFetchList<any>("sales_invoice", invoiceQuery, errors),
+            directusFetchList<any>("sales_invoice_details", invoiceDetailsQuery, errors),
+            directusFetchList<any>("sales_return", returnsQuery, errors),
+            directusFetchList<any>(
+                "customer",
+                `&fields=${encodeURIComponent("id,customer_code,store_type")}`,
+                errors
+            ),
+            directusFetchList<any>(
+                "products",
+                `&fields=${encodeURIComponent("product_id,product_name,isActive")}`,
+                errors
+            ),
+            directusFetchList<any>("return_to_supplier", rtsQuery, errors),
+            directusFetchList<any>(
+                "store_type",
+                `&fields=${encodeURIComponent("id,store_type")}`,
+                errors
+            ),
+        ]);
+
+        const activeSalesmenSet = new Set<string>();
+        const activeProductsSet = new Set<string>();
+        const invoicedCustomerCodes = new Set<string>();
+        const activeSuppliersSet = new Set<string>();
+
+        const salesmanSalesMap = new Map<string, number>();
+        const productVolumeMap = new Map<string, number>();
+
+        let totalNetSales = 0;
+        let totalDiscounts = 0;
+
+        // 1) Process Invoices & Salesmen
+        invoices.forEach((inv: any) => {
+            totalNetSales += Number(inv.net_amount) || 0;
+            totalDiscounts += Number(inv.discount_amount) || 0;
+
+            if (inv.customer_code) invoicedCustomerCodes.add(String(inv.customer_code));
+
+            const sId = getSafeId(inv.salesman_id);
+            if (sId) {
+                activeSalesmenSet.add(sId);
+                salesmanSalesMap.set(sId, (salesmanSalesMap.get(sId) || 0) + (Number(inv.net_amount) || 0));
+            }
         });
 
-        /* ---------------------------------------------------------------------- */
-        /* 4) INIT SALESMAN STATS                                                  */
-        /* ---------------------------------------------------------------------- */
+        // 2) Process Suppliers (Returns-to-supplier based)
+        rtsData.forEach((rts: any) => {
+            const suppId = getSafeId(rts.supplier_id);
+            if (suppId) activeSuppliersSet.add(suppId);
+        });
 
-        const DEFAULT_TARGET = 500_000;
+        // 3) Process Product Volumes (details grouped by invoice id)
+        const detailsMap = new Map<string, any[]>();
+        invoiceDetails.forEach((det: any) => {
+            const invNo = getSafeId(det.invoice_no);
+            if (!invNo) return;
+            if (!detailsMap.has(invNo)) detailsMap.set(invNo, []);
+            detailsMap.get(invNo)!.push(det);
+        });
 
-        const salesmanStats = new Map<
-            string,
-            {
-                id: string;
-                name: string;
-                netSales: number;
-                target: number;
-                returnRate: number; // placeholder
-                visits: number; // estimated
-                orders: number;
-                strikeRate: number;
-                topProduct: string;
-                topSupplier: string; // placeholder
-                productsSold: number;
-                productCounts: Map<string, number>; // product -> sales
-            }
-        >();
-
-        salesmen.forEach((s: any) => {
-            const id = String(s.id);
-            const name = String(s.salesman_name ?? `Salesman ${id}`).trim();
-
-            // If you later confirm an "isActive" field is permitted, you can filter here.
-            salesmanStats.set(id, {
-                id,
-                name,
-                netSales: 0,
-                target: DEFAULT_TARGET,
-                returnRate: 0,
-                visits: 0,
-                orders: 0,
-                strikeRate: 0,
-                topProduct: "N/A",
-                topSupplier: "Internal",
-                productsSold: 0,
-                productCounts: new Map(),
+        invoices.forEach((inv: any) => {
+            const invId = getSafeId(inv.invoice_id) || getSafeId(inv.id);
+            const relatedDetails = detailsMap.get(invId) || [];
+            relatedDetails.forEach((det: any) => {
+                const pId = getSafeId(det.product_id);
+                if (!pId) return;
+                activeProductsSet.add(pId);
+                productVolumeMap.set(
+                    pId,
+                    (productVolumeMap.get(pId) || 0) + (Number(det.quantity) || 0)
+                );
             });
         });
 
-        /* ---------------------------------------------------------------------- */
-        /* 5) AGGREGATE TEAM + PER SALESMAN                                        */
-        /* ---------------------------------------------------------------------- */
+        // 4) Coverage Metrics
+        const sariSariIds = storeTypes
+            .filter((st: any) => String(st.store_type || "").toLowerCase().includes("sari"))
+            .map((st: any) => getSafeId(st.id))
+            .filter(Boolean);
 
-        let teamSales = 0;
-        let totalInvoicesCount = 0;
-
-        // Map invoice_id -> salesman_id (for detail attribution)
-        const invoiceIdToSalesman = new Map<string | number, string>();
-        // Also track valid invoice ids for quick lookup
-        const validInvoiceIds = new Set<string | number>();
-
-        filteredInvoices.forEach((inv: any) => {
-            const sid = String(inv.salesman_id ?? "");
-            const stats = salesmanStats.get(sid);
-            if (!stats) return;
-
-            const net = safeNet(inv);
-            stats.netSales += net;
-            stats.orders += 1;
-
-            teamSales += net;
-            totalInvoicesCount += 1;
-
-            const invId = inv.invoice_id;
-            validInvoiceIds.add(invId);
-            invoiceIdToSalesman.set(invId, sid);
-        });
-
-        // Team target = number of active salesmen * default target
-        const teamTarget = salesmanStats.size * DEFAULT_TARGET;
-
-        /* ---------------------------------------------------------------------- */
-        /* 6) INVOICE DETAILS -> TOP PRODUCTS                                      */
-        /* ---------------------------------------------------------------------- */
-
-        // Team-wide product totals
-        const teamProductTotals = new Map<string, number>();
-
-        invoiceDetails.forEach((det: any) => {
-            // In Directus relational setups, invoice_no might be:
-            // - a number (invoice_id)
-            // - or an object { id: ... }
-            const invId =
-                typeof det.invoice_no === "object" ? det.invoice_no?.id : det.invoice_no;
-
-            if (!validInvoiceIds.has(invId)) return;
-
-            const sid = invoiceIdToSalesman.get(invId);
-            if (!sid) return;
-
-            const stats = salesmanStats.get(sid);
-            if (!stats) return;
-
-            const pName =
-                productNameById.get(det.product_id) ||
-                (det.product_id ? `Product ${det.product_id}` : "Unknown");
-
-            const val = toMoney(det.total_amount);
-
-            // per salesman
-            stats.productCounts.set(pName, (stats.productCounts.get(pName) || 0) + val);
-
-            // team wide
-            teamProductTotals.set(pName, (teamProductTotals.get(pName) || 0) + val);
-        });
-
-        /* ---------------------------------------------------------------------- */
-        /* 7) FINALIZE SALESMAN STATS                                              */
-        /* ---------------------------------------------------------------------- */
-
-        const salesmenList = Array.from(salesmanStats.values())
-            .map((s) => {
-                // top product
-                let topP = "N/A";
-                let maxVal = 0;
-                s.productCounts.forEach((val, key) => {
-                    if (val > maxVal) {
-                        maxVal = val;
-                        topP = key;
-                    }
-                });
-
-                // estimated visits + strike rate
-                const estimatedVisits = s.orders > 0 ? Math.round(s.orders * 1.3) : 0;
-                const strikeRate =
-                    estimatedVisits > 0 ? Math.round((s.orders / estimatedVisits) * 100) : 0;
-
-                // products sold = unique products
-                const productsSold = s.productCounts.size;
-
-                return {
-                    ...s,
-                    topProduct: topP,
-                    visits: estimatedVisits,
-                    strikeRate,
-                    productsSold,
-                    // keep returnRate at 0 unless you add real returns logic later
-                    returnRate: 0,
-                };
+        const restoIds = storeTypes
+            .filter((st: any) => {
+                const t = String(st.store_type || "").toLowerCase();
+                return t.includes("resto") || t.includes("restaurant");
             })
-            .sort((a, b) => b.netSales - a.netSales);
+            .map((st: any) => getSafeId(st.id))
+            .filter(Boolean);
 
-        /* ---------------------------------------------------------------------- */
-        /* 8) COVERAGE (CUSTOMERS)                                                 */
-        /* ---------------------------------------------------------------------- */
-
-        let sariSariCount = 0;
-        let restoCount = 0;
-        let othersCount = 0;
-
-        customers.forEach((c: any) => {
-            const name = String(c.store_name ?? "").toUpperCase();
-            if (name.includes("SARI") || name.includes("STORE")) sariSariCount++;
-            else if (name.includes("RESTO") || name.includes("CAFE") || name.includes("KITCHEN"))
-                restoCount++;
-            else othersCount++;
-        });
-
-        const coverageDistribution = [
-            { type: "Sari-Sari Store", count: sariSariCount, fill: "#3b82f6" },
-            { type: "Restaurant", count: restoCount, fill: "#10b981" },
-            { type: "Others", count: othersCount, fill: "#f59e0b" },
-        ];
-
-        const totalCustomers = customers.length;
-        const penetrationRate =
-            totalCustomers > 0
-                ? (((sariSariCount + restoCount) / totalCustomers) * 100).toFixed(1)
-                : "0.0";
-
-        /* ---------------------------------------------------------------------- */
-        /* 9) MONTHLY PERFORMANCE (REAL AGG, LAST 6 MONTHS)                        */
-        /* ---------------------------------------------------------------------- */
-
-        const monthAgg = new Map<string, number>();
-        filteredInvoices.forEach((inv: any) => {
-            const m = monthKey(inv.invoice_date);
-            monthAgg.set(m, (monthAgg.get(m) || 0) + safeNet(inv));
-        });
-
-        const monthsSorted = Array.from(monthAgg.entries()).sort((a, b) =>
-            a[0].localeCompare(b[0])
+        const sariSariCustomers = customers.filter((c: any) =>
+            sariSariIds.includes(getSafeId(c.store_type))
+        );
+        const restoCustomers = customers.filter((c: any) =>
+            restoIds.includes(getSafeId(c.store_type))
         );
 
-        const monthlyPerformance = monthsSorted.slice(-6).map(([month, achieved]) => ({
-            month,
-            target: DEFAULT_TARGET, // placeholder; swap with real target table later
-            achieved,
-        }));
+        const sariInvoiced = sariSariCustomers.filter((c: any) =>
+            invoicedCustomerCodes.has(String(c.customer_code))
+        ).length;
 
-        /* ---------------------------------------------------------------------- */
-        /* 10) TOP PRODUCTS (TEAM-WIDE)                                            */
-        /* ---------------------------------------------------------------------- */
+        const restoInvoiced = restoCustomers.filter((c: any) =>
+            invoicedCustomerCodes.has(String(c.customer_code))
+        ).length;
 
-        const topProducts = Array.from(teamProductTotals.entries())
-            .map(([name, sales]) => ({ name, sales }))
-            .sort((a, b) => b.sales - a.sales)
-            .slice(0, 10);
+        const totalReturnAmt = returns.reduce(
+            (acc: number, curr: any) => acc + (Number(curr.total_amount) || 0),
+            0
+        );
+
+        const returnRate =
+            totalNetSales > 0
+                ? (((totalReturnAmt + totalDiscounts) / totalNetSales) * 100).toFixed(2)
+                : "0.00";
 
         return NextResponse.json({
             success: true,
             data: {
-                teamSales,
-                teamTarget,
-                totalInvoices: totalInvoicesCount,
-                penetrationRate: Number(penetrationRate),
-                coverageDistribution,
-                salesmen: salesmenList,
-                monthlyPerformance,
-                topProducts,
-                // Keep placeholders; your page already has fallbacks
-                topSuppliers: [],
-                returnHistory: [],
+                activeSalesmen: activeSalesmenSet.size,
+                topProductsCount: activeProductsSet.size,
+                suppliersCount: activeSuppliersSet.size,
+                returnRate,
+                strikeRate:
+                    customers.length > 0
+                        ? ((invoicedCustomerCodes.size / customers.length) * 100).toFixed(1)
+                        : "0.0",
+                coverage: {
+                    sariPercent:
+                        sariSariCustomers.length > 0
+                            ? Math.round((sariInvoiced / sariSariCustomers.length) * 100)
+                            : 0,
+                    restoPercent:
+                        restoCustomers.length > 0
+                            ? Math.round((restoInvoiced / restoCustomers.length) * 100)
+                            : 0,
+                },
+                salesmanRanking: salesmen
+                    .filter((s: any) => s.isActive === 1)
+                    .map((s: any) => ({
+                        name: s.salesman_name,
+                        amount: salesmanSalesMap.get(String(s.id)) || 0,
+                    }))
+                    .sort((a, b) => b.amount - a.amount)
+                    .slice(0, 5),
+                topProducts: products
+                    .filter((p: any) => p.isActive === 1)
+                    .map((p: any) => ({
+                        name: p.product_name,
+                        cases: productVolumeMap.get(String(p.product_id)) || 0,
+                    }))
+                    .sort((a, b) => b.cases - a.cases)
+                    .slice(0, 5),
+            },
+            _debug: {
+                directusUrl: DIRECTUS_BASE ? DIRECTUS_BASE + "/" : null,
+                hasToken: Boolean(DIRECTUS_TOKEN),
+                fromDate,
+                toDate,
+                counts: {
+                    salesmen: salesmen.length,
+                    invoices: invoices.length,
+                    invoiceDetails: invoiceDetails.length,
+                    returns: returns.length,
+                    customers: customers.length,
+                    products: products.length,
+                    rtsData: rtsData.length,
+                    storeTypes: storeTypes.length,
+                },
+                errors,
             },
         });
     } catch (error: any) {
-        console.error("Supervisor API Error:", error);
         return NextResponse.json(
-            { success: false, error: error?.message ?? String(error) },
+            { success: false, error: error?.message || "Unknown error" },
             { status: 500 }
         );
     }

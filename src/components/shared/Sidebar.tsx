@@ -1,216 +1,198 @@
-// src/components/shared/Sidebar.tsx
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { cn } from "../../lib/utils";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+
 import {
-  LayoutDashboard,
-  Users,
-  TrendingUp,
-  Package,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-    Activity,
+    LayoutDashboard,
+    Users,
+    TrendingUp,
+    Package,
     Presentation,
+    PanelLeft,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 
 interface NavItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  role?: string[];
+    title: string;
+    href: string;
+    icon: React.ComponentType<{ className?: string }>;
+    role?: string[];
 }
 
 const navItems: NavItem[] = [
-  {
-    title: "Executive Dashboard",
-    href: "/bi/executive",
-    icon: LayoutDashboard,
-    role: ["executive"],
-  },
     {
-        title: "Executive Dashboard V2 (test)",
-        href: "/bi/executive-v2",
+        title: "Executive Dashboard",
+        href: "/bi/executive",
+        icon: LayoutDashboard,
+        role: ["executive"],
+    },
+    {
+        title: "Divisions Head Dashboard (test)",
+        href: "/bi/divisionshead",
         icon: Presentation,
         role: ["executive"],
     },
-  {
-    title: "Manager Dashboard",
-    href: "/bi/manager",
-    icon: TrendingUp,
-    role: ["manager", "executive"], // Add executive here
-  },
-  {
-    title: "Supervisor Dashboard",
-    href: "/bi/supervisor",
-    icon: Users,
-    role: ["supervisor", "executive"], // Add executive here
-  },
-  {
-    title: "Salesman Dashboard",
-    href: "/bi/encoder",
-    icon: Package,
-    role: ["encoder", "executive"], // Add executive here
-  },
+    {
+        title: "Manager Dashboard",
+        href: "/bi/manager",
+        icon: TrendingUp,
+        role: ["manager", "executive"],
+    },
+    {
+        title: "Supervisor Dashboard",
+        href: "/bi/supervisor",
+        icon: Users,
+        role: ["supervisor", "executive"],
+    },
+    {
+        title: "Salesman Dashboard",
+        href: "/bi/salesman",
+        icon: Package,
+        role: ["salesman", "executive"],
+    },
 ];
 
-export function Sidebar() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
-  const [userRole, setUserRole] = useState<string>("");
-  const [isCOO, setIsCOO] = useState(false);
-  const [mounted, setMounted] = useState(false);
+// Define props to accept state from the parent layout
+interface SidebarProps {
+    collapsed: boolean;
+    setCollapsed: (collapsed: boolean) => void;
+}
 
-  // Don't render sidebar on login page
-  if (pathname === "/") {
-    return null;
-  }
+export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
+    const pathname = usePathname();
+    const [userRole, setUserRole] = useState<string>("");
+    const [isCOO, setIsCOO] = useState(false);
+    const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
+    // Force system theme logic
+    const { setTheme } = useTheme();
+    useEffect(() => {
+        setTheme("system");
+    }, [setTheme]);
 
-    // Get user role from localStorage (only on client side)
-    if (typeof window !== "undefined") {
-      const userStr = localStorage.getItem("user");
-      if (userStr) {
-        try {
-          const user = JSON.parse(userStr);
-          setUserRole(user.role);
-          setIsCOO(user.isCOO || false);
-        } catch (e) {
-          console.error("Error parsing user data:", e);
-        }
-      }
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setMounted(true);
+
+            if (typeof window !== "undefined") {
+                const userStr = localStorage.getItem("user");
+                if (userStr) {
+                    try {
+                        const user = JSON.parse(userStr);
+                        setUserRole(user.role);
+                        setIsCOO(user.isCOO || false);
+                    } catch (e) {
+                        console.error("Error parsing user data:", e);
+                    }
+                }
+            }
+        }, 0);
+
+        return () => clearTimeout(t);
+    }, []);
+
+    const filteredNavItems = navItems.filter((item) => {
+        if (!item.role) return true;
+        return item.role.includes(userRole);
+    });
+
+    if (!mounted) {
+        return (
+            <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-white dark:bg-gray-900 dark:border-gray-800">
+                <div className="flex h-16 items-center justify-between border-b px-4 dark:border-gray-800">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold">
+                            V
+                        </div>
+                        <div>
+                            <h1 className="text-lg font-bold dark:text-gray-100">VOS BIA</h1>
+                            <p className="text-xs text-muted-foreground dark:text-gray-400">
+                                Sales Dashboard
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        );
     }
-  }, []);
 
-  const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+    // Hide sidebar on login page
+    if (pathname === "/") {
+        return null;
     }
-    router.push("/");
-  };
 
-  // Filter nav items based on user role
-  const filteredNavItems = navItems.filter((item) => {
-    // If no role specified, show to everyone
-    if (!item.role) return true;
-
-    // Show item if user's role is in the allowed roles
-    return item.role.includes(userRole);
-  });
-
-  // Don't render until mounted (prevents hydration issues)
-  if (!mounted) {
     return (
-      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-white">
-        <div className="flex h-16 items-center border-b px-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold">
-              V
-            </div>
-            <div>
-              <h1 className="text-lg font-bold">VOS BI</h1>
-              <p className="text-xs text-muted-foreground">Sales Dashboard</p>
-            </div>
-          </div>
-        </div>
-      </aside>
-    );
-  }
-
-  return (
-    <aside
-      className={cn(
-        "fixed left-0 top-0 z-40 h-screen border-r bg-white transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
-      )}
-    >
-      {/* Logo */}
-      <div className="flex h-16 items-center border-b px-4">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold">
-              V
-            </div>
-            <div>
-              <h1 className="text-lg font-bold">VOS BIA</h1>
-              <p className="text-xs text-muted-foreground">
-                {isCOO ? "Executive Access" : "Sales Dashboard"}
-              </p>
-            </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white font-bold mx-auto">
-            V
-          </div>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-2">
-        {filteredNavItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href;
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-gray-100",
-                isActive && "bg-blue-50 text-blue-600 font-medium",
-                !isActive && "text-gray-700",
-                collapsed && "justify-center"
-              )}
-              title={collapsed ? item.title : undefined}
+        <aside
+            className={cn(
+                "fixed left-0 top-0 z-40 h-screen border-r bg-white transition-all duration-300 dark:bg-gray-900 dark:border-gray-800",
+                collapsed ? "w-16" : "w-64"
+            )}
+        >
+            {/* HEADER: Logo + Collapse Button */}
+            <div
+                className={cn(
+                    "flex h-16 items-center border-b dark:border-gray-800",
+                    collapsed ? "justify-center px-2" : "justify-between px-4"
+                )}
             >
-              <Icon className="h-5 w-5" />
-              {!collapsed && <span>{item.title}</span>}
-            </Link>
-          );
-        })}
-      </nav>
+                {!collapsed && (
+                    <div className="flex items-center gap-2 overflow-hidden">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-blue-600 text-white font-bold">
+                            V
+                        </div>
+                        <div className="whitespace-nowrap">
+                            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                                VOS BIA
+                            </h1>
+                            <p className="text-xs text-muted-foreground dark:text-gray-400">
+                                {isCOO ? "Executive Access" : "Sales Dashboard"}
+                            </p>
+                        </div>
+                    </div>
+                )}
 
-      {/* Bottom Section */}
-      <div className="border-t p-2 space-y-1">
-        {/* Logout Button */}
-        <button
-          onClick={handleLogout}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition-all hover:bg-red-50",
-            collapsed && "justify-center"
-          )}
-          title={collapsed ? "Logout" : undefined}
-        >
-          <LogOut className="h-5 w-5" />
-          {!collapsed && <span>Logout</span>}
-        </button>
+                {/* COLLAPSE BUTTON - Beside the text when expanded */}
+                <button
+                    onClick={() => setCollapsed(!collapsed)}
+                    className={cn(
+                        "flex items-center justify-center rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors",
+                        collapsed && "w-full"
+                    )}
+                    title={collapsed ? "Expand" : "Collapse"}
+                >
+                    <PanelLeft className="h-5 w-5" />
+                </button>
+            </div>
 
-        {/* Collapse Button */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-700 transition-all hover:bg-gray-100",
-            collapsed && "justify-center"
-          )}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-5 w-5" />
-          ) : (
-            <>
-              <ChevronLeft className="h-5 w-5" />
-              <span>Collapse</span>
-            </>
-          )}
-        </button>
-      </div>
-    </aside>
-  );
+            {/* NAVIGATION */}
+            <nav className="flex-1 space-y-1 p-2">
+                {filteredNavItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href;
+
+                    return (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            className={cn(
+                                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all",
+                                isActive
+                                    ? "bg-blue-50 text-blue-600 font-medium dark:bg-blue-900/20 dark:text-blue-400"
+                                    : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white",
+                                collapsed && "justify-center"
+                            )}
+                            title={collapsed ? item.title : undefined}
+                        >
+                            <Icon className="h-5 w-5" />
+                            {!collapsed && <span>{item.title}</span>}
+                        </Link>
+                    );
+                })}
+            </nav>
+        </aside>
+    );
 }
