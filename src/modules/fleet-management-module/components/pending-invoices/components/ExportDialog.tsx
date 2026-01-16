@@ -14,8 +14,7 @@ import type { PendingInvoiceOptions } from "../types";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
-import { saveAs } from "file-saver";
+// ✅ REMOVED: XLSX import is no longer needed
 
 function yyyyMMdd(d: Date) { return format(d, "yyyy-MM-dd"); }
 function money(n: number) { return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -108,7 +107,7 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
   const [dateFrom, setDateFrom] = React.useState<string>("");
   const [dateTo, setDateTo] = React.useState<string>("");
 
-  const [formatType, setFormatType] = React.useState<"PDF" | "Excel">("PDF");
+  // ✅ REMOVED: Format state (PDF/Excel) is gone.
   const [isExporting, setIsExporting] = React.useState(false);
 
   const salesmanOptions = React.useMemo(() => {
@@ -161,7 +160,6 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     p.set("page", "1");
     p.set("pageSize", "100000");
 
-    // ✅ FIX: Added { cache: 'no-store' } to ensure fresh data for every export
     const res = await fetch(`/api/pending-invoices?${p.toString()}`, { cache: "no-store" });
     
     if (!res.ok) throw new Error("Failed to fetch report data");
@@ -181,65 +179,38 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
         return;
       }
 
-      if (formatType === "Excel") {
-        const header = ["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Dispatch Plan", "Status"];
-        const body = rows.map((r: any) => [
+      // ✅ REMOVED: Excel Logic Block
+      // ✅ DEFAULT: Proceed directly to PDF generation
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      doc.setFontSize(14);
+      doc.text("Pending Invoice Report", 40, 40);
+      doc.setFontSize(10);
+      
+      const dateStr = preset === "All Time" ? "All Time" : `${dateFrom} to ${dateTo}`;
+      doc.text(`Range: ${dateStr} | Status: ${status}`, 40, 55);
+
+      const body = rows.map((r: any) => [
           r.invoice_no, 
-          r.invoice_date, 
-          r.customer, 
-          r.salesman, 
-          Number(r.net_amount),
-          r.dispatch_plan === 'unlinked' ? '-' : r.dispatch_plan, 
+          r.invoice_date,
+          String(r.customer ?? "").substring(0, 30),
+          String(r.salesman ?? "").substring(0, 20),
+          money(r.net_amount),
+          r.dispatch_plan === 'unlinked' ? '-' : r.dispatch_plan,
           r.pending_status
-        ]);
-        
-        const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-        
-        (ws as any)["!cols"] = [
-            { wch: 15 }, // Invoice
-            { wch: 12 }, // Date
-            { wch: 30 }, // Customer
-            { wch: 20 }, // Salesman
-            { wch: 15 }, // Amount
-            { wch: 20 }, // Plan
-            { wch: 15 }, // Status
-        ];
+      ]);
 
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "PendingInvoices");
-        const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-        saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `PendingInvoices-${preset}.xlsx`);
-      } else {
-        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-        doc.setFontSize(14);
-        doc.text("Pending Invoice Report", 40, 40);
-        doc.setFontSize(10);
-        
-        const dateStr = preset === "All Time" ? "All Time" : `${dateFrom} to ${dateTo}`;
-        doc.text(`Range: ${dateStr} | Status: ${status}`, 40, 55);
-
-        const body = rows.map((r: any) => [
-            r.invoice_no, 
-            r.invoice_date,
-            String(r.customer ?? "").substring(0, 30),
-            String(r.salesman ?? "").substring(0, 20),
-            money(r.net_amount),
-            r.dispatch_plan === 'unlinked' ? '-' : r.dispatch_plan,
-            r.pending_status
-        ]);
-
-        autoTable(doc, {
-            startY: 70,
-            head: [["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Plan", "Status"]],
-            body: body,
-            styles: { fontSize: 9 },
-            headStyles: { fillColor: [20, 20, 20] }, 
-            columnStyles: {
-                4: { halign: 'right' }, 
-            }
-        });
-        doc.save(`PendingInvoices-${preset}.pdf`);
-      }
+      autoTable(doc, {
+          startY: 70,
+          head: [["Invoice No", "Date", "Customer", "Salesman", "Net Amount", "Plan", "Status"]],
+          body: body,
+          styles: { fontSize: 9 },
+          headStyles: { fillColor: [20, 20, 20] }, 
+          columnStyles: {
+              4: { halign: 'right' }, 
+          }
+      });
+      doc.save(`PendingInvoices-${preset}.pdf`);
+      
       onClose();
     } catch (e) {
       console.error(e);
@@ -314,13 +285,8 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
                      </div>
                 )}
             </div>
-            <div className="md:col-span-2 space-y-2">
-                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Format</label>
-                 <div className="flex gap-4">
-                     <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" checked={formatType === "PDF"} onChange={() => setFormatType("PDF")} /> PDF</label>
-                     <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" checked={formatType === "Excel"} onChange={() => setFormatType("Excel")} /> Excel</label>
-                 </div>
-            </div>
+
+            {/* ✅ REMOVED: Format Selection Section */}
         </div>
 
         <DialogFooter className="bg-slate-50 p-4 border-t gap-3">
