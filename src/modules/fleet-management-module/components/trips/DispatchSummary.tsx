@@ -82,24 +82,35 @@ export function DispatchSummary() {
 
   // --- Data Loading ---
   const loadData = useCallback(async () => {
+    // 1. AbortController cancels the request if the user leaves the page immediately
+    const controller = new AbortController();
+    const signal = controller.signal;
+
     setLoading(true);
     setError(null);
     try {
-      // Simulating fetch for demo purposes if API is not real. 
-      // Replace with your actual fetch if connected.
-      const res = await fetch('/api/dispatch-summary');
+      const res = await fetch('/api/dispatch-summary', { signal });
       if (!res.ok) throw new Error("Failed to fetch dispatch plans");
       const json = await res.json();
       setDispatchPlans(json.data || []);
-    } catch (e) {
-      console.error("Failed to load data:", e);
-      // Fallback empty array or error state
-      setDispatchPlans([]); 
-      setError((e as Error).message);
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        console.error("Failed to load data:", e);
+        setDispatchPlans([]); 
+        setError((e as Error).message);
+      }
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
+
+    return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const cancelFetch = loadData();
+    // Cleanup function
+    return () => { if(typeof cancelFetch === 'function') cancelFetch(); };
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
