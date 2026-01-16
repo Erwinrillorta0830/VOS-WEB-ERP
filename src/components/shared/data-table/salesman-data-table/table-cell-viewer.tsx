@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { IconTrendingUp } from "@tabler/icons-react";
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "../../../../../hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
