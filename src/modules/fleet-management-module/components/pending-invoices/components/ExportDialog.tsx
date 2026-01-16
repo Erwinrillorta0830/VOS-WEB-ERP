@@ -3,9 +3,13 @@
 import * as React from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown, Download, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; 
 import { format, startOfMonth, endOfMonth, subDays, addDays, startOfYear, endOfYear } from "date-fns";
-import { Download, Loader2 } from "lucide-react";
 import type { PendingInvoiceOptions } from "../types";
 
 import jsPDF from "jspdf";
@@ -18,6 +22,83 @@ function money(n: number) { return Number(n || 0).toLocaleString(undefined, { mi
 
 type Preset = "All Time" | "Yesterday" | "Today" | "Tomorrow" | "This Week" | "This Month" | "This Year" | "Custom";
 
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  label
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+  label: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen} modal={true}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal text-slate-900 bg-white border-slate-200"
+        >
+          {value === "All"
+            ? label
+            : options.find((opt) => opt.value === value)?.label || label}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandList className="max-h-[300px] overflow-y-auto overflow-x-hidden">
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="All"
+                onSelect={() => {
+                  onChange("All");
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value === "All" ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                All
+              </CommandItem>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.label}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function ExportDialog({ open, onClose, options }: { open: boolean; onClose: () => void; options: PendingInvoiceOptions | null; }) {
   const [salesmanId, setSalesmanId] = React.useState<string>("All");
   const [customerCode, setCustomerCode] = React.useState<string>("All");
@@ -29,6 +110,19 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
 
   const [formatType, setFormatType] = React.useState<"PDF" | "Excel">("PDF");
   const [isExporting, setIsExporting] = React.useState(false);
+
+  const salesmanOptions = React.useMemo(() => {
+    return (options?.salesmen ?? []).map((s) => {
+        const parts = s.label.split(" - ");
+        let displayName = parts.length > 1 ? parts.slice(1).join(" - ").trim() : s.label;
+        if (!displayName) displayName = parts[0].trim();
+        return { value: String(s.id), label: displayName };
+    });
+  }, [options?.salesmen]);
+
+  const customerOptions = React.useMemo(() => {
+    return (options?.customers ?? []).map(c => ({ value: c.code, label: c.label }));
+  }, [options?.customers]);
 
   React.useEffect(() => {
     const now = new Date();
@@ -67,7 +161,9 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
     p.set("page", "1");
     p.set("pageSize", "100000");
 
-    const res = await fetch(`/api/pending-invoices?${p.toString()}`);
+    // ✅ FIX: Added { cache: 'no-store' } to ensure fresh data for every export
+    const res = await fetch(`/api/pending-invoices?${p.toString()}`, { cache: "no-store" });
+    
     if (!res.ok) throw new Error("Failed to fetch report data");
     const json = await res.json();
     
@@ -155,49 +251,36 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[700px] p-0 overflow-hidden gap-0 bg-white">
+      <DialogContent className="max-w-[700px] p-0 overflow-visible gap-0 bg-white">
         <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle className="text-xl font-bold text-slate-900">What needs to be printed?</DialogTitle>
           <p className="text-sm text-slate-500 mt-1">Filters select the criteria for the printed report.</p>
         </DialogHeader>
 
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
             <div className="space-y-2">
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Salesman</label>
-                <Select value={salesmanId} onValueChange={setSalesmanId}>
-                    <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="All">All Salesmen</SelectItem>
-                        {options?.salesmen?.map((s) => {
-                            // ✅ FIX: Enhanced Logic to clean up "83 -"
-                            const parts = s.label.split(" - ");
-                            // Try to grab name (part after dash)
-                            let displayName = parts.length > 1 ? parts.slice(1).join(" - ").trim() : s.label;
-                            
-                            // If resulting name is empty (e.g. input was "83 - "), use the ID (first part)
-                            if (!displayName) {
-                                displayName = parts[0].trim();
-                            }
-
-                            return (
-                                <SelectItem key={s.id} value={String(s.id)}>
-                                    {displayName}
-                                </SelectItem>
-                            );
-                        })}
-                    </SelectContent>
-                </Select>
+                <SearchableSelect 
+                    label="All Salesmen"
+                    placeholder="Search salesman..."
+                    value={salesmanId}
+                    onChange={setSalesmanId}
+                    options={salesmanOptions}
+                />
             </div>
+
             <div className="space-y-2">
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Customer</label>
-                <Select value={customerCode} onValueChange={setCustomerCode}>
-                    <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="All">All Customers</SelectItem>
-                        {options?.customers?.map((c) => (<SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>))}
-                    </SelectContent>
-                </Select>
+                <SearchableSelect 
+                    label="All Customers"
+                    placeholder="Search customer..."
+                    value={customerCode}
+                    onChange={setCustomerCode}
+                    options={customerOptions}
+                />
             </div>
+
             <div className="md:col-span-2 space-y-2">
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Status</label>
                 <Select value={status} onValueChange={setStatus}>
