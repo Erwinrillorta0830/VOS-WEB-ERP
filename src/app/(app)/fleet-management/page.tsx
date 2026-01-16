@@ -23,10 +23,11 @@ import { Violations } from '../../../modules/fleet-management-module/components/
 import { UserRoleManagement } from '../../../modules/fleet-management-module/components/settings/UserRoleManagement';
 import { SystemSettings } from '../../../modules/fleet-management-module/components/settings/SystemSettings';
 import type { PageType } from '../../../modules/fleet-management-module/types';
+import PendingInvoicesModule from '../../../modules/fleet-management-module/components/pending-invoices/PendingInvoicesModule';
 import { CreateDispatchPlanModal } from '../../../modules/CreateDispatchPlanModal';
 
 export default function HomePage() {
-    const [currentPage, setCurrentPage] = useState<PageType>('dispatch-summary');
+    const [currentPage, setCurrentPage] = useState<PageType>('pending-invoices');
 
     const renderPage = () => {
         console.log('Current page:', currentPage); // Debug log
@@ -61,6 +62,8 @@ export default function HomePage() {
                 return <StatisticsDashboard />;
             case 'pending-deliveries':
                 return <PendingDeliveries />;
+            case 'pending-invoices':
+                return <PendingInvoicesModule />;
             case 'vehicle-tracking':
                 return <VehicleTracking />;
             case 'deliveries':
