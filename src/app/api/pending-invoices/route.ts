@@ -1,29 +1,28 @@
-// src/app/api/pending-invoices/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { listPendingInvoices } from "./logic";
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
+export const dynamic = 'force-dynamic'; // ✅ Disable caching for this route
 
-  const q = url.searchParams.get("q") ?? "";
-  const status = url.searchParams.get("status") ?? "All";
-  const salesmanId = url.searchParams.get("salesmanId") ?? "All";
-  const customerCode = url.searchParams.get("customerCode") ?? "All";
-  const dateFrom = url.searchParams.get("dateFrom") ?? "";
-  const dateTo = url.searchParams.get("dateTo") ?? "";
-  const page = Number(url.searchParams.get("page") ?? "1");
-  const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
 
-  const data = await listPendingInvoices({
-    q,
-    status: status as any,
-    salesmanId,
-    customerCode,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    page,
-    pageSize,
-  });
+    // ✅ Explicitly extract all filters
+    const filters = {
+      q: searchParams.get("q") || undefined,
+      status: searchParams.get("status") || undefined,
+      salesmanId: searchParams.get("salesmanId") || undefined,
+      customerCode: searchParams.get("customerCode") || undefined,
+      dateFrom: searchParams.get("dateFrom") || undefined,
+      dateTo: searchParams.get("dateTo") || undefined,
+      page: Number(searchParams.get("page")) || 1,
+      pageSize: Number(searchParams.get("pageSize")) || 25,
+    };
 
-  return NextResponse.json(data);
+    const data = await listPendingInvoices(filters);
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("API Error:", error);
+    return NextResponse.json({ error: "Failed to fetch invoices" }, { status: 500 });
+  }
 }
