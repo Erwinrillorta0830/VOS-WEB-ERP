@@ -91,34 +91,40 @@ export function DispatchSummary() {
   const [printCustomStart, setPrintCustomStart] = useState('');
   const [printCustomEnd, setPrintCustomEnd] = useState('');
 
-  // --- Data Loading with AbortController ---
-  const loadData = useCallback(async () => {
-    const controller = new AbortController();
-    const signal = controller.signal;
-
+// --- Data Loading with AbortController ---
+  const loadData = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
     setError(null);
     
     try {
+      // Pass the signal from the argument to the fetch call
       const res = await fetch('/api/dispatch-summary', { signal });
+      
       if (!res.ok) throw new Error("Failed to fetch dispatch plans");
       const json = await res.json();
       setDispatchPlans(json.data || []);
     } catch (e: any) {
+      // Ignore AbortErrors (caused by component unmounting or rapid refreshing)
       if (e.name !== 'AbortError') {
         console.error("Failed to load data:", e);
         setDispatchPlans([]); 
         setError((e as Error).message);
       }
     } finally {
+      // Only turn off loading if the request wasn't cancelled
       if (!signal.aborted) setLoading(false);
     }
-    return () => controller.abort();
   }, []);
 
   useEffect(() => {
-    const cleanup = loadData();
-    return () => { if(typeof cleanup === 'object' && cleanup !== null) (cleanup as any)(); };
+    // 1. Create the controller HERE
+    const controller = new AbortController();
+
+    // 2. Pass the signal TO the function
+    loadData(controller.signal);
+
+    // 3. Return the abort function directly
+    return () => controller.abort();
   }, [loadData]);
 
   // --- Handlers ---
