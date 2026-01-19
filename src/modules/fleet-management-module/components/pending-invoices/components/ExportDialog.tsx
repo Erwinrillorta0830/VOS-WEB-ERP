@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Check, ChevronsUpDown, Download, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Download, Loader2, CircleHelp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; 
@@ -15,7 +15,6 @@ import type { PendingInvoiceOptions } from "../types";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// ✅ ADDED: Sonner Toast for notifications
 import { toast } from "sonner";
 
 function yyyyMMdd(d: Date) { return format(d, "yyyy-MM-dd"); }
@@ -23,6 +22,7 @@ function money(n: number) { return Number(n || 0).toLocaleString(undefined, { mi
 
 type Preset = "All Time" | "Yesterday" | "Today" | "Tomorrow" | "This Week" | "This Month" | "This Year" | "Custom";
 
+// ✅ RESTORED: This component was missing in the previous step
 function SearchableSelect({
   value,
   onChange,
@@ -175,9 +175,8 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       const rows = await loadReportRows();
 
       if (rows.length === 0) {
-        // ✅ CHANGED: Used toast.error instead of alert()
-        toast.error("No data found", {
-          description: "There are no invoices matching your selected criteria."
+        toast.error("I can't find any data with those filters.", {
+          icon: <CircleHelp className="h-5 w-5 text-red-500" />,
         });
         setIsExporting(false);
         return;
@@ -214,12 +213,10 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       doc.save(`PendingInvoices-${preset}.pdf`);
       
       onClose();
-      // ✅ OPTIONAL: Success Toast
       toast.success("Report Generated", { description: "Your PDF has been downloaded." });
 
     } catch (e) {
       console.error(e);
-      // ✅ CHANGED: Used toast.error instead of alert()
       toast.error("Export Failed", {
         description: "An error occurred while generating the report. Please try again."
       });
