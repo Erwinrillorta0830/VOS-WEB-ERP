@@ -10,10 +10,10 @@ import {
   CollectionDetail,
   PaymentMethod,
 } from "@/components/shared/data-table/summary-report-data-table/type";
-import { exportColumns } from "@/src/app/lib/summary-report-utils";
-import { useFilters } from "@/src/app/contexts/filter-context";
+import { exportColumns } from "../../../src/app/lib/summary-report-utils";
+import { useFilters } from "../../../src/app/contexts/filter-context";
 import React, { useMemo } from "react";
-import { useFilteredData } from "@/src/app/hooks/use-filtered-data";
+import { useFilteredData } from "../../../src/app/hooks/use-filtered-data";
 import { format } from "date-fns/format";
 interface Salesman {
   id: number;
