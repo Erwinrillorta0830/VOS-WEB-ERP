@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Check, ChevronsUpDown, Download, Loader2, CircleHelp } from "lucide-react";
+import { Check, ChevronsUpDown, Download, Loader2, CircleHelp, CheckCircle2 } from "lucide-react"; // ✅ Added CheckCircle2 for success icon
 import { cn } from "@/lib/utils";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; 
@@ -22,7 +22,6 @@ function money(n: number) { return Number(n || 0).toLocaleString(undefined, { mi
 
 type Preset = "All Time" | "Yesterday" | "Today" | "Tomorrow" | "This Week" | "This Month" | "This Year" | "Custom";
 
-// ✅ RESTORED: This component was missing in the previous step
 function SearchableSelect({
   value,
   onChange,
@@ -175,8 +174,10 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       const rows = await loadReportRows();
 
       if (rows.length === 0) {
+        // ✅ UPDATED: Added !border-red-500 to force override
         toast.error("I can't find any data with those filters.", {
           icon: <CircleHelp className="h-5 w-5 text-red-500" />,
+          className: "!border-red-500 !border bg-white", 
         });
         setIsExporting(false);
         return;
@@ -213,12 +214,19 @@ export function ExportDialog({ open, onClose, options }: { open: boolean; onClos
       doc.save(`PendingInvoices-${preset}.pdf`);
       
       onClose();
-      toast.success("Report Generated", { description: "Your PDF has been downloaded." });
+      // ✅ UPDATED: Added !border-green-500 to force override
+      toast.success("Report Generated", { 
+        description: "Your PDF has been downloaded.",
+        icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+        className: "!border-green-500 !border bg-white" 
+      });
 
     } catch (e) {
       console.error(e);
+      // ✅ UPDATED: Added !border-red-500 for generic error too
       toast.error("Export Failed", {
-        description: "An error occurred while generating the report. Please try again."
+        description: "An error occurred while generating the report. Please try again.",
+        className: "!border-red-500 !border bg-white"
       });
     } finally {
       setIsExporting(false);
