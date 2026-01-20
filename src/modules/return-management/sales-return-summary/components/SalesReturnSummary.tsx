@@ -46,6 +46,7 @@ import {
 
 import { SalesReturnProvider } from "../provider/api";
 import { SalesReturnPrintSlip } from "./SalesReturnPrintSlip";
+import { SalesReturnExportDialog } from "./SalesReturnExportDialog";
 import type {
   SummaryCustomerOption,
   SummarySalesmanOption,
@@ -745,6 +746,12 @@ export function SalesReturnSummary() {
             Sales Returns ({report.total})
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
+            <SalesReturnExportDialog
+              customers={customers}
+              salesmen={salesmen}
+              suppliers={suppliers}
+              returnTypes={returnTypes}
+            />
             <span className="text-sm text-slate-500 dark:text-slate-400">
               Rows per page:
             </span>
@@ -769,6 +776,7 @@ export function SalesReturnSummary() {
           </div>
         </div>
 
+        {/* ✅ LIST TABLE (REVISED) */}
         <div className="overflow-x-auto">
           <Table className="w-full min-w-[1800px]">
             <TableHeader>
@@ -794,15 +802,23 @@ export function SalesReturnSummary() {
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   Product Name
                 </TableHead>
-                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
-                  Unit
-                </TableHead>
+
+                {/* 🟢 REVISION 1a: COLUMNS REORDERED (Header) */}
+                {/* Previous: Unit -> Return Type -> Reason */}
+                {/* New: Return Type -> Reason -> Unit */}
+
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   Return Type
                 </TableHead>
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   Reason
                 </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
+                  Unit
+                </TableHead>
+
+                {/* 🟢 END REVISION 1a */}
+
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Quantity
                 </TableHead>
@@ -813,7 +829,7 @@ export function SalesReturnSummary() {
                   Gross Amount
                 </TableHead>
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                  Discount Type
+                  Discount Percentage
                 </TableHead>
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Discount Amt
@@ -855,7 +871,7 @@ export function SalesReturnSummary() {
                       key={String(item.detailId)}
                       className="hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition-colors border-slate-200 dark:border-slate-800"
                     >
-                      {/* Header Info Repeated - Added align-top */}
+                      {/* Standard Columns */}
                       <TableCell className="text-xs text-blue-600 dark:text-blue-400 font-medium px-3 py-2 align-top">
                         {r.returnNumber}
                       </TableCell>
@@ -868,8 +884,6 @@ export function SalesReturnSummary() {
                       >
                         {r.customerName}
                       </TableCell>
-
-                      {/* Item Info */}
                       <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 max-w-[120px] truncate align-top">
                         {item.supplierName || "-"}
                       </TableCell>
@@ -879,23 +893,27 @@ export function SalesReturnSummary() {
                       <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
                         {item.productCategory || "-"}
                       </TableCell>
-
-                      {/* 🟢 3. REVISED PRODUCT NAME CELL: Enabled wrapping & align-top */}
                       <TableCell className="text-xs text-slate-700 dark:text-slate-200 font-medium px-3 py-2 w-[250px] whitespace-normal wrap-break-word align-top">
                         {item.productName}
                       </TableCell>
 
-                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 text-center align-top">
-                        {item.unit || "-"}
-                      </TableCell>
+                      {/* 🟢 REVISION 1b: COLUMNS REORDERED (Body) */}
+                      {/* 1. Return Type */}
                       <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
                         {item.returnCategory || "-"}
                       </TableCell>
+
+                      {/* 2. Reason */}
                       <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 italic max-w-[150px] truncate align-top">
                         {item.specificReason || "-"}
                       </TableCell>
 
-                      {/* Metrics */}
+                      {/* 3. Unit (Centered) */}
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 text-center align-top">
+                        {item.unit || "-"}
+                      </TableCell>
+                      {/* 🟢 END REVISION 1b */}
+
                       <TableCell className="text-xs text-slate-700 dark:text-slate-300 px-3 py-2 text-right align-top">
                         {Number(item.quantity).toLocaleString()}
                       </TableCell>
@@ -914,8 +932,6 @@ export function SalesReturnSummary() {
                       <TableCell className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2 text-right align-top">
                         {Number(item.netAmount).toLocaleString()}
                       </TableCell>
-
-                      {/* Footer Info / Status */}
                       <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
                         {item.invoiceNo || r.invoiceNo || "-"}
                       </TableCell>

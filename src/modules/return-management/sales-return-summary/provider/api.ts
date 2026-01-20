@@ -274,17 +274,21 @@ export const SalesReturnProvider = {
 
     // 3) Fetch details
     let allDetails: any[] = [];
-    for (const list of chunk(returnNos, 25)) {
+    const detailChunks = chunk(returnNos, 25);
+
+    const detailPromises = detailChunks.map(async (list) => {
       const detailsUrl = `${API_BASE}/sales_return_details?limit=-1&filter[return_no][_in]=${inFilterParam(list)}&fields=detail_id,return_no,reason,quantity,unit_price,gross_amount,discount_amount,discount_type,total_amount,sales_return_type_id,product_id.product_id,product_id.product_code,product_id.product_name,product_id.product_brand,product_id.parent_id,product_id.unit_of_measurement,product_id.product_category`;
-      const dRes = await fetch(detailsUrl, {
+      const res = await fetch(detailsUrl, {
         headers: getHeaders(),
         cache: "no-store",
       });
-      if (dRes.ok)
-        allDetails = allDetails.concat((await dRes.json()).data || []);
-    }
+      return res.ok ? (await res.json()).data || [] : [];
+    });
 
-    // 4) Build supplier names
+    const detailResults = await Promise.all(detailPromises);
+    allDetails = detailResults.flat();
+
+    // 4) Build supplier names - 🟢 OPTIMIZED Parallel Fetching
     const baseProductIds = Array.from(
       new Set(
         allDetails
@@ -295,14 +299,19 @@ export const SalesReturnProvider = {
     );
 
     let ppsRows: any[] = [];
-    for (const list of chunk(baseProductIds, 50)) {
+    const ppsChunks = chunk(baseProductIds, 50);
+
+    const ppsPromises = ppsChunks.map(async (list) => {
       const ppsUrl = `${API_BASE}/product_per_supplier?limit=-1&filter[product_id][_in]=${inFilterParam(list)}&fields=product_id,supplier_id`;
-      const ppsRes = await fetch(ppsUrl, {
+      const res = await fetch(ppsUrl, {
         headers: getHeaders(),
         cache: "no-store",
       });
-      if (ppsRes.ok) ppsRows = ppsRows.concat((await ppsRes.json()).data || []);
-    }
+      return res.ok ? (await res.json()).data || [] : [];
+    });
+
+    const ppsResults = await Promise.all(ppsPromises);
+    ppsRows = ppsResults.flat();
 
     const suppliersByBaseProduct = new Map<string, Set<string>>();
     for (const row of ppsRows) {
@@ -351,6 +360,22 @@ export const SalesReturnProvider = {
           ? String(product.product_category.category_id)
           : String(product.product_category);
 
+      // --- 🟢 REVISION 2: STRICT CALCULATION LOGIC ---
+      // To ensure Discount Type aligns with amounts and prevents mismatches:
+      // 1. Force Qty and Price to numbers
+      const qty = toNum(d.quantity);
+      const price = toNum(d.unit_price);
+
+      // 2. Recalculate Gross (Qty * Unit Price)
+      const calculatedGross = qty * price;
+
+      // 3. Get Discount Amount (Trusting DB value as primary source for the deduction)
+      const discountAmt = toNum(d.discount_amount);
+
+      // 4. Recalculate Net (Gross - Discount)
+      // This ensures 1000 - 100 is always 900, regardless of what the DB 'total_amount' column says.
+      const calculatedNet = calculatedGross - discountAmt;
+
       const item: SummaryReturnItem = {
         detailId: d.detail_id,
         returnNo,
@@ -362,12 +387,14 @@ export const SalesReturnProvider = {
         supplierName: supplierNamesFor(baseProdId),
         returnCategory: returnTypeName,
         specificReason: d.reason || "",
-        quantity: toNum(d.quantity),
-        unitPrice: toNum(d.unit_price),
-        grossAmount: toNum(d.gross_amount),
-        discountAmount: toNum(d.discount_amount),
+        quantity: qty,
+        unitPrice: price,
+
+        // Use calculated values
+        grossAmount: calculatedGross,
+        discountAmount: discountAmt,
         discountApplied,
-        netAmount: toNum(d.total_amount),
+        netAmount: calculatedNet,
       };
 
       if (!detailsByReturnNo.has(returnNo)) detailsByReturnNo.set(returnNo, []);
