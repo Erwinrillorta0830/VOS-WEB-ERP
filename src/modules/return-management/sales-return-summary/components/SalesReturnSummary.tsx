@@ -13,7 +13,7 @@ import {
   YAxis,
   Tooltip,
   Cell,
-  Legend
+  Legend,
 } from "recharts";
 
 import { Button } from "@/components/ui/button";
@@ -92,20 +92,23 @@ const startOfYear = (d: Date) => new Date(d.getFullYear(), 0, 1);
 
 const getStatusBadge = (status: string) => {
   const s = (status || "").toLowerCase();
-  if (s === "received") 
+  if (s === "received")
     return "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800";
-  if (s === "pending") 
+  if (s === "pending")
     return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800";
   return "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
 };
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label, prefix = "" }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2 rounded shadow-lg z-50">
-        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label ? label : payload[0].name}</p>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {label ? label : payload[0].name}
+        </p>
         <p className="text-sm text-blue-600 dark:text-blue-400">
-          Value: {payload[0].value}
+          Value: {prefix}
+          {Number(payload[0].value).toLocaleString()}
         </p>
       </div>
     );
@@ -113,8 +116,13 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
+const getMaxCategoryValue = (data: ChartDatum[]) => {
+  if (!data || data.length === 0) return 0;
+  return Math.max(...data.map((d) => d.value));
+};
+
 export function SalesReturnSummary() {
-  const { theme } = useTheme(); 
+  const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // dropdown data
@@ -129,7 +137,7 @@ export function SalesReturnSummary() {
   >("thismonth");
 
   const [dateFrom, setDateFrom] = useState<string>(
-    fmtDate(startOfMonth(new Date()))
+    fmtDate(startOfMonth(new Date())),
   );
   const [dateTo, setDateTo] = useState<string>(fmtDate(new Date()));
 
@@ -158,10 +166,15 @@ export function SalesReturnSummary() {
       totalDiscount: 0,
       netAmount: 0,
       pendingInventory: 0,
-      receivedInventory: 0
+      receivedInventory: 0,
     },
     charts: { status: [], supplier: [], category: [] },
   });
+
+  const maxCategoryVal = useMemo(() => {
+    const max = getMaxCategoryValue(report.charts.category);
+    return max === 0 ? 100 : Math.ceil(max * 1.1);
+  }, [report.charts.category]);
 
   // PRINTING
   const printComponentRef = useRef<HTMLDivElement>(null);
@@ -176,7 +189,7 @@ export function SalesReturnSummary() {
     if (printData) {
       handlePrint();
     }
-  }, [printData]); 
+  }, [printData]);
 
   useEffect(() => {
     setMounted(true);
@@ -194,7 +207,7 @@ export function SalesReturnSummary() {
       setSalesmen(s);
       setSuppliers(sup);
       setReturnTypes(rt);
-     })();
+    })();
   }, []);
 
   useEffect(() => {
@@ -234,7 +247,15 @@ export function SalesReturnSummary() {
       supplierName,
       returnCategory,
     }),
-    [dateFrom, dateTo, status, customerCode, salesmanId, supplierName, returnCategory]
+    [
+      dateFrom,
+      dateTo,
+      status,
+      customerCode,
+      salesmanId,
+      supplierName,
+      returnCategory,
+    ],
   );
 
   useEffect(() => {
@@ -260,14 +281,14 @@ export function SalesReturnSummary() {
           const st = (r.returnStatus || "").toLowerCase();
           if (st === "pending") pending++;
           if (st === "received") received++;
-          
+
           net += Number(r.netTotal || 0);
 
           if (r.items) {
-             for (const item of r.items) {
-                gross += Number(item.grossAmount || 0);
-                discount += Number(item.discountAmount || 0);
-             }
+            for (const item of r.items) {
+              gross += Number(item.grossAmount || 0);
+              discount += Number(item.discountAmount || 0);
+            }
           }
         }
 
@@ -281,16 +302,26 @@ export function SalesReturnSummary() {
 
           for (const it of r.items || []) {
             const supplierStr = (it.supplierName || "").trim();
-            const suppliersSplit = supplierStr ? supplierStr.split(",").map((x) => x.trim()).filter(Boolean) : ["No Supplier"];
-            for (const sup of suppliersSplit) supplierCount.set(sup, (supplierCount.get(sup) || 0) + 1);
+            const suppliersSplit = supplierStr
+              ? supplierStr
+                  .split(",")
+                  .map((x) => x.trim())
+                  .filter(Boolean)
+              : ["No Supplier"];
+            for (const sup of suppliersSplit)
+              supplierCount.set(sup, (supplierCount.get(sup) || 0) + 1);
 
             const cat = it.returnCategory || "Uncategorized";
-            categoryCount.set(cat, (categoryCount.get(cat) || 0) + 1);
+            const currentTotal = categoryCount.get(cat) || 0;
+            const itemNet = Number(it.netAmount || 0);
+            categoryCount.set(cat, currentTotal + itemNet);
           }
         }
 
         const toChart = (m: Map<string, number>) =>
-          Array.from(m.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+          Array.from(m.entries())
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
 
         setReport({
           rows,
@@ -301,7 +332,7 @@ export function SalesReturnSummary() {
             totalDiscount: discount,
             netAmount: net,
             pendingInventory: pending,
-            receivedInventory: received
+            receivedInventory: received,
           },
           charts: {
             status: toChart(statusCount),
@@ -327,7 +358,15 @@ export function SalesReturnSummary() {
       if (page <= 4) {
         pages.push(1, 2, 3, 4, 5, "...", totalPages);
       } else if (page >= totalPages - 3) {
-        pages.push(1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+        pages.push(
+          1,
+          "...",
+          totalPages - 4,
+          totalPages - 3,
+          totalPages - 2,
+          totalPages - 1,
+          totalPages,
+        );
       } else {
         pages.push(1, "...", page - 1, page, page + 1, "...", totalPages);
       }
@@ -354,19 +393,38 @@ export function SalesReturnSummary() {
 
   return (
     <div className="space-y-4 p-2 sm:p-0">
-      
-      {/* FILTER BAR */}
+      {/* FILTER BAR (unchanged) */}
       <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-4">
         {/* Row 1: Search, Date, Quick Range */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
           <div className="sm:col-span-2 lg:col-span-2">
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Search</label>
-            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Return no, invoice, customer code..." className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-100" />
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Search
+            </label>
+            <Input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Return no, invoice, customer code..."
+              className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-100"
+            />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Quick Range</label>
-            <Select value={quickRange} onValueChange={(v: any) => { setQuickRange(v); setPage(1); }}>
-              <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200"><SelectValue /></SelectTrigger>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Quick Range
+            </label>
+            <Select
+              value={quickRange}
+              onValueChange={(v: any) => {
+                setQuickRange(v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
                 <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="lastday">Last Day</SelectItem>
@@ -378,42 +436,113 @@ export function SalesReturnSummary() {
             </Select>
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Date From</label>
-            <Input type="date" value={dateFrom} onChange={(e) => { setQuickRange("custom"); setDateFrom(e.target.value); setPage(1); }} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200" />
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Date From
+            </label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setQuickRange("custom");
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
+              className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200"
+            />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Date To</label>
-            <Input type="date" value={dateTo} onChange={(e) => { setQuickRange("custom"); setDateTo(e.target.value); setPage(1); }} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200" />
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Date To
+            </label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setQuickRange("custom");
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
+              className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200"
+            />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="h-10 w-full dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" onClick={resetFilters} disabled={loading}><RefreshCw className="h-4 w-4 mr-2" /> Reset</Button>
+            <Button
+              variant="outline"
+              className="h-10 w-full dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              onClick={resetFilters}
+              disabled={loading}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" /> Reset
+            </Button>
           </div>
         </div>
-        
+
         {/* Row 2: Dropdown Filters */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-           {[
-            { label: "Customer", val: customerCode, set: setCustomerCode, opts: customers },
-            { label: "Salesman", val: salesmanId, set: setSalesmanId, opts: salesmen },
-            { 
-              label: "Status", 
-              val: status, 
-              set: setStatus, 
-              opts: [{value:'Pending', label:'Pending'}, {value:'Received', label:'Received'}],
-              allLabel: "All" 
+          {[
+            {
+              label: "Customer",
+              val: customerCode,
+              set: setCustomerCode,
+              opts: customers,
             },
-            { label: "Supplier", val: supplierName, set: setSupplierName, opts: suppliers.map(s => ({value: s.name, label: s.name})) },
-            { label: "Return Type", val: returnCategory, set: setReturnCategory, opts: returnTypes.map(t => ({value: t.type_name, label: t.type_name})) },
+            {
+              label: "Salesman",
+              val: salesmanId,
+              set: setSalesmanId,
+              opts: salesmen,
+            },
+            {
+              label: "Status",
+              val: status,
+              set: setStatus,
+              opts: [
+                { value: "Pending", label: "Pending" },
+                { value: "Received", label: "Received" },
+              ],
+              allLabel: "All",
+            },
+            {
+              label: "Supplier",
+              val: supplierName,
+              set: setSupplierName,
+              opts: suppliers.map((s) => ({ value: s.name, label: s.name })),
+            },
+            {
+              label: "Return Type",
+              val: returnCategory,
+              set: setReturnCategory,
+              opts: returnTypes.map((t) => ({
+                value: t.type_name,
+                label: t.type_name,
+              })),
+            },
           ].map((item, idx) => (
             <div key={idx}>
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{item.label}</label>
-              <Select value={item.val} onValueChange={(v) => { item.set(v); setPage(1); }}>
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                {item.label}
+              </label>
+              <Select
+                value={item.val}
+                onValueChange={(v) => {
+                  item.set(v);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200">
-                  <SelectValue placeholder={item.allLabel || `All ${item.label}s`} />
+                  <SelectValue
+                    placeholder={item.allLabel || `All ${item.label}s`}
+                  />
                 </SelectTrigger>
                 <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
-                  <SelectItem value="All">{item.allLabel || `All ${item.label}s`}</SelectItem>
-                  {item.opts.map((opt: any) => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
+                  <SelectItem value="All">
+                    {item.allLabel || `All ${item.label}s`}
+                  </SelectItem>
+                  {item.opts.map((opt: any) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -421,67 +550,103 @@ export function SalesReturnSummary() {
         </div>
       </div>
 
-      {/* ✅ SUMMARY METRICS CARDS */}
+      {/* SUMMARY METRICS CARDS (unchanged) */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-        {/* Card 1: Total Returns (Blue) */}
+        {/* Card 1 */}
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-3 sm:p-4 flex flex-col justify-center">
-          <span className="text-[10px] sm:text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider truncate">Total Returns</span>
+          <span className="text-[10px] sm:text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider truncate">
+            Total Returns
+          </span>
           <div className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate">
             {loading ? "..." : report.summary.totalReturns}
           </div>
         </div>
-
-        {/* Card 2: Gross Amount (Green) */}
+        {/* Card 2 */}
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-xl p-3 sm:p-4 flex flex-col justify-center">
-          <span className="text-[10px] sm:text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider truncate">Gross Amount</span>
-          <div className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate" title={`₱${report.summary.grossAmount.toLocaleString()}`}>
-            {loading ? "..." : `₱${report.summary.grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+          <span className="text-[10px] sm:text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider truncate">
+            Gross Amount
+          </span>
+          <div
+            className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate"
+            title={`₱${report.summary.grossAmount.toLocaleString()}`}
+          >
+            {loading
+              ? "..."
+              : `₱${report.summary.grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
           </div>
         </div>
-
-        {/* Card 3: Total Discount (Orange) */}
+        {/* Card 3 */}
         <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800 rounded-xl p-3 sm:p-4 flex flex-col justify-center">
-          <span className="text-[10px] sm:text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider truncate">Total Discount</span>
-          <div className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate" title={`₱${report.summary.totalDiscount.toLocaleString()}`}>
-            {loading ? "..." : `₱${report.summary.totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+          <span className="text-[10px] sm:text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider truncate">
+            Total Discount
+          </span>
+          <div
+            className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate"
+            title={`₱${report.summary.totalDiscount.toLocaleString()}`}
+          >
+            {loading
+              ? "..."
+              : `₱${report.summary.totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
           </div>
         </div>
-
-        {/* Card 4: Net Amount (Purple) */}
+        {/* Card 4 */}
         <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl p-3 sm:p-4 flex flex-col justify-center">
-          <span className="text-[10px] sm:text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider truncate">Net Amount</span>
-          <div className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate" title={`₱${report.summary.netAmount.toLocaleString()}`}>
-            {loading ? "..." : `₱${report.summary.netAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+          <span className="text-[10px] sm:text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider truncate">
+            Net Amount
+          </span>
+          <div
+            className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate"
+            title={`₱${report.summary.netAmount.toLocaleString()}`}
+          >
+            {loading
+              ? "..."
+              : `₱${report.summary.netAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
           </div>
         </div>
-
-        {/* Card 5: Pending Inventory (Yellow) */}
+        {/* Card 5 */}
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-800 rounded-xl p-3 sm:p-4 flex flex-col justify-center">
-          <span className="text-[10px] sm:text-xs font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider truncate">Pending Inv.</span>
+          <span className="text-[10px] sm:text-xs font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wider truncate">
+            Pending Inv.
+          </span>
           <div className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate">
             {loading ? "..." : report.summary.pendingInventory}
           </div>
         </div>
-
-        {/* Card 6: Received Inventory (Teal) */}
+        {/* Card 6 */}
         <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800 rounded-xl p-3 sm:p-4 flex flex-col justify-center">
-          <span className="text-[10px] sm:text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider truncate">Received Inv.</span>
+          <span className="text-[10px] sm:text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider truncate">
+            Received Inv.
+          </span>
           <div className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1 truncate">
             {loading ? "..." : report.summary.receivedInventory}
           </div>
         </div>
       </div>
 
-      {/* CHARTS */}
+      {/* CHARTS (unchanged) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Status Pie */}
         <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
-          <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">Return Status</div>
+          <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
+            Return Status
+          </div>
           <div className="h-[250px] sm:h-[300px] lg:h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={report.charts.status} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} stroke="none">
-                  {report.charts.status.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                <Pie
+                  data={report.charts.status}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={50}
+                  outerRadius={80}
+                  stroke="none"
+                >
+                  {report.charts.status.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
@@ -492,159 +657,281 @@ export function SalesReturnSummary() {
 
         {/* Supplier Bar */}
         <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
-          <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">Suppliers (line-item count)</div>
+          <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
+            Suppliers (line-item count)
+          </div>
           <div className="h-[250px] sm:h-[300px] lg:h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={report.charts.supplier} margin={{ bottom: 20 }}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: theme === 'dark' ? '#94a3b8' : '#64748b' }} interval={0} />
-                <YAxis stroke={theme === 'dark' ? '#94a3b8' : '#64748b'} width={30} tick={{ fontSize: 10 }} />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fontSize: 10,
+                    fill: theme === "dark" ? "#94a3b8" : "#64748b",
+                  }}
+                  interval={0}
+                />
+                <YAxis
+                  stroke={theme === "dark" ? "#94a3b8" : "#64748b"}
+                  width={30}
+                  tick={{ fontSize: 10 }}
+                />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {report.charts.supplier.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                  {report.charts.supplier.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="text-xs text-slate-400 dark:text-slate-500 mt-2">Showing top suppliers by returned line-items.</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+            Showing top suppliers by returned line-items.
+          </div>
         </div>
 
-        {/* Category Pie */}
+        {/* Category Bar Chart */}
         <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm md:col-span-2 lg:col-span-1">
-          <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">Return Type</div>
+          <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
+            Return Type (Net Amount)
+          </div>
           <div className="h-[250px] sm:h-[300px] lg:h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={report.charts.category} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} stroke="none">
-                  {report.charts.category.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-              </PieChart>
+              <BarChart data={report.charts.category} margin={{ bottom: 20 }}>
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fontSize: 10,
+                    fill: theme === "dark" ? "#94a3b8" : "#64748b",
+                  }}
+                  interval={0}
+                />
+                <YAxis
+                  stroke={theme === "dark" ? "#94a3b8" : "#64748b"}
+                  width={45}
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={(value) => `₱${value.toLocaleString()}`}
+                  domain={[0, maxCategoryVal]}
+                />
+                <Tooltip content={<CustomTooltip prefix="₱" />} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  {report.charts.category.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
+          </div>
+          <div className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+            Showing net return value by category.
           </div>
         </div>
       </div>
 
-      {/* LIST TABLE */}
+      {/* ✅ LIST TABLE (REVISED) */}
       <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-4 border-b border-slate-200 dark:border-slate-800 gap-4">
-          <div className="font-bold text-slate-800 dark:text-slate-200 text-lg">Sales Returns ({report.total})</div>
+          <div className="font-bold text-slate-800 dark:text-slate-200 text-lg">
+            Sales Returns ({report.total})
+          </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            <span className="text-sm text-slate-500 dark:text-slate-400">Rows per page:</span>
-            <Select value={String(limit)} onValueChange={(val) => { setLimit(Number(val)); setPage(1); }}>
-              <SelectTrigger className="h-8 w-[70px] bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200"><SelectValue /></SelectTrigger>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              Rows per page:
+            </span>
+            <Select
+              value={String(limit)}
+              onValueChange={(val) => {
+                setLimit(Number(val));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[70px] bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
-                <SelectItem value="5">5</SelectItem><SelectItem value="10">10</SelectItem><SelectItem value="20">20</SelectItem><SelectItem value="50">50</SelectItem><SelectItem value="100">100</SelectItem>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <Table className="min-w-[1100px]">
+          <Table className="w-full min-w-[1800px]">
             <TableHeader>
               <TableRow className="bg-slate-50 dark:bg-slate-900 dark:border-slate-800">
-                <TableHead className="w-[40px]" />
-                <TableHead className="text-slate-500 dark:text-slate-400">Return No.</TableHead>
-                <TableHead className="text-slate-500 dark:text-slate-400">Date</TableHead>
-                <TableHead className="text-slate-500 dark:text-slate-400">Salesman</TableHead>
-                <TableHead className="text-slate-500 dark:text-slate-400">Customer</TableHead>
-                <TableHead className="text-slate-500 dark:text-slate-400">Remarks</TableHead>
-                <TableHead className="text-slate-500 dark:text-slate-400">Status</TableHead>
-                <TableHead className="text-right text-slate-500 dark:text-slate-400">Net Total</TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Return No
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Salesman
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Customer
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Supplier
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Brand
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Category
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Product Name
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
+                  Unit
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Return Type
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Reason
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Quantity
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Unit Price
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Gross Amount
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Discount Type
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Discount Amt
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Net Amount
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                  Applied to
+                </TableHead>
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
+                  Status
+                </TableHead>
               </TableRow>
             </TableHeader>
-
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8} className="py-12 text-center text-slate-500 dark:text-slate-400 animate-pulse">Loading data...</TableCell></TableRow>
+                <TableRow>
+                  <TableCell
+                    colSpan={18}
+                    className="py-12 text-center text-slate-500 dark:text-slate-400 animate-pulse"
+                  >
+                    Loading data...
+                  </TableCell>
+                </TableRow>
               ) : report.rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-12 text-center text-slate-500 dark:text-slate-400">No results found matching your criteria.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell
+                    colSpan={18}
+                    className="py-12 text-center text-slate-500 dark:text-slate-400"
+                  >
+                    No results found matching your criteria.
+                  </TableCell>
+                </TableRow>
               ) : (
-                report.rows.map((r) => {
-                  const isOpen = !!expanded[r.returnNumber];
-                  return (
-                    <React.Fragment key={r.returnNumber}>
-                      <TableRow className="hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition-colors border-slate-200 dark:border-slate-800">
-                        <TableCell className="text-center">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400" onClick={() => toggleExpand(r.returnNumber)}>
-                            {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          </Button>
-                        </TableCell>
-                        <TableCell className="font-semibold text-blue-600 dark:text-blue-400">{r.returnNumber}</TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-300">{r.returnDate ? r.returnDate.toString().split('T')[0] : "-"}</TableCell>
-                        <TableCell className="text-slate-700 dark:text-slate-300">{r.salesmanName}</TableCell>
-                        <TableCell className="text-slate-700 dark:text-slate-200 font-medium">{r.customerName}</TableCell>
-                        <TableCell className="text-slate-500 dark:text-slate-400 max-w-[200px] truncate" title={r.remarks}>
-                          {r.remarks || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={getStatusBadge(r.returnStatus)}>{r.returnStatus}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-bold text-slate-700 dark:text-slate-200">{Number(r.netTotal || 0).toLocaleString()}</TableCell>
-                      </TableRow>
+                report.rows.flatMap((r) =>
+                  (r.items || []).map((item) => (
+                    <TableRow
+                      key={String(item.detailId)}
+                      className="hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition-colors border-slate-200 dark:border-slate-800"
+                    >
+                      {/* Header Info Repeated - Added align-top */}
+                      <TableCell className="text-xs text-blue-600 dark:text-blue-400 font-medium px-3 py-2 align-top">
+                        {r.returnNumber}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
+                        {r.salesmanName}
+                      </TableCell>
+                      <TableCell
+                        className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 max-w-[150px] truncate align-top"
+                        title={r.customerName}
+                      >
+                        {r.customerName}
+                      </TableCell>
 
-                      {isOpen && (
-                        <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
-                          <TableCell colSpan={8} className="p-0">
-                            <div className="p-2 sm:p-4 sm:pl-12 sm:pr-4 border-b border-slate-200 dark:border-slate-800">
-                              <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                                  <span>Items ({r.items?.length || 0})</span>
-                                  <span className="text-xs font-normal text-slate-400 dark:text-slate-500">Breakdown of returned products</span>
-                                </div>
-                                <Button size="sm" variant="outline" className="gap-2 h-8 text-xs border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 w-full sm:w-auto" onClick={() => setPrintData(r)}>
-                                  <Printer className="h-3.5 w-3.5" /> Print Slip
-                                </Button>
-                              </div>
+                      {/* Item Info */}
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 max-w-[120px] truncate align-top">
+                        {item.supplierName || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
+                        {item.brandName || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
+                        {item.productCategory || "-"}
+                      </TableCell>
 
-                              <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950 shadow-sm">
-                                <Table className="min-w-[1000px]">
-                                  <TableHeader>
-                                    <TableRow className="bg-slate-100/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700">
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Code</TableHead>
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Product</TableHead>
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Brand</TableHead>
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Supplier</TableHead>
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Return Type</TableHead>
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Reason</TableHead>
-                                      <TableHead className="h-9 text-slate-600 dark:text-slate-300">Invoice #</TableHead>
-                                      <TableHead className="h-9 text-right text-slate-600 dark:text-slate-300">Qty</TableHead>
-                                      <TableHead className="h-9 text-right text-slate-600 dark:text-slate-300">Unit Price</TableHead>
-                                      <TableHead className="h-9 text-right text-slate-600 dark:text-slate-300">Gross</TableHead>
-                                      <TableHead className="h-9 text-right text-slate-600 dark:text-slate-300">Discount</TableHead>
-                                      <TableHead className="h-9 text-right text-slate-600 dark:text-slate-300">Net</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {(r.items || []).map((it) => (
-                                      <TableRow key={String(it.detailId)} className="hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-100 dark:border-slate-800">
-                                        <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400 py-2">{it.productCode}</TableCell>
-                                        <TableCell className="text-slate-700 dark:text-slate-200 font-medium py-2">{it.productName}</TableCell>
-                                        <TableCell className="text-slate-600 dark:text-slate-400 text-xs py-2">{it.brandName || "-"}</TableCell>
-                                        <TableCell className="text-slate-600 dark:text-slate-400 text-xs py-2">{it.supplierName || "-"}</TableCell>
-                                        <TableCell className="text-slate-600 dark:text-slate-400 text-xs py-2">{it.returnCategory || "-"}</TableCell>
-                                        <TableCell className="text-slate-500 dark:text-slate-500 text-xs py-2 italic">{it.specificReason || "-"}</TableCell>
-                                        <TableCell className="text-slate-700 dark:text-slate-300 text-xs py-2 font-medium">
-                                          {it.invoiceNo || "-"}
-                                        </TableCell>
-                                        <TableCell className="text-right py-2 dark:text-slate-300">{Number(it.quantity || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right py-2 text-xs text-slate-500 dark:text-slate-400">{Number(it.unitPrice || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right py-2 text-xs text-slate-500 dark:text-slate-400">{Number(it.grossAmount || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right py-2 text-xs text-slate-500 dark:text-slate-400">{Number(it.discountAmount || 0).toLocaleString()}</TableCell>
-                                        <TableCell className="text-right font-bold text-blue-600 dark:text-blue-400 py-2">{Number(it.netAmount || 0).toLocaleString()}</TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </React.Fragment>
-                  );
-                })
+                      {/* 🟢 3. REVISED PRODUCT NAME CELL: Enabled wrapping & align-top */}
+                      <TableCell className="text-xs text-slate-700 dark:text-slate-200 font-medium px-3 py-2 w-[250px] whitespace-normal wrap-break-word align-top">
+                        {item.productName}
+                      </TableCell>
+
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 text-center align-top">
+                        {item.unit || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
+                        {item.returnCategory || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 italic max-w-[150px] truncate align-top">
+                        {item.specificReason || "-"}
+                      </TableCell>
+
+                      {/* Metrics */}
+                      <TableCell className="text-xs text-slate-700 dark:text-slate-300 px-3 py-2 text-right align-top">
+                        {Number(item.quantity).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700 dark:text-slate-300 px-3 py-2 text-right align-top">
+                        {Number(item.unitPrice).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700 dark:text-slate-300 px-3 py-2 text-right align-top">
+                        {Number(item.grossAmount).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 text-right align-top">
+                        {item.discountApplied || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 text-right align-top">
+                        {Number(item.discountAmount).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2 text-right align-top">
+                        {Number(item.netAmount).toLocaleString()}
+                      </TableCell>
+
+                      {/* Footer Info / Status */}
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
+                        {item.invoiceNo || r.invoiceNo || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-center px-3 py-2 align-top">
+                        <Badge
+                          variant="outline"
+                          className={getStatusBadge(r.returnStatus)}
+                        >
+                          {r.returnStatus === "Received"
+                            ? "Approved"
+                            : "Pending"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  )),
+                )
               )}
             </TableBody>
           </Table>
@@ -653,14 +940,61 @@ export function SalesReturnSummary() {
         {/* Enhanced Pagination Footer */}
         <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 border-t border-slate-200 dark:border-slate-800 gap-4 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="text-sm text-slate-500 dark:text-slate-400 text-center md:text-left">
-            Showing <b>{(page - 1) * limit + 1}</b> to <b>{Math.min(page * limit, report.total)}</b> of <b>{report.total}</b> entries
+            Showing <b>{(page - 1) * limit + 1}</b> to{" "}
+            <b>{Math.min(page * limit, report.total)}</b> of{" "}
+            <b>{report.total}</b> entries
           </div>
           <div className="flex items-center gap-1 justify-center">
-            <Button variant="outline" size="icon" className="h-8 w-8 hidden sm:flex dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300" onClick={() => setPage(1)} disabled={page === 1 || loading}><ChevronsLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="icon" className="h-8 w-8 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1 || loading}><ChevronLeft className="h-4 w-4" /></Button>
-            <div className="flex items-center gap-1 mx-2">{getPageNumbers().map((p, i) => (<Button key={i} variant={p === page ? "default" : "outline"} size="sm" className={`h-8 w-8 p-0 ${p === "..." ? "cursor-default border-none hover:bg-transparent dark:hover:bg-transparent dark:text-slate-400" : ""} ${p === page ? "bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:text-white" : "dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"}`} onClick={() => typeof p === "number" && setPage(p)} disabled={p === "..." || loading}>{p}</Button>))}</div>
-            <Button variant="outline" size="icon" className="h-8 w-8 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages || loading}><ChevronRight className="h-4 w-4" /></Button>
-            <Button variant="outline" size="icon" className="h-8 w-8 hidden sm:flex dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300" onClick={() => setPage(totalPages)} disabled={page === totalPages || loading}><ChevronsRight className="h-4 w-4" /></Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 hidden sm:flex dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+              onClick={() => setPage(1)}
+              disabled={page === 1 || loading}
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-1 mx-2">
+              {getPageNumbers().map((p, i) => (
+                <Button
+                  key={i}
+                  variant={p === page ? "default" : "outline"}
+                  size="sm"
+                  className={`h-8 w-8 p-0 ${p === "..." ? "cursor-default border-none hover:bg-transparent dark:hover:bg-transparent dark:text-slate-400" : ""} ${p === page ? "bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:text-white" : "dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"}`}
+                  onClick={() => typeof p === "number" && setPage(p)}
+                  disabled={p === "..." || loading}
+                >
+                  {p}
+                </Button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || loading}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 hidden sm:flex dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages || loading}
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
@@ -674,5 +1008,3 @@ export function SalesReturnSummary() {
     </div>
   );
 }
-
-  
