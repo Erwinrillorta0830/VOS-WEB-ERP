@@ -15,7 +15,17 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import {
+  Check,
+  ChevronsUpDown,
+  ChevronRight,
+  RefreshCw,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -35,14 +45,18 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
-  ChevronDown,
-  ChevronRight,
-  RefreshCw,
-  ChevronLeft,
-  ChevronsLeft,
-  ChevronsRight,
-  Printer,
-} from "lucide-react";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 import { SalesReturnProvider } from "../provider/api";
 import { SalesReturnPrintSlip } from "./SalesReturnPrintSlip";
@@ -57,12 +71,94 @@ import type {
   SummaryMetricsData,
 } from "../type";
 
-const COLORS = [
-  "#2563EB", // Blue
-  "#6B7280", // Gray
-  "#14B8A6", // Teal
-  "#475569", // Slate
-];
+// --- Internal Component: Searchable Select (Combobox) ---
+interface SearchableSelectProps {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+}
+
+const SearchableSelect = ({
+  options,
+  value,
+  onChange,
+  placeholder = "Select...",
+  searchPlaceholder = "Search...",
+}: SearchableSelectProps) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200"
+        >
+          {value && value !== "All"
+            ? options.find((option) => option.value === value)?.label
+            : placeholder}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+        align="start"
+      >
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="All"
+                onSelect={() => {
+                  onChange("All");
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value === "All" || value === ""
+                      ? "opacity-100"
+                      : "opacity-0",
+                  )}
+                />
+                All
+              </CommandItem>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.label}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+// --- Main Component ---
+
+const COLORS = ["#2563EB", "#6B7280", "#14B8A6", "#475569"];
 
 type ChartDatum = { name: string; value: number };
 
@@ -394,7 +490,7 @@ export function SalesReturnSummary() {
 
   return (
     <div className="space-y-4 p-2 sm:p-0">
-      {/* FILTER BAR (unchanged) */}
+      {/* FILTER BAR */}
       <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-4">
         {/* Row 1: Search, Date, Quick Range */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
@@ -478,76 +574,107 @@ export function SalesReturnSummary() {
           </div>
         </div>
 
-        {/* Row 2: Dropdown Filters */}
+        {/* Row 2: Dropdown Filters (Refactored to SearchableSelect where applicable) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {[
-            {
-              label: "Customer",
-              val: customerCode,
-              set: setCustomerCode,
-              opts: customers,
-            },
-            {
-              label: "Salesman",
-              val: salesmanId,
-              set: setSalesmanId,
-              opts: salesmen,
-            },
-            {
-              label: "Status",
-              val: status,
-              set: setStatus,
-              opts: [
-                { value: "Pending", label: "Pending" },
-                { value: "Received", label: "Received" },
-              ],
-              allLabel: "All",
-            },
-            {
-              label: "Supplier",
-              val: supplierName,
-              set: setSupplierName,
-              opts: suppliers.map((s) => ({ value: s.name, label: s.name })),
-            },
-            {
-              label: "Return Type",
-              val: returnCategory,
-              set: setReturnCategory,
-              opts: returnTypes.map((t) => ({
-                value: t.type_name,
-                label: t.type_name,
-              })),
-            },
-          ].map((item, idx) => (
-            <div key={idx}>
-              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                {item.label}
-              </label>
-              <Select
-                value={item.val}
-                onValueChange={(v) => {
-                  item.set(v);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200">
-                  <SelectValue
-                    placeholder={item.allLabel || `All ${item.label}s`}
-                  />
-                </SelectTrigger>
-                <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
-                  <SelectItem value="All">
-                    {item.allLabel || `All ${item.label}s`}
+          {/* Customer - Searchable */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Customer
+            </label>
+            <SearchableSelect
+              options={customers}
+              value={customerCode}
+              onChange={(v) => {
+                setCustomerCode(v);
+                setPage(1);
+              }}
+              placeholder="All Customers"
+              searchPlaceholder="Search customer..."
+            />
+          </div>
+
+          {/* Salesman - Searchable */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Salesman
+            </label>
+            <SearchableSelect
+              options={salesmen}
+              value={salesmanId}
+              onChange={(v) => {
+                setSalesmanId(v);
+                setPage(1);
+              }}
+              placeholder="All Salesmen"
+              searchPlaceholder="Search salesman..."
+            />
+          </div>
+
+          {/* Status - Standard Select */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Status
+            </label>
+            <Select
+              value={status}
+              onValueChange={(v) => {
+                setStatus(v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
+                <SelectItem value="All">All</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Received">Received</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Supplier - Searchable */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Supplier
+            </label>
+            <SearchableSelect
+              options={suppliers.map((s) => ({ value: s.name, label: s.name }))}
+              value={supplierName}
+              onChange={(v) => {
+                setSupplierName(v);
+                setPage(1);
+              }}
+              placeholder="All Suppliers"
+              searchPlaceholder="Search supplier..."
+            />
+          </div>
+
+          {/* Return Type - Standard Select */}
+          <div>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Return Type
+            </label>
+            <Select
+              value={returnCategory}
+              onValueChange={(v) => {
+                setReturnCategory(v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-200">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent className="dark:bg-slate-900 dark:border-slate-700">
+                <SelectItem value="All">All Types</SelectItem>
+                {returnTypes.map((t) => (
+                  <SelectItem key={t.type_name} value={t.type_name}>
+                    {t.type_name}
                   </SelectItem>
-                  {item.opts.map((opt: any) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ))}
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -776,7 +903,6 @@ export function SalesReturnSummary() {
           </div>
         </div>
 
-        {/* ✅ LIST TABLE (REVISED) */}
         <div className="overflow-x-auto">
           <Table className="w-full min-w-[1800px]">
             <TableHeader>
@@ -803,21 +929,15 @@ export function SalesReturnSummary() {
                   Product Name
                 </TableHead>
 
-                {/* 🟢 REVISION 1a: COLUMNS REORDERED (Header) */}
-                {/* Previous: Unit -> Return Type -> Reason */}
-                {/* New: Return Type -> Reason -> Unit */}
-
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                   Return Type
                 </TableHead>
-                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
                   Reason
                 </TableHead>
-                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Unit
                 </TableHead>
-
-                {/* 🟢 END REVISION 1a */}
 
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Quantity
@@ -828,19 +948,22 @@ export function SalesReturnSummary() {
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Gross Amount
                 </TableHead>
-                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                  Discount Percentage
+
+                {/* ✅ REVISION 1: Changed Header */}
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Discount Type
                 </TableHead>
+
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Discount Amt
                 </TableHead>
                 <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Net Amount
                 </TableHead>
-                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                  Applied to
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
+                  Applied To
                 </TableHead>
-                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-center">
+                <TableHead className="h-9 px-3 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap text-right">
                   Status
                 </TableHead>
               </TableRow>
@@ -897,22 +1020,16 @@ export function SalesReturnSummary() {
                         {item.productName}
                       </TableCell>
 
-                      {/* 🟢 REVISION 1b: COLUMNS REORDERED (Body) */}
-                      {/* 1. Return Type */}
+                      {/* Reordered Columns */}
                       <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
                         {item.returnCategory || "-"}
                       </TableCell>
-
-                      {/* 2. Reason */}
                       <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 italic max-w-[150px] truncate align-top">
                         {item.specificReason || "-"}
                       </TableCell>
-
-                      {/* 3. Unit (Centered) */}
-                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 text-center align-top">
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 text-right align-top">
                         {item.unit || "-"}
                       </TableCell>
-                      {/* 🟢 END REVISION 1b */}
 
                       <TableCell className="text-xs text-slate-700 dark:text-slate-300 px-3 py-2 text-right align-top">
                         {Number(item.quantity).toLocaleString()}
@@ -923,19 +1040,23 @@ export function SalesReturnSummary() {
                       <TableCell className="text-xs text-slate-700 dark:text-slate-300 px-3 py-2 text-right align-top">
                         {Number(item.grossAmount).toLocaleString()}
                       </TableCell>
+
+                      {/* ✅ REVISION 2: Discount Type Display Fix */}
                       <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 text-right align-top">
-                        {item.discountApplied || "-"}
+                        {item.discountApplied || "No Discount"}
                       </TableCell>
+
                       <TableCell className="text-xs text-slate-500 dark:text-slate-500 px-3 py-2 text-right align-top">
                         {Number(item.discountAmount).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs font-bold text-blue-600 dark:text-blue-400 px-3 py-2 text-right align-top">
                         {Number(item.netAmount).toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 align-top">
+
+                      <TableCell className="text-xs text-slate-600 dark:text-slate-400 px-3 py-2 text-right align-top">
                         {item.invoiceNo || r.invoiceNo || "-"}
                       </TableCell>
-                      <TableCell className="text-xs text-center px-3 py-2 align-top">
+                      <TableCell className="text-xs text-right px-3 py-2 align-top">
                         <Badge
                           variant="outline"
                           className={getStatusBadge(r.returnStatus)}
@@ -985,7 +1106,15 @@ export function SalesReturnSummary() {
                   key={i}
                   variant={p === page ? "default" : "outline"}
                   size="sm"
-                  className={`h-8 w-8 p-0 ${p === "..." ? "cursor-default border-none hover:bg-transparent dark:hover:bg-transparent dark:text-slate-400" : ""} ${p === page ? "bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:text-white" : "dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"}`}
+                  className={`h-8 w-8 p-0 ${
+                    p === "..."
+                      ? "cursor-default border-none hover:bg-transparent dark:hover:bg-transparent dark:text-slate-400"
+                      : ""
+                  } ${
+                    p === page
+                      ? "bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:text-white"
+                      : "dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+                  }`}
                   onClick={() => typeof p === "number" && setPage(p)}
                   disabled={p === "..." || loading}
                 >

@@ -53,12 +53,10 @@ export interface SummaryReturnItem {
 
   quantity: number;
   unitPrice: number;
-  grossAmount: number;
-
-  discountAmount: number;
-  discountApplied: string; // discount_type or "No Discount"
-
-  netAmount: number;
+  grossAmount: number; // Now strictly Qty * Price
+  discountAmount: number; // From DB
+  discountApplied: string; // Now handles "Custom/Other" logic
+  netAmount: number; // Now strictly Gross - Discount
 }
 
 export interface SummaryReturnHeader {

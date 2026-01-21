@@ -71,7 +71,6 @@ const normalizeFilters = (raw: any): SummaryFilters => {
 
 export const SalesReturnProvider = {
   // ... (Dropdown fetchers remain the same as your code, hidden for brevity) ...
-  // FULL DROPDOWN CODE IS INCLUDED IN PREVIOUS FRAGMENTS, FOCUSING ON MAIN REPORT BELOW
 
   async getCustomersList(): Promise<SummaryCustomerOption[]> {
     try {
@@ -167,7 +166,7 @@ export const SalesReturnProvider = {
       customers,
       salesmen,
       returnTypes,
-      discountTypes,
+      lineDiscounts, // 🟢 FETCHING LINE DISCOUNTS
       brands,
       suppliersAll,
       units,
@@ -183,9 +182,12 @@ export const SalesReturnProvider = {
       fetch(`${API_BASE}/sales_return_type?limit=-1&fields=type_id,type_name`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
-      fetch(`${API_BASE}/discount_type?limit=-1&fields=id,discount_type`, {
+
+      // 🟢 REVISION: Correct table and fields based on screenshot
+      fetch(`${API_BASE}/line_discount?limit=-1&fields=id,line_discount`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
+
       fetch(`${API_BASE}/brand?limit=-1&fields=brand_id,brand_name`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
@@ -211,10 +213,13 @@ export const SalesReturnProvider = {
     (returnTypes.data || []).forEach((t: any) =>
       returnTypeMap.set(String(t.type_id), t),
     );
-    const discountTypeMap = new Map();
-    (discountTypes.data || []).forEach((d: any) =>
-      discountTypeMap.set(String(d.id), d),
+
+    // 🟢 REVISION: Map using the correct 'line_discount' field
+    const lineDiscountMap = new Map();
+    (lineDiscounts.data || []).forEach(
+      (d: any) => lineDiscountMap.set(String(d.id), d.line_discount), // Store the name string directly
     );
+
     const brandMap = new Map();
     (brands.data || []).forEach((b: any) =>
       brandMap.set(String(b.brand_id), b),
@@ -234,7 +239,6 @@ export const SalesReturnProvider = {
     );
 
     // 2) Fetch parent sales returns
-    // 🟢 We verify 'remarks' is included in fields
     const allowedFields =
       "return_id,return_number,return_date,status,customer_code,salesman_id,invoice_no,total_amount,remarks";
     let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_date,-return_id`;
@@ -277,6 +281,8 @@ export const SalesReturnProvider = {
     const detailChunks = chunk(returnNos, 25);
 
     const detailPromises = detailChunks.map(async (list) => {
+      // 🟢 REVISION: Fetching fields required for calculation
+      // Note: 'discount_type' in this table is the ID that links to 'line_discount' table
       const detailsUrl = `${API_BASE}/sales_return_details?limit=-1&filter[return_no][_in]=${inFilterParam(list)}&fields=detail_id,return_no,reason,quantity,unit_price,gross_amount,discount_amount,discount_type,total_amount,sales_return_type_id,product_id.product_id,product_id.product_code,product_id.product_name,product_id.product_brand,product_id.parent_id,product_id.unit_of_measurement,product_id.product_category`;
       const res = await fetch(detailsUrl, {
         headers: getHeaders(),
@@ -288,7 +294,7 @@ export const SalesReturnProvider = {
     const detailResults = await Promise.all(detailPromises);
     allDetails = detailResults.flat();
 
-    // 4) Build supplier names - 🟢 OPTIMIZED Parallel Fetching
+    // 4) Build supplier names
     const baseProductIds = Array.from(
       new Set(
         allDetails
@@ -336,7 +342,7 @@ export const SalesReturnProvider = {
       return set ? Array.from(set).sort().join(", ") : "";
     };
 
-    // 5) Group details
+    // 5) Group details - 🟢 REVISED SECTION
     const detailsByReturnNo = new Map<string, SummaryReturnItem[]>();
     for (const d of allDetails) {
       const returnNo = String(d.return_no);
@@ -348,9 +354,7 @@ export const SalesReturnProvider = {
           : String(product.product_brand);
       const returnTypeName =
         returnTypeMap.get(String(d.sales_return_type_id))?.type_name || "";
-      const discountApplied =
-        discountTypeMap.get(String(d.discount_type))?.discount_type ||
-        "No Discount";
+
       const unitId =
         typeof product.unit_of_measurement === "object"
           ? String(product.unit_of_measurement.unit_id)
@@ -360,20 +364,29 @@ export const SalesReturnProvider = {
           ? String(product.product_category.category_id)
           : String(product.product_category);
 
-      // --- 🟢 REVISION 2: STRICT CALCULATION LOGIC ---
-      // To ensure Discount Type aligns with amounts and prevents mismatches:
-      // 1. Force Qty and Price to numbers
+      // --- 🟢 DISCOUNT TYPE LOGIC ---
+      let discountApplied = "No Discount";
+      // Fetch using the 'line_discount' name we mapped earlier
+      const mappedType = lineDiscountMap.get(String(d.discount_type));
+
+      if (mappedType) {
+        discountApplied = mappedType;
+      } else if (toNum(d.discount_amount) > 0) {
+        // Fallback: Money was deducted but no type found
+        discountApplied = "Custom / Other";
+      }
+
+      // --- 🟢 STRICT CALCULATION LOGIC ---
       const qty = toNum(d.quantity);
       const price = toNum(d.unit_price);
 
-      // 2. Recalculate Gross (Qty * Unit Price)
+      // A. Calculate Gross: Strictly Qty * Price
       const calculatedGross = qty * price;
 
-      // 3. Get Discount Amount (Trusting DB value as primary source for the deduction)
+      // B. Get Discount: Trust the DB Amount
       const discountAmt = toNum(d.discount_amount);
 
-      // 4. Recalculate Net (Gross - Discount)
-      // This ensures 1000 - 100 is always 900, regardless of what the DB 'total_amount' column says.
+      // C. Calculate Net: Strictly Gross - Discount
       const calculatedNet = calculatedGross - discountAmt;
 
       const item: SummaryReturnItem = {
@@ -387,10 +400,10 @@ export const SalesReturnProvider = {
         supplierName: supplierNamesFor(baseProdId),
         returnCategory: returnTypeName,
         specificReason: d.reason || "",
+
+        // 🟢 Assign Validated Values
         quantity: qty,
         unitPrice: price,
-
-        // Use calculated values
         grossAmount: calculatedGross,
         discountAmount: discountAmt,
         discountApplied,
@@ -406,13 +419,10 @@ export const SalesReturnProvider = {
       const cust = customerMap.get(String(r.customer_code));
       const sm = salesmanMap.get(String(r.salesman_id));
 
-      // OLD CODE: const items = detailsByReturnNo.get(String(r.return_number)) || [];
-
-      // NEW CODE: Get items and inject the Parent Invoice No into them
       const rawItems = detailsByReturnNo.get(String(r.return_number)) || [];
       const items = rawItems.map((item) => ({
         ...item,
-        invoiceNo: r.invoice_no || "-", // <--- Passing the invoice number here
+        invoiceNo: r.invoice_no || "-",
       }));
 
       return {
