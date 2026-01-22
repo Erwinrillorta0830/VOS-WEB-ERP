@@ -376,7 +376,7 @@ export function SalesReturnExportDialog({
                 <th width="6%">Reason</th>
                 <th width="3%" class="text-center">Unit</th>
                 <th width="4%" class="text-right">Qty</th>
-                <th width="5%" class="text-right">Price</th>
+                <th width="5%" class="text-right">Unit Price</th>
                 <th width="5%" class="text-right">Gross</th>
                 <th width="5%" class="text-right">Disc</th>
                 <th width="6%" class="text-right">Net</th>
@@ -565,7 +565,7 @@ export function SalesReturnExportDialog({
             variant="default"
             onClick={handleGenerate}
             disabled={generating}
-            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+            className="bg-blue-600 hover:bg-blue-700 text-white min-w-20"
           >
             {generating ? (
               <>

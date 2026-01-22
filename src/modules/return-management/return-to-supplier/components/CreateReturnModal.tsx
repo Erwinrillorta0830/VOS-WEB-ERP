@@ -398,7 +398,7 @@ export function CreateReturnModal({ isOpen, onClose, onReturnCreated }: Props) {
           {/* HEADER */}
 
           {showProductPicker ? (
-            <DialogHeader className="px-6 py-5 border-b flex flex-row items-center justify-between bg-white z-20 h-[70px] flex-shrink-0">
+            <DialogHeader className="px-6 py-5 border-b flex flex-row items-center justify-between bg-white z-20 h-[70px] shrink-0">
               <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
                 <div className="bg-blue-100 p-2 rounded-lg">
                   <Plus className="h-5 w-5 text-blue-600" />
