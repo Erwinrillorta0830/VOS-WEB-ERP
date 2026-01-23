@@ -4,7 +4,7 @@ import { SalesReturnModule } from "../../../../modules/return-management/sales-r
 
 export const metadata = {
   title: "Sales Return V3",
-  description: "New Sales Return Module",
+  description: "New Sales Return vtc-invoice-management",
 };
 
 export default function SalesReturnV3Page() {

@@ -53,9 +53,9 @@ const MODULES: AppModule[] = [
         available: false,
     },
     {
-        key: "sales",
-        name: "Sales",
-        href: "/app/sales",
+        key: "Invoice Cancellation Management",
+        name: "Invoice Cancellation Management",
+        href: "/invoice-management/invoice-summary-report",
         icon: ShoppingCart,
         accent: "from-rose-400 to-pink-500",
         available: false,
@@ -66,7 +66,7 @@ const MODULES: AppModule[] = [
         href: "/returns",
         icon: Package,
         accent: "from-emerald-400 to-teal-500",
-        available: true,
+        available: false,
     },
     {
         key: "inventory",
@@ -90,7 +90,7 @@ const MODULES: AppModule[] = [
         href: "/hrms",
         icon: Users,
         accent: "from-purple-400 to-fuchsia-500",
-        available: true,
+        available: false,
     },
     {
         key: "accounting",

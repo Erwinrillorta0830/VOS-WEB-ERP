@@ -5,15 +5,79 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="df68fb2f-ce0c-459c-ac24-a1d6845204be" name="Changes" comment="update again">
-      <change afterPath="$PROJECT_DIR$/src/app/(app)/sales/salesman/page.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/salesman/list/route.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/app/api/sales/salesman/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/invoice-management/invoice-cancellation-approval/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/invoice-management/invoice-cancellation/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/invoice-management/invoice-summary-report/page.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/(app)/invoice-management/layout.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/invoice-cancellation-approval/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/invoice-cancellation/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/api/invoice-summary-report/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/app-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/sidebarr/app-sidebar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/sidebarr/nav-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/shared/sidebarr/nav-main.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/action-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/ui/slider.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/hooks/use-as-ref.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/hooks/use-cancellation-stats.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/hooks/use-isomorphic-layout-effect.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/hooks/use-mobile.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/lib/compose-refs.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/InvoiceCancellationApprovalPage.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/cards/InvoiceSummaryApprovalCard.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/confirmation-modal.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/data-table/approvedColumn.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/data-table/table-action-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/data-table/table-column-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/components/data-table/table-view-option.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/hooks/use-approval.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/lib/mapping.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/lib/utils.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation-approval/types/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/InvoiceCancellationPage.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/cards/InvoiceSummaryCards.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/data-table/columns.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/data-table/pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/data-table/table-column-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/data-table/toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/data-table/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/components/request-modal.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/hooks/use-invoices.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/services/invoice-service.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-cancellation/types/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/InvoiceSummaryReportPage.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/card/InvoiceSummaryReportCard.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/charts/invoice-summary-report-bar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/charts/invoice-summary-report-pie.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/column.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/index.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-active-filters.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-column-header.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-date-filter.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-faceted-filter.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-pagination.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-time-filter.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-toolbar.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/components/data-table/table-view-option.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/hooks/use-summary-data.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/lib/data-mapper.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/lib/utils.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/modules/invoice-management/invoice-summary-report/types/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tailwind.config.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/advance-filter.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/advance-filter.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/shared/contents/summary-report-content.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/shared/contents/summary-report-content.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/(app)/bi/summary-report/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/bi/summary-report/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/advance-filter.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/advance-filter.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/shared/contents/summary-report-content.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/shared/contents/summary-report-content.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ui/chart.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/ui/chart.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/returns/sales-return/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/returns/sales-return/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/returns/sales-returnv3/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/returns/sales-returnv3/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(app)/sales/layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(app)/sales/layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/salesman/list/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/salesman/list/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/api/sales/salesman/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/api/sales/salesman/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/utils.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/utils.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -61,29 +125,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;js.debugger.nextJs.config.created.client&quot;: &quot;true&quot;,
-    &quot;js.debugger.nextJs.config.created.server&quot;: &quot;true&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP/src/app/api/sales&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.keymap&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;C:\\Users\\Admin\\Desktop\\VOS\\VOS-WEB-ERP\\node_modules\\typescript\\lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "main",
+    "js.debugger.nextJs.config.created.client": "true",
+    "js.debugger.nextJs.config.created.server": "true",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "C:/Users/Admin/Desktop/VOS/VOS-WEB-ERP/src/app/(app)",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.keymap",
+    "to.speed.mode.migration.done": "true",
+    "ts.external.directory.path": "C:\\Users\\Admin\\Desktop\\VOS\\VOS-WEB-ERP\\node_modules\\typescript\\lib",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -95,13 +159,14 @@
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
-      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api\sales" />
-      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\components\ui" />
-      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\public" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\(app)" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api" />
-      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\components\ui" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\lib" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\hooks" />
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\components\shared\sidebarr" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\modules\supply-chain-managament-module\fleet-management\pending-invoices" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\(app)\sales" />
       <recent name="C:\Users\Admin\Desktop\VOS\VOS-WEB-ERP\src\app\api" />
     </key>
@@ -153,7 +218,11 @@
       <workItem from="1768528534463" duration="4561000" />
       <workItem from="1768549944562" duration="2913000" />
       <workItem from="1768572932432" duration="652000" />
-      <workItem from="1768658571312" duration="4501000" />
+      <workItem from="1768658571312" duration="8980000" />
+      <workItem from="1768821889412" duration="183000" />
+      <workItem from="1768825566658" duration="21350000" />
+      <workItem from="1769045109949" duration="7687000" />
+      <workItem from="1769166269682" duration="1565000" />
     </task>
     <task id="LOCAL-00001" summary="sales">
       <option name="closed" value="true" />
@@ -251,7 +320,15 @@
       <option name="project" value="LOCAL" />
       <updated>1768529240596</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="update again">
+      <option name="closed" value="true" />
+      <created>1768816745633</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1768816745633</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

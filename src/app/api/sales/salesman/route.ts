@@ -1,220 +1,324 @@
 import { NextResponse } from "next/server";
 
-const DIRECTUS_URL = process.env.DIRECTUS_URL;
-const AUTH_HEADER = {
-  Authorization: "Bearer " + process.env.DIRECTUS_TOKEN,
-  "Content-Type": "application/json",
+const RAW_DIRECTUS_URL = process.env.DIRECTUS_URL || "";
+const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, ""); // <-- removes trailing slashes
+
+const DIRECTUS_TOKEN =
+    process.env.DIRECTUS_TOKEN ||
+    process.env.DIRECTUS_ACCESS_TOKEN ||
+    process.env.DIRECTUS_STATIC_TOKEN ||
+    "";
+
+type DirectusErr = {
+    collection: string;
+    status?: number;
+    message: string;
+    url: string;
 };
 
+function getHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+    };
+    if (DIRECTUS_TOKEN) {
+        (headers as any).Authorization = `Bearer ${DIRECTUS_TOKEN}`;
+    }
+    return headers;
+}
+
+function safeId(val: any): string {
+    if (val === null || val === undefined) return "";
+    if (typeof val === "object" && val !== null) return val.id ? String(val.id) : "";
+    return String(val);
+}
+
 /**
- * Helper function to fetch all data from Directus without limits
+ * Build ISO date filter using _gte/_lte (more reliable than _between)
+ * expects fromDate/toDate as YYYY-MM-DD
  */
-async function fetchAll(endpoint: string, params: string = "") {
-  try {
-    const url = `${DIRECTUS_URL}/items/${endpoint}?limit=-1${params}`;
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: AUTH_HEADER,
-    });
-    const json = await res.json();
-    return json.data || [];
-  } catch (err) {
-    console.error(`Error fetching ${endpoint}:`, err);
-    return [];
-  }
+function buildDateFilter(field: string, fromDate: string, toDate: string) {
+    const from = encodeURIComponent(`${fromDate}T00:00:00`);
+    const to = encodeURIComponent(`${toDate}T23:59:59`);
+    return `&filter[${encodeURIComponent(field)}][_gte]=${from}&filter[${encodeURIComponent(field)}][_lte]=${to}`;
+}
+
+/**
+ * Fetch all records with pagination (stable replacement for limit=-1)
+ */
+async function fetchAll<T = any>(
+    collection: string,
+    query: string = "",
+    errors: DirectusErr[],
+    pageSize = 500
+): Promise<T[]> {
+    if (!DIRECTUS_BASE) {
+        errors.push({
+            collection,
+            message: "Missing DIRECTUS_URL in environment",
+            url: "DIRECTUS_URL is empty",
+        });
+        return [];
+    }
+
+    const out: T[] = [];
+    let offset = 0;
+
+    for (let page = 0; page < 200; page++) {
+        const url = `${DIRECTUS_BASE}/items/${collection}?limit=${pageSize}&offset=${offset}${query}`;
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+            const res = await fetch(url, {
+                cache: "no-store",
+                headers: getHeaders(),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                errors.push({
+                    collection,
+                    status: res.status,
+                    message: `Directus request failed. ${text}`,
+                    url,
+                });
+                return out;
+            }
+
+            const json = await res.json();
+            const chunk = ((json?.data as T[]) || []) as T[];
+            out.push(...chunk);
+
+            if (chunk.length < pageSize) break;
+            offset += pageSize;
+        } catch (e: any) {
+            errors.push({
+                collection,
+                status: undefined,
+                message: e?.message || "Unknown fetch error",
+                url,
+            });
+            return out;
+        }
+    }
+
+    return out;
 }
 
 export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const fromDate = searchParams.get("fromDate");
-    const toDate = searchParams.get("toDate");
-    const salesmanId = searchParams.get("salesmanId");
+    const errors: DirectusErr[] = [];
 
-    if (!fromDate || !toDate) {
-      return NextResponse.json(
-        { success: false, error: "Missing date parameters" },
-        { status: 400 }
-      );
-    }
+    try {
+        const { searchParams } = new URL(request.url);
+        const fromDate = searchParams.get("fromDate"); // expects YYYY-MM-DD
+        const toDate = searchParams.get("toDate"); // expects YYYY-MM-DD
+        const salesmanId = searchParams.get("salesmanId");
 
-    // --- 1. FILTERS & FETCHING ---
-    // Same date range logic as Supervisor Dashboard
-    const dateFilter = `&filter[invoice_date][_between]=[${fromDate},${toDate}]`;
-    const returnFilter = `&filter[return_date][_between]=[${fromDate},${toDate}]`;
-    const orderFilter = `&filter[order_date][_between]=[${fromDate},${toDate}]`;
-
-    const [
-      salesmen,
-      invoices,
-      invoiceDetails,
-      returns,
-      returnDetails,
-      suppliers,
-      productSupplierMap,
-      allProducts,
-      orders,
-    ] = await Promise.all([
-      fetchAll("salesman", "&fields=id,salesman_name,level,points_growth"),
-      fetchAll(
-        "sales_invoice",
-        `&fields=invoice_id,invoice_no,total_amount,net_amount,salesman_id${dateFilter}`
-      ),
-      fetchAll(
-        "sales_invoice_details",
-        "&fields=invoice_no,product_id,total_amount,quantity"
-      ),
-      fetchAll(
-        "sales_return",
-        `&fields=return_number,total_amount${returnFilter}`
-      ),
-      fetchAll(
-        "sales_return_details",
-        "&fields=return_no,product_id,total_amount,reason"
-      ),
-      fetchAll("suppliers", "&fields=id,supplier_name,supplier_shortcut"),
-      fetchAll("product_per_supplier", "&fields=supplier_id,product_id"),
-      fetchAll("products", "&fields=product_id,product_name"),
-      fetchAll("sales_order", `&fields=order_id,order_status${orderFilter}`),
-    ]);
-
-    // --- 2. SALESMAN FILTERING (Live-Ready Logic) ---
-    // Ino-normalize natin ang salesman_id dahil minsan Directus returns an object {id: 1} or just the ID string/number
-    const filteredInvoices = invoices.filter((inv: any) => {
-      if (!salesmanId || salesmanId === "all") return true;
-      const sId =
-        typeof inv.salesman_id === "object"
-          ? String(inv.salesman_id.id)
-          : String(inv.salesman_id);
-      return sId === salesmanId;
-    });
-
-    // Create a Set for faster lookup of allowed invoice numbers
-    const filteredInvoiceNos = new Set(
-      filteredInvoices.map((inv: any) => String(inv.invoice_no))
-    );
-
-    // --- 3. MAPPING & COMPUTATION ---
-    const productNameMap = new Map(
-      allProducts.map((p: any) => [String(p.product_id), p.product_name])
-    );
-    const prodToSupMap = new Map(
-      productSupplierMap.map((m: any) => [
-        String(m.product_id),
-        String(m.supplier_id),
-      ])
-    );
-    const supplierMap = new Map();
-    suppliers.forEach((s: any) =>
-      supplierMap.set(String(s.id), s.supplier_shortcut || s.supplier_name)
-    );
-
-    const productSalesMap = new Map();
-    const supplierSalesMap = new Map();
-
-    // Link Details to Invoices using invoice_no (just like Supervisor logic)
-    invoiceDetails.forEach((det: any) => {
-      if (filteredInvoiceNos.has(String(det.invoice_no))) {
-        const pId = String(det.product_id);
-        const amount = Number(det.total_amount) || 0;
-
-        // Add to Product Totals
-        productSalesMap.set(pId, (productSalesMap.get(pId) || 0) + amount);
-
-        // Add to Supplier Totals
-        const sId = prodToSupMap.get(pId);
-        if (sId) {
-          supplierSalesMap.set(sId, (supplierSalesMap.get(sId) || 0) + amount);
+        if (!fromDate || !toDate) {
+            return NextResponse.json(
+                { success: false, error: "Missing date parameters" },
+                { status: 400 }
+            );
         }
-      }
-    });
 
-    // --- 4. FORMATTING FOR UI ---
-    const chartColors = [
-      "#3b82f6",
-      "#10b981",
-      "#f59e0b",
-      "#ef4444",
-      "#8b5cf6",
-      "#ec4899",
-    ];
+        // Filters (safe)
+        const invoiceDateFilter = buildDateFilter("invoice_date", fromDate, toDate);
+        const returnDateFilter = buildDateFilter("return_date", fromDate, toDate);
+        const orderDateFilter = buildDateFilter("order_date", fromDate, toDate);
 
-    const supplierPerformance = Array.from(supplierSalesMap.entries())
-      .map(([id, value], index) => ({
-        name: supplierMap.get(id) || `Supplier ${id}`,
-        value,
-        fill: chartColors[index % chartColors.length],
-      }))
-      .sort((a, b) => b.value - a.value);
+        // Fetch data
+        const [
+            salesmen,
+            invoices,
+            invoiceDetails,
+            returns,
+            returnDetails,
+            suppliers,
+            productSupplierMap,
+            allProducts,
+            orders,
+        ] = await Promise.all([
+            fetchAll("salesman", `&fields=${encodeURIComponent("id,salesman_name,level,points_growth")}`, errors),
+            fetchAll(
+                "sales_invoice",
+                `&fields=${encodeURIComponent("invoice_id,invoice_no,total_amount,net_amount,salesman_id")}${invoiceDateFilter}`,
+                errors
+            ),
+            fetchAll(
+                "sales_invoice_details",
+                `&fields=${encodeURIComponent("invoice_no,product_id,total_amount,quantity")}`,
+                errors
+            ),
+            fetchAll(
+                "sales_return",
+                `&fields=${encodeURIComponent("return_number,total_amount,return_date")}${returnDateFilter}`,
+                errors
+            ),
+            fetchAll(
+                "sales_return_details",
+                `&fields=${encodeURIComponent("return_no,product_id,total_amount,reason")}`,
+                errors
+            ),
+            fetchAll("suppliers", `&fields=${encodeURIComponent("id,supplier_name,supplier_shortcut")}`, errors),
+            fetchAll("product_per_supplier", `&fields=${encodeURIComponent("supplier_id,product_id")}`, errors),
+            fetchAll("products", `&fields=${encodeURIComponent("product_id,product_name")}`, errors),
+            fetchAll("sales_order", `&fields=${encodeURIComponent("order_id,order_status,order_date")}${orderDateFilter}`, errors),
+        ]);
 
-    const productPerformance = Array.from(productSalesMap.entries())
-      .map(([id, value]) => ({
-        name: productNameMap.get(id) || `Product ${id}`,
-        value,
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
+        // 1) Filter invoices by salesman (handles FK object)
+        const filteredInvoices = invoices.filter((inv: any) => {
+            if (!salesmanId || salesmanId === "all") return true;
+            return safeId(inv.salesman_id) === String(salesmanId);
+        });
 
-    // Process Bad Storage / Returns
-    const badStorage = returnDetails
-      .map((rd: any) => ({
-        product:
-          productNameMap.get(String(rd.product_id)) || `ID: ${rd.product_id}`,
-        reason: rd.reason || "NO REASON",
-        amount: Number(rd.total_amount) || 0,
-      }))
-      .sort((a: any, b: any) => b.amount - a.amount)
-      .slice(0, 10);
+        // Invoice numbers for fast lookup (details keyed by invoice_no)
+        const filteredInvoiceNos = new Set<string>(
+            filteredInvoices.map((inv: any) => String(inv.invoice_no))
+        );
 
-    const currentSalesman = salesmen.find(
-      (s: any) => String(s.id) === salesmanId
-    );
+        // 2) Maps
+        const productNameMap = new Map<string, string>(
+            allProducts.map((p: any) => [String(p.product_id), String(p.product_name)])
+        );
 
-    // --- 5. FINAL JSON RESPONSE ---
-    return NextResponse.json({
-      success: true,
-      data: {
-        salesman: {
-          name:
-            currentSalesman?.salesman_name ||
-            (salesmanId === "all" ? "Whole Team" : "Unknown"),
-          level: currentSalesman?.level ?? 0,
-          levelUp: currentSalesman?.points_growth ?? 0,
-        },
-        kpi: {
-          orders: filteredInvoices.length,
-          revenue: filteredInvoices.reduce(
-            (acc, inv) =>
-              acc + (Number(inv.net_amount) || Number(inv.total_amount) || 0),
+        const prodToSupMap = new Map<string, string>(
+            productSupplierMap.map((m: any) => [String(m.product_id), safeId(m.supplier_id)])
+        );
+
+        const supplierMap = new Map<string, string>();
+        suppliers.forEach((s: any) => {
+            const id = safeId(s.id);
+            supplierMap.set(id, s.supplier_shortcut || s.supplier_name || `Supplier ${id}`);
+        });
+
+        // 3) Compute product + supplier sales using invoiceDetails (only those invoice_no in filteredInvoiceNos)
+        const productSalesMap = new Map<string, number>();
+        const supplierSalesMap = new Map<string, number>();
+
+        invoiceDetails.forEach((det: any) => {
+            const invNo = String(det.invoice_no);
+            if (!filteredInvoiceNos.has(invNo)) return;
+
+            const pId = String(det.product_id);
+            const amount = Number(det.total_amount) || 0;
+
+            productSalesMap.set(pId, (productSalesMap.get(pId) || 0) + amount);
+
+            const sId = prodToSupMap.get(pId);
+            if (sId) supplierSalesMap.set(sId, (supplierSalesMap.get(sId) || 0) + amount);
+        });
+
+        // 4) Formatting for charts
+        const chartColors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+
+        const supplierPerformance = Array.from(supplierSalesMap.entries())
+            .map(([id, value], index) => ({
+                name: supplierMap.get(id) || `Supplier ${id}`,
+                value,
+                fill: chartColors[index % chartColors.length],
+            }))
+            .sort((a, b) => b.value - a.value);
+
+        const productPerformance = Array.from(productSalesMap.entries())
+            .map(([id, value]) => ({
+                name: productNameMap.get(id) || `Product ${id}`,
+                value,
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 5);
+
+        // 5) Bad Storage / Returns
+        const badStorage = returnDetails
+            .map((rd: any) => ({
+                product: productNameMap.get(String(rd.product_id)) || `ID: ${rd.product_id}`,
+                reason: rd.reason || "NO REASON",
+                amount: Number(rd.total_amount) || 0,
+            }))
+            .sort((a: any, b: any) => b.amount - a.amount)
+            .slice(0, 10);
+
+        const currentSalesman =
+            salesmanId && salesmanId !== "all"
+                ? salesmen.find((s: any) => String(s.id) === String(salesmanId))
+                : null;
+
+        // KPI
+        const revenue = filteredInvoices.reduce((acc: number, inv: any) => {
+            const net = Number(inv.net_amount);
+            const total = Number(inv.total_amount);
+            return acc + (Number.isFinite(net) ? net : Number.isFinite(total) ? total : 0);
+        }, 0);
+
+        const returnsTotal = returns.reduce(
+            (acc: number, ret: any) => acc + (Number(ret.total_amount) || 0),
             0
-          ),
-          returns: returns.reduce(
-            (acc, ret) => acc + (Number(ret.total_amount) || 0),
-            0
-          ),
-        },
-        target: { quota: 100000, achieved: 0, gap: 0, percent: 45 },
-        statusMonitoring: {
-          delivered: orders.filter((o: any) => o.order_status === "Delivered")
-            .length,
-          pending: orders.filter((o: any) => o.order_status === "Pending")
-            .length,
-          cancelled: orders.filter((o: any) =>
+        );
+
+        // Status monitoring (orders already filtered by date above)
+        const delivered = orders.filter((o: any) => o.order_status === "Delivered").length;
+        const pending = orders.filter((o: any) => o.order_status === "Pending").length;
+        const cancelled = orders.filter((o: any) =>
             ["Cancelled", "Not Fulfilled"].includes(o.order_status)
-          ).length,
-        },
-        badStorage,
-        charts: {
-          products: productPerformance.length > 0 ? productPerformance : [],
-          suppliers: supplierPerformance.length > 0 ? supplierPerformance : [],
-        },
-      },
-    });
-  } catch (error: any) {
-    console.error("Salesman API Error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
-  }
+        ).length;
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                salesman: {
+                    name:
+                        currentSalesman?.salesman_name ||
+                        (salesmanId === "all" || !salesmanId ? "Whole Team" : "Unknown"),
+                    level: currentSalesman?.level ?? 0,
+                    levelUp: currentSalesman?.points_growth ?? 0,
+                },
+                kpi: {
+                    orders: filteredInvoices.length,
+                    revenue,
+                    returns: returnsTotal,
+                },
+                target: { quota: 100000, achieved: 0, gap: 0, percent: 45 },
+                statusMonitoring: {
+                    delivered,
+                    pending,
+                    cancelled,
+                },
+                badStorage,
+                charts: {
+                    products: productPerformance.length > 0 ? productPerformance : [],
+                    suppliers: supplierPerformance.length > 0 ? supplierPerformance : [],
+                },
+            },
+            _debug: {
+                directusUrl: DIRECTUS_BASE ? DIRECTUS_BASE + "/" : null,
+                hasToken: Boolean(DIRECTUS_TOKEN),
+                fromDate,
+                toDate,
+                salesmanId: salesmanId || null,
+                counts: {
+                    salesmen: salesmen.length,
+                    invoices: invoices.length,
+                    filteredInvoices: filteredInvoices.length,
+                    invoiceDetails: invoiceDetails.length,
+                    returns: returns.length,
+                    returnDetails: returnDetails.length,
+                    suppliers: suppliers.length,
+                    productPerSupplier: productSupplierMap.length,
+                    products: allProducts.length,
+                    orders: orders.length,
+                },
+                errors,
+            },
+        });
+    } catch (error: any) {
+        console.error("Salesman API Error:", error);
+        return NextResponse.json(
+            { success: false, error: error?.message || "Unknown error" },
+            { status: 500 }
+        );
+    }
 }
