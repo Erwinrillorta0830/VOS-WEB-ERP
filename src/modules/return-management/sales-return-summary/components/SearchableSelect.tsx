@@ -23,6 +23,7 @@ interface SearchableSelectProps {
   placeholder?: string;
   searchPlaceholder?: string;
   className?: string;
+  modal?: boolean; // 🟢 NEW PROP
 }
 
 export const SearchableSelect = ({
@@ -32,11 +33,13 @@ export const SearchableSelect = ({
   placeholder = "Select...",
   searchPlaceholder = "Search...",
   className,
+  modal = false, // 🟢 Default to false for main filters
 }: SearchableSelectProps) => {
   const [open, setOpen] = useState(false);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    // 🟢 PASS MODAL PROP HERE
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -47,16 +50,19 @@ export const SearchableSelect = ({
             className,
           )}
         >
-          {value && value !== "All"
-            ? options.find((option) => option.value === value)?.label
-            : placeholder}
+          <span className="truncate">
+            {value && value !== "All"
+              ? options.find((option) => option.value === value)?.label
+              : placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
+      <PopoverContent className="w-[300px] p-0" align="start">
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
+          {/* Ensure max-h and overflow are set */}
+          <CommandList className="max-h-[200px] overflow-y-auto">
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup>
               <CommandItem

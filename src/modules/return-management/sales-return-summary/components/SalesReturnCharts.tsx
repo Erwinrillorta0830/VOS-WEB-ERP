@@ -10,7 +10,6 @@ import {
   Tooltip,
   Cell,
   Legend,
-  CartesianGrid,
 } from "recharts";
 import { useTheme } from "next-themes";
 
@@ -35,14 +34,12 @@ const CustomTooltip = ({ active, payload, label, prefix = "" }: any) => {
 
 export const SalesReturnCharts = ({ charts }: { charts: any }) => {
   const { theme } = useTheme();
-
   const maxCategoryVal = useMemo(() => {
     if (!charts.category.length) return 0;
     return Math.ceil(
       Math.max(...charts.category.map((d: any) => d.value)) * 1.1,
     );
   }, [charts.category]);
-
   const axisStyle = {
     fontSize: 10,
     fill: theme === "dark" ? "#94a3b8" : "#64748b",
@@ -50,7 +47,7 @@ export const SalesReturnCharts = ({ charts }: { charts: any }) => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {/* 1. STATUS (Pie Chart) - Unchanged */}
+      {/* Status */}
       <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
         <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
           Return Status
@@ -76,8 +73,7 @@ export const SalesReturnCharts = ({ charts }: { charts: any }) => {
           </ResponsiveContainer>
         </div>
       </div>
-
-      {/* 2. SUPPLIER (Horizontal Bar Chart) - 🟢 REVISED */}
+      {/* Supplier - Horizontal Layout */}
       <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm">
         <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
           Top Suppliers (Line Items)
@@ -86,24 +82,23 @@ export const SalesReturnCharts = ({ charts }: { charts: any }) => {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={charts.supplier}
-              layout="vertical" // 🟢 Switch to Horizontal Bars
+              layout="vertical"
               margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
             >
               <XAxis
-                type="number" // X-axis is now the value scale
+                type="number"
                 axisLine={false}
                 tickLine={false}
                 tick={axisStyle}
               />
               <YAxis
-                dataKey="name" // Y-axis is now the Label
+                dataKey="name"
                 type="category"
-                width={90} // 🟢 Give space for text
+                width={90}
                 axisLine={false}
                 tickLine={false}
                 tick={axisStyle}
                 interval={0}
-                // 🟢 Truncate extremely long names so they don't break layout
                 tickFormatter={(val) =>
                   val.length > 12 ? `${val.substring(0, 12)}...` : val
                 }
@@ -112,11 +107,7 @@ export const SalesReturnCharts = ({ charts }: { charts: any }) => {
                 content={<CustomTooltip />}
                 cursor={{ fill: "transparent" }}
               />
-              <Bar
-                dataKey="value"
-                radius={[0, 4, 4, 0]} // Rounded corners on the right
-                barSize={20} // Thinner bars look cleaner in list view
-              >
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
                 {charts.supplier.map((_: any, i: number) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -128,8 +119,7 @@ export const SalesReturnCharts = ({ charts }: { charts: any }) => {
           Showing top suppliers by returned line-items.
         </div>
       </div>
-
-      {/* 3. CATEGORY (Vertical Bar Chart) - Unchanged */}
+      {/* Category */}
       <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm md:col-span-2 lg:col-span-1">
         <div className="font-bold text-slate-800 dark:text-slate-200 mb-2">
           Return Type (Net Amount)

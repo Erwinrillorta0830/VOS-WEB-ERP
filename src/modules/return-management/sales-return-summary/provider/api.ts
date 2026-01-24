@@ -1,4 +1,3 @@
-// src/modules/sales-return-summary/provider/api.ts
 import type {
   API_SalesReturnType,
   SummaryCustomerOption,
@@ -12,7 +11,7 @@ import type {
 
 const API_BASE = "/api/items";
 
-// --- HELPER: Get Auth Headers ---
+// --- HELPERS ---
 const getHeaders = () => {
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (typeof window !== "undefined") {
@@ -20,15 +19,12 @@ const getHeaders = () => {
       localStorage.getItem("token") ||
       localStorage.getItem("access_token") ||
       sessionStorage.getItem("token");
-
-    if (token && token !== "undefined" && token !== "null") {
+    if (token && token !== "undefined" && token !== "null")
       headers["Authorization"] = `Bearer ${token}`;
-    }
   }
   return headers;
 };
 
-// --- HELPER: Parse Buffer/Number/Bool ---
 const parseBoolean = (val: any): boolean => {
   if (typeof val === "boolean") return val;
   if (typeof val === "number") return val === 1;
@@ -70,8 +66,7 @@ const normalizeFilters = (raw: any): SummaryFilters => {
 };
 
 export const SalesReturnProvider = {
-  // ... (Dropdown fetchers remain the same as your code, hidden for brevity) ...
-
+  // --- DROPDOWN FETCHERS ---
   async getCustomersList(): Promise<SummaryCustomerOption[]> {
     try {
       const res = await fetch(
@@ -150,9 +145,7 @@ export const SalesReturnProvider = {
     }
   },
 
-  // =========================================================
-  // ✅ MAIN REPORT
-  // =========================================================
+  // --- MAIN REPORT LOGIC ---
   async getSummaryReturnsWithItems(
     page: number = 1,
     limit: number = 10,
@@ -161,12 +154,12 @@ export const SalesReturnProvider = {
   ): Promise<SummaryResult> {
     const f = normalizeFilters(filters);
 
-    // 1) Load lookup tables
+    // 1. Fetch Lookups
     const [
       customers,
       salesmen,
       returnTypes,
-      lineDiscounts, // 🟢 FETCHING LINE DISCOUNTS
+      lineDiscounts,
       brands,
       suppliersAll,
       units,
@@ -182,12 +175,9 @@ export const SalesReturnProvider = {
       fetch(`${API_BASE}/sales_return_type?limit=-1&fields=type_id,type_name`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
-
-      // 🟢 REVISION: Correct table and fields based on screenshot
       fetch(`${API_BASE}/line_discount?limit=-1&fields=id,line_discount`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
-
       fetch(`${API_BASE}/brand?limit=-1&fields=brand_id,brand_name`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
@@ -203,6 +193,7 @@ export const SalesReturnProvider = {
       ).then((r) => (r.ok ? r.json() : { data: [] })),
     ]);
 
+    // Build Maps
     const customerMap = new Map();
     (customers.data || []).forEach((c: any) =>
       customerMap.set(String(c.customer_code), c),
@@ -213,13 +204,10 @@ export const SalesReturnProvider = {
     (returnTypes.data || []).forEach((t: any) =>
       returnTypeMap.set(String(t.type_id), t),
     );
-
-    // 🟢 REVISION: Map using the correct 'line_discount' field
     const lineDiscountMap = new Map();
-    (lineDiscounts.data || []).forEach(
-      (d: any) => lineDiscountMap.set(String(d.id), d.line_discount), // Store the name string directly
+    (lineDiscounts.data || []).forEach((d: any) =>
+      lineDiscountMap.set(String(d.id), d.line_discount),
     );
-
     const brandMap = new Map();
     (brands.data || []).forEach((b: any) =>
       brandMap.set(String(b.brand_id), b),
@@ -232,16 +220,13 @@ export const SalesReturnProvider = {
     (units.data || []).forEach((u: any) =>
       unitMap.set(String(u.unit_id), u.unit_name),
     );
-
     const categoryMap = new Map();
     (categories.data || []).forEach((c: any) =>
       categoryMap.set(String(c.category_id), c.category_name),
     );
 
-    // 2) Fetch parent sales returns
-    const allowedFields =
-      "return_id,return_number,return_date,status,customer_code,salesman_id,invoice_no,total_amount,remarks";
-    let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_date,-return_id`;
+    // 2. Fetch Headers
+    let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=return_id,return_number,return_date,status,customer_code,salesman_id,invoice_no,total_amount,remarks&sort=-return_date,-return_id`;
 
     if (search) {
       const term = encodeURIComponent(search);
@@ -250,7 +235,6 @@ export const SalesReturnProvider = {
       url += `&filter[_or][2][customer_code][_contains]=${term}`;
       url += `&filter[_or][3][status][_contains]=${term}`;
     }
-
     if (f.status && f.status !== "All")
       url += `&filter[status][_eq]=${encodeURIComponent(f.status)}`;
     if (f.customerCode && f.customerCode !== "All")
@@ -270,31 +254,30 @@ export const SalesReturnProvider = {
 
     const parentJson = await parentRes.json();
     const parentsRaw = parentJson.data || [];
-    const total = parentJson.meta?.filter_count || 0;
+    let total = parentJson.meta?.filter_count || 0;
 
     const returnNos = parentsRaw
       .map((r: any) => String(r.return_number))
       .filter(Boolean);
 
-    // 3) Fetch details
+    // 3. Fetch Items
     let allDetails: any[] = [];
-    const detailChunks = chunk(returnNos, 25);
+    if (returnNos.length > 0) {
+      const detailChunks = chunk(returnNos, 25);
+      const results = await Promise.all(
+        detailChunks.map(async (list) => {
+          const detailsUrl = `${API_BASE}/sales_return_details?limit=-1&filter[return_no][_in]=${inFilterParam(list)}&fields=detail_id,return_no,reason,quantity,unit_price,gross_amount,discount_amount,discount_type,total_amount,sales_return_type_id,product_id.product_id,product_id.product_code,product_id.product_name,product_id.product_brand,product_id.parent_id,product_id.unit_of_measurement,product_id.product_category`;
+          const res = await fetch(detailsUrl, {
+            headers: getHeaders(),
+            cache: "no-store",
+          });
+          return res.ok ? (await res.json()).data || [] : [];
+        }),
+      );
+      allDetails = results.flat();
+    }
 
-    const detailPromises = detailChunks.map(async (list) => {
-      // 🟢 REVISION: Fetching fields required for calculation
-      // Note: 'discount_type' in this table is the ID that links to 'line_discount' table
-      const detailsUrl = `${API_BASE}/sales_return_details?limit=-1&filter[return_no][_in]=${inFilterParam(list)}&fields=detail_id,return_no,reason,quantity,unit_price,gross_amount,discount_amount,discount_type,total_amount,sales_return_type_id,product_id.product_id,product_id.product_code,product_id.product_name,product_id.product_brand,product_id.parent_id,product_id.unit_of_measurement,product_id.product_category`;
-      const res = await fetch(detailsUrl, {
-        headers: getHeaders(),
-        cache: "no-store",
-      });
-      return res.ok ? (await res.json()).data || [] : [];
-    });
-
-    const detailResults = await Promise.all(detailPromises);
-    allDetails = detailResults.flat();
-
-    // 4) Build supplier names
+    // 4. Map Suppliers
     const baseProductIds = Array.from(
       new Set(
         allDetails
@@ -303,21 +286,19 @@ export const SalesReturnProvider = {
           .map((p: any) => String(p.parent_id || p.product_id || "")),
       ),
     );
-
     let ppsRows: any[] = [];
-    const ppsChunks = chunk(baseProductIds, 50);
-
-    const ppsPromises = ppsChunks.map(async (list) => {
-      const ppsUrl = `${API_BASE}/product_per_supplier?limit=-1&filter[product_id][_in]=${inFilterParam(list)}&fields=product_id,supplier_id`;
-      const res = await fetch(ppsUrl, {
-        headers: getHeaders(),
-        cache: "no-store",
-      });
-      return res.ok ? (await res.json()).data || [] : [];
-    });
-
-    const ppsResults = await Promise.all(ppsPromises);
-    ppsRows = ppsResults.flat();
+    if (baseProductIds.length > 0) {
+      const ppsResults = await Promise.all(
+        chunk(baseProductIds, 50).map(async (list) => {
+          const res = await fetch(
+            `${API_BASE}/product_per_supplier?limit=-1&filter[product_id][_in]=${inFilterParam(list)}&fields=product_id,supplier_id`,
+            { headers: getHeaders(), cache: "no-store" },
+          );
+          return res.ok ? (await res.json()).data || [] : [];
+        }),
+      );
+      ppsRows = ppsResults.flat();
+    }
 
     const suppliersByBaseProduct = new Map<string, Set<string>>();
     for (const row of ppsRows) {
@@ -336,13 +317,12 @@ export const SalesReturnProvider = {
         suppliersByBaseProduct.get(prodId)!.add(String(sup.supplier_name));
       }
     }
-
     const supplierNamesFor = (baseProdId: string) => {
       const set = suppliersByBaseProduct.get(baseProdId);
       return set ? Array.from(set).sort().join(", ") : "";
     };
 
-    // 5) Group details - 🟢 REVISED SECTION
+    // 5. Process Items
     const detailsByReturnNo = new Map<string, SummaryReturnItem[]>();
     for (const d of allDetails) {
       const returnNo = String(d.return_no);
@@ -354,7 +334,6 @@ export const SalesReturnProvider = {
           : String(product.product_brand);
       const returnTypeName =
         returnTypeMap.get(String(d.sales_return_type_id))?.type_name || "";
-
       const unitId =
         typeof product.unit_of_measurement === "object"
           ? String(product.unit_of_measurement.unit_id)
@@ -364,29 +343,16 @@ export const SalesReturnProvider = {
           ? String(product.product_category.category_id)
           : String(product.product_category);
 
-      // --- 🟢 DISCOUNT TYPE LOGIC ---
       let discountApplied = "No Discount";
-      // Fetch using the 'line_discount' name we mapped earlier
       const mappedType = lineDiscountMap.get(String(d.discount_type));
+      if (mappedType) discountApplied = mappedType;
+      else if (toNum(d.discount_amount) > 0) discountApplied = "Custom / Other";
 
-      if (mappedType) {
-        discountApplied = mappedType;
-      } else if (toNum(d.discount_amount) > 0) {
-        // Fallback: Money was deducted but no type found
-        discountApplied = "Custom / Other";
-      }
-
-      // --- 🟢 STRICT CALCULATION LOGIC ---
+      // 🟢 CALCULATION
       const qty = toNum(d.quantity);
       const price = toNum(d.unit_price);
-
-      // A. Calculate Gross: Strictly Qty * Price
       const calculatedGross = qty * price;
-
-      // B. Get Discount: Trust the DB Amount
       const discountAmt = toNum(d.discount_amount);
-
-      // C. Calculate Net: Strictly Gross - Discount
       const calculatedNet = calculatedGross - discountAmt;
 
       const item: SummaryReturnItem = {
@@ -400,8 +366,6 @@ export const SalesReturnProvider = {
         supplierName: supplierNamesFor(baseProdId),
         returnCategory: returnTypeName,
         specificReason: d.reason || "",
-
-        // 🟢 Assign Validated Values
         quantity: qty,
         unitPrice: price,
         grossAmount: calculatedGross,
@@ -414,11 +378,10 @@ export const SalesReturnProvider = {
       detailsByReturnNo.get(returnNo)!.push(item);
     }
 
-    // 6) Build parent rows
+    // 6. Build Rows
     let data: SummaryReturnHeader[] = parentsRaw.map((r: any) => {
       const cust = customerMap.get(String(r.customer_code));
       const sm = salesmanMap.get(String(r.salesman_id));
-
       const rawItems = detailsByReturnNo.get(String(r.return_number)) || [];
       const items = rawItems.map((item) => ({
         ...item,
@@ -440,19 +403,36 @@ export const SalesReturnProvider = {
       };
     });
 
+    // 🟢 7. STRICT ITEM FILTERING
+    // This ensures that if we are filtering by Supplier or Category,
+    // we REMOVE items that don't match, and we REMOVE headers that become empty.
     if (f.supplierName && f.supplierName !== "All") {
       const needle = String(f.supplierName).toLowerCase();
-      data = data.filter((row) =>
-        row.items.some((it) =>
-          (it.supplierName || "").toLowerCase().includes(needle),
-        ),
-      );
+      data = data
+        .map((row) => ({
+          ...row,
+          items: row.items.filter((it) =>
+            (it.supplierName || "").toLowerCase().includes(needle),
+          ),
+        }))
+        .filter((row) => row.items.length > 0);
+
+      // Update total to reflect filtered results
+      total = data.length;
     }
+
     if (f.returnCategory && f.returnCategory !== "All") {
       const cat = String(f.returnCategory).toLowerCase();
-      data = data.filter((row) =>
-        row.items.some((it) => (it.returnCategory || "").toLowerCase() === cat),
-      );
+      data = data
+        .map((row) => ({
+          ...row,
+          items: row.items.filter(
+            (it) => (it.returnCategory || "").toLowerCase() === cat,
+          ),
+        }))
+        .filter((row) => row.items.length > 0);
+
+      total = data.length;
     }
 
     return { data, total };

@@ -32,7 +32,6 @@ export function SalesReturnSummary() {
         options={logic.options}
       />
 
-      {/* Hidden Print Component */}
       <div style={{ display: "none" }}>
         {logic.printData && (
           <SalesReturnPrintSlip

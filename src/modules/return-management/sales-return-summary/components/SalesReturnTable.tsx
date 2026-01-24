@@ -40,13 +40,21 @@ const HeaderCell = ({ children, className = "" }: any) => (
     {children}
   </TableHead>
 );
-
 const DataCell = ({ children, className = "", ...props }: any) => (
   <TableCell className={`text-xs px-3 py-2 align-top ${className}`} {...props}>
     {children}
   </TableCell>
 );
 
+// 🟢 HELPER: Format Date to MM-DD-YYYY
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${month}-${day}-${year}`;
+};
 export const SalesReturnTable = ({
   report,
   loading,
@@ -56,7 +64,6 @@ export const SalesReturnTable = ({
 }: any) => {
   const totalPages = Math.max(1, Math.ceil(report.total / pagination.limit));
   const { page, limit } = pagination;
-
   const getPageNumbers = () => {
     const pages = [];
     if (totalPages <= 7) {
@@ -80,7 +87,6 @@ export const SalesReturnTable = ({
 
   return (
     <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
-      {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-4 border-b border-slate-200 dark:border-slate-800 gap-4">
         <div className="font-bold text-slate-800 dark:text-slate-200 text-lg">
           Sales Returns ({report.total})
@@ -118,13 +124,13 @@ export const SalesReturnTable = ({
           </Select>
         </div>
       </div>
-
-      {/* Table */}
       <div className="overflow-x-auto">
         <Table className="w-full min-w-[1800px]">
           <TableHeader>
             <TableRow className="bg-slate-50 dark:bg-slate-900 dark:border-slate-800">
-              <HeaderCell>Return No</HeaderCell>{" "}
+              <HeaderCell>Return No</HeaderCell>
+              {/* 🟢 ADDED: Date Header */}
+              <HeaderCell>Date</HeaderCell>
               <HeaderCell>Salesman</HeaderCell>{" "}
               <HeaderCell>Customer</HeaderCell>
               <HeaderCell>Supplier</HeaderCell> <HeaderCell>Brand</HeaderCell>{" "}
@@ -132,13 +138,13 @@ export const SalesReturnTable = ({
               <HeaderCell>Product Name</HeaderCell>{" "}
               <HeaderCell>Return Type</HeaderCell>{" "}
               <HeaderCell>Reason</HeaderCell>
-              <HeaderCell className="text-center">Unit</HeaderCell>
-              <HeaderCell className="text-right">Quantity</HeaderCell>{" "}
-              <HeaderCell className="text-right">Unit Price</HeaderCell>
-              <HeaderCell className="text-right">Gross Amount</HeaderCell>{" "}
-              <HeaderCell>Discount Type</HeaderCell>
-              <HeaderCell className="text-right">Discount Amt</HeaderCell>{" "}
-              <HeaderCell className="text-right">Net Amount</HeaderCell>
+              <HeaderCell className="text-center">Unit</HeaderCell>{" "}
+              <HeaderCell className="text-right">Quantity</HeaderCell>
+              <HeaderCell className="text-right">Unit Price</HeaderCell>{" "}
+              <HeaderCell className="text-right">Gross Amount</HeaderCell>
+              <HeaderCell>Discount Type</HeaderCell>{" "}
+              <HeaderCell className="text-right">Discount Amt</HeaderCell>
+              <HeaderCell className="text-right">Net Amount</HeaderCell>{" "}
               <HeaderCell>Applied To</HeaderCell>{" "}
               <HeaderCell className="text-center">Status</HeaderCell>
             </TableRow>
@@ -147,7 +153,7 @@ export const SalesReturnTable = ({
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={18}
+                  colSpan={19}
                   className="py-12 text-center text-slate-500 animate-pulse"
                 >
                   Loading data...
@@ -156,7 +162,7 @@ export const SalesReturnTable = ({
             ) : report.rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={18}
+                  colSpan={19}
                   className="py-12 text-center text-slate-500"
                 >
                   No results found.
@@ -171,6 +177,10 @@ export const SalesReturnTable = ({
                   >
                     <DataCell className="text-blue-600 dark:text-blue-400 font-medium">
                       {r.returnNumber}
+                    </DataCell>
+                    {/* 🟢 ADDED: Date Data */}
+                    <DataCell className="text-slate-600 dark:text-slate-400">
+                      {formatDate(r.returnDate)}
                     </DataCell>
                     <DataCell className="text-slate-600 dark:text-slate-400">
                       {r.salesmanName}
@@ -199,7 +209,7 @@ export const SalesReturnTable = ({
                     <DataCell className="text-slate-500 italic max-w-[150px] truncate">
                       {item.specificReason || "-"}
                     </DataCell>
-                    <DataCell className="text-slate-600 dark:text-slate-400 text-left">
+                    <DataCell className="text-slate-600 dark:text-slate-400 text-center">
                       {item.unit || "-"}
                     </DataCell>
                     <DataCell className="text-slate-700 dark:text-slate-300 text-right">
@@ -223,7 +233,7 @@ export const SalesReturnTable = ({
                     <DataCell className="text-slate-600 dark:text-slate-400">
                       {item.invoiceNo || r.invoiceNo || "-"}
                     </DataCell>
-                    <DataCell className="text-left">
+                    <DataCell className="text-center">
                       <Badge
                         variant="outline"
                         className={getStatusBadge(r.returnStatus)}
@@ -238,8 +248,6 @@ export const SalesReturnTable = ({
           </TableBody>
         </Table>
       </div>
-
-      {/* Pagination Controls */}
       <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 border-t border-slate-200 dark:border-slate-800 gap-4 bg-slate-50/50 dark:bg-slate-900/50">
         <div className="text-sm text-slate-500 dark:text-slate-400 text-center md:text-left">
           Showing <b>{(page - 1) * limit + 1}</b> to{" "}

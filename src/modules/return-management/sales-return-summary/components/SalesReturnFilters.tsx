@@ -123,8 +123,9 @@ export const SalesReturnFilters = ({ logic }: { logic: any }) => {
         </div>
       </div>
 
-      {/* Row 2: Dropdowns */}
+      {/* Row 2: Dropdowns - 🟢 REVISED LAYOUT (5 Columns for perfect alignment) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* 1. Customer */}
         <div>
           <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
             Customer
@@ -136,6 +137,8 @@ export const SalesReturnFilters = ({ logic }: { logic: any }) => {
             placeholder="All Customers"
           />
         </div>
+
+        {/* 2. Salesman */}
         <div>
           <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
             Salesman
@@ -147,6 +150,8 @@ export const SalesReturnFilters = ({ logic }: { logic: any }) => {
             placeholder="All Salesmen"
           />
         </div>
+
+        {/* 3. Supplier (🟢 Swapped Position) */}
         <div>
           <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
             Supplier
@@ -161,6 +166,8 @@ export const SalesReturnFilters = ({ logic }: { logic: any }) => {
             placeholder="All Suppliers"
           />
         </div>
+
+        {/* 4. Status (🟢 Swapped Position) */}
         <div>
           <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
             Status
@@ -179,6 +186,8 @@ export const SalesReturnFilters = ({ logic }: { logic: any }) => {
             </SelectContent>
           </Select>
         </div>
+
+        {/* 5. Return Type */}
         <div>
           <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
             Return Type

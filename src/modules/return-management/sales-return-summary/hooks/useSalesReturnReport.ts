@@ -11,7 +11,6 @@ import {
   SummaryMetricsData,
 } from "../type";
 
-// Define the Chart type locally
 type ChartDatum = { name: string; value: number };
 
 // --- Helpers ---
@@ -31,7 +30,6 @@ export const useSalesReturnReport = () => {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Dropdown Data
   const [options, setOptions] = useState({
     customers: [] as SummaryCustomerOption[],
     salesmen: [] as SummarySalesmanOption[],
@@ -39,13 +37,11 @@ export const useSalesReturnReport = () => {
     returnTypes: [] as API_SalesReturnType[],
   });
 
-  // Filters
   const [quickRange, setQuickRange] = useState("thismonth");
   const [dateRange, setDateRange] = useState({
     from: fmtDate(startOfMonth(new Date())),
     to: fmtDate(new Date()),
   });
-
   const [filters, setFilters] = useState({
     search: "",
     customerCode: "All",
@@ -54,13 +50,10 @@ export const useSalesReturnReport = () => {
     supplierName: "All",
     returnCategory: "All",
   });
-
-  // Pagination
   const [pagination, setPagination] = useState({ page: 1, limit: 10 });
 
-  // Report Data
   const [report, setReport] = useState({
-    rows: [] as SummaryReturnHeader[], // Rows for the Table (Paginated)
+    rows: [] as SummaryReturnHeader[],
     total: 0,
     summary: {
       totalReturns: 0,
@@ -77,7 +70,6 @@ export const useSalesReturnReport = () => {
     },
   });
 
-  // Printing
   const printComponentRef = useRef<HTMLDivElement>(null);
   const [printData, setPrintData] = useState<SummaryReturnHeader | null>(null);
   const handlePrint = useReactToPrint({
@@ -92,7 +84,6 @@ export const useSalesReturnReport = () => {
     if (printData) handlePrint();
   }, [printData]);
 
-  // Initial Data Load (Dropdowns)
   useEffect(() => {
     (async () => {
       try {
@@ -108,35 +99,26 @@ export const useSalesReturnReport = () => {
           suppliers: sup,
           returnTypes: rt,
         });
-      } catch (error) {
-        console.error("Failed to load options", error);
+      } catch (e) {
+        console.error(e);
       }
     })();
   }, []);
 
-  // Quick Range Logic
   useEffect(() => {
     const now = new Date();
     if (quickRange === "custom") return;
-
     let from = now;
-    const to = now;
-
     if (quickRange === "lastday") {
       from = new Date(now);
       from.setDate(from.getDate() - 1);
-    } else if (quickRange === "thisweek") {
-      from = startOfWeek(now);
-    } else if (quickRange === "thismonth") {
-      from = startOfMonth(now);
-    } else if (quickRange === "thisyear") {
-      from = startOfYear(now);
-    }
-
-    setDateRange({ from: fmtDate(from), to: fmtDate(to) });
+    } else if (quickRange === "thisweek") from = startOfWeek(now);
+    else if (quickRange === "thismonth") from = startOfMonth(now);
+    else if (quickRange === "thisyear") from = startOfYear(now);
+    setDateRange({ from: fmtDate(from), to: fmtDate(now) });
   }, [quickRange]);
 
-  // --- 🟢 UPDATED: Main Fetch Logic (Parallel Fetching) ---
+  // --- 🟢 HYBRID FETCHING LOGIC ---
   useEffect(() => {
     const apiFilters: SummaryFilters = {
       dateFrom: dateRange.from,
@@ -148,50 +130,69 @@ export const useSalesReturnReport = () => {
       returnCategory: filters.returnCategory,
     };
 
+    const isComplexFilter =
+      (filters.supplierName && filters.supplierName !== "All") ||
+      (filters.returnCategory && filters.returnCategory !== "All");
+
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        // We run two queries in parallel:
-        // 1. tableReq: Gets paginated data specifically for the Table view.
-        // 2. chartReq: Gets ALL matching data (limit: -1) for accurate Charts & Metrics.
-        const [tableReq, chartReq] = await Promise.all([
-          SalesReturnProvider.getSalesReturnSummaryReport({
-            page: pagination.page,
-            limit: pagination.limit,
-            search: filters.search,
-            filters: apiFilters,
-          }),
-          SalesReturnProvider.getSalesReturnSummaryReport({
+        let tableData: SummaryReturnHeader[] = [];
+        let totalCount = 0;
+        let chartData: SummaryReturnHeader[] = [];
+
+        if (isComplexFilter) {
+          // STRATEGY A: Fetch ALL, then Paginate Locally
+          const res = await SalesReturnProvider.getSalesReturnSummaryReport({
             page: 1,
-            limit: -1, // Fetch ALL rows matching criteria
+            limit: -1,
             search: filters.search,
             filters: apiFilters,
-          }),
-        ]);
+          });
+          const allRows = res.data || [];
+          totalCount = res.data.length; // Accurate filtered count
 
-        // 1. Process Table Data (Only current page)
-        const tableRows = tableReq.data || [];
+          // Manual Pagination
+          const start = (pagination.page - 1) * pagination.limit;
+          tableData = allRows.slice(start, start + pagination.limit);
+          chartData = allRows;
+        } else {
+          // STRATEGY B: Fetch Page for Table, Fetch All for Charts (Parallel)
+          const [tableReq, chartReq] = await Promise.all([
+            SalesReturnProvider.getSalesReturnSummaryReport({
+              page: pagination.page,
+              limit: pagination.limit,
+              search: filters.search,
+              filters: apiFilters,
+            }),
+            SalesReturnProvider.getSalesReturnSummaryReport({
+              page: 1,
+              limit: -1,
+              search: filters.search,
+              filters: apiFilters,
+            }),
+          ]);
+          tableData = tableReq.data || [];
+          totalCount = tableReq.total || 0;
+          chartData = chartReq.data || [];
+        }
 
-        // 2. Process Chart/Metrics Data (All matching data)
-        const allRows = chartReq.data || [];
-
+        // Metrics & Charts Aggregation (using chartData - full set)
         let gross = 0,
           discount = 0,
           net = 0,
           pending = 0,
           received = 0;
-
         const statusCount = new Map<string, number>();
         const supplierCount = new Map<string, number>();
         const categoryCount = new Map<string, number>();
 
-        // 🟢 Optimization: Iterate over 'allRows' for Metrics/Charts
-        for (const r of allRows) {
+        for (const r of chartData) {
           const st = (r.returnStatus || "").toLowerCase();
           if (st === "pending") pending++;
           if (st === "received") received++;
-          net += Number(r.netTotal || 0);
-
+          // Sum Net from ITEMS for accuracy in filtered views
+          let rowNet = 0;
           const stKey = r.returnStatus || "Unknown";
           statusCount.set(stKey, (statusCount.get(stKey) || 0) + 1);
 
@@ -199,8 +200,8 @@ export const useSalesReturnReport = () => {
             for (const item of r.items) {
               gross += Number(item.grossAmount || 0);
               discount += Number(item.discountAmount || 0);
+              rowNet += Number(item.netAmount || 0);
 
-              // Chart Aggregation
               const supStr = (item.supplierName || "").trim();
               const sups = supStr
                 ? supStr
@@ -219,6 +220,8 @@ export const useSalesReturnReport = () => {
               );
             }
           }
+          // Use Summed item net if filtered, else use header net
+          net += isComplexFilter ? rowNet : Number(r.netTotal || 0);
         }
 
         const toChart = (m: Map<string, number>) =>
@@ -227,10 +230,10 @@ export const useSalesReturnReport = () => {
             .sort((a, b) => b.value - a.value);
 
         setReport({
-          rows: tableRows, // 🟢 Table gets paginated rows
-          total: tableReq.total || 0, // 🟢 Pagination count relies on table request
+          rows: tableData,
+          total: totalCount,
           summary: {
-            totalReturns: chartReq.total || 0, // 🟢 Total count relies on all matching
+            totalReturns: chartData.length,
             grossAmount: gross,
             totalDiscount: discount,
             netAmount: net,
@@ -246,7 +249,7 @@ export const useSalesReturnReport = () => {
       } finally {
         setLoading(false);
       }
-    }, 300); // Slight increase in debounce for parallel reqs
+    }, 300);
     return () => clearTimeout(timer);
   }, [pagination, filters.search, filters, dateRange]);
 
