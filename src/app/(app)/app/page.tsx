@@ -49,6 +49,7 @@ type Session = {
 };
 
 const INVENTORY_REPORT_URL = "http://192.168.0.143:4000";
+const HELPDESK_URL = "https://support.vertextechcorp.com/";
 
 const MODULES: AppModule[] = [
     {
@@ -71,10 +72,11 @@ const MODULES: AppModule[] = [
     {
         key: "purchase",
         name: "Returns",
-        href: "/returns",
+        href: "/returns/sales-return-summary",
         icon: Package,
         accent: "from-emerald-400 to-teal-500",
-        available: false,
+        available: true
+        ,
     },
     /*
     {
@@ -148,10 +150,12 @@ const MODULES: AppModule[] = [
     {
         key: "helpdesk",
         name: "Helpdesk",
-        href: "/app/helpdesk",
+        href: HELPDESK_URL,
         icon: Headphones,
         accent: "from-emerald-400 to-lime-500",
-        available: false,
+        available: true,
+        external: true,
+
     },
     {
         key: "settings",
