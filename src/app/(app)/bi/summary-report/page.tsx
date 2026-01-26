@@ -1,6 +1,6 @@
 "use client";
 
-import { calculateFilteredSummary } from "../../../../../src/app/lib/summary-report-utils";
+import { calculateFilteredSummary } from "@/app/lib/summary-report-utils";
 import { useFilteredData } from "../../../hooks/use-filtered-data";
 import { useSummaryReportData } from "../../../hooks/use-summary-report-data";
 import { SummaryReportContent } from "@/components/shared/contents/summary-report-content";
