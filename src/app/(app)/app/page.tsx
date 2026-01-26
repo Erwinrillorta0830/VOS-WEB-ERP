@@ -1,8 +1,7 @@
-//\src\app\(app)\app\page.tsx
-
+// src/app/(app)/app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -28,6 +27,9 @@ type AppModule = {
     icon: LucideIcon;
     accent: string;
     available: boolean;
+
+    // ✅ optional: open external link in new tab
+    external?: boolean;
 };
 
 type SessionUser = {
@@ -35,13 +37,18 @@ type SessionUser = {
     user_lname?: string | null;
     user_email?: string | null;
     name?: string | null;
-    // ...other fields if you need them later
+
+    // ✅ needed for routing rules
+    user_department?: number | null;
+    isAdmin?: boolean | null;
 };
 
 type Session = {
     user?: SessionUser;
     expiresAt: number;
 };
+
+const INVENTORY_REPORT_URL = "http://192.168.0.143:4000";
 
 const MODULES: AppModule[] = [
     {
@@ -53,12 +60,13 @@ const MODULES: AppModule[] = [
         available: false,
     },
     {
-        key: "Invoice Cancellation Management",
+        key: "invoice-cancellation",
         name: "Invoice Cancellation Management",
-        href: "/invoice-management/invoice-summary-report",
+        // ✅ Updated: route depends on department/admin
+        href: "/invoice-management",
         icon: ShoppingCart,
         accent: "from-rose-400 to-pink-500",
-        available: false,
+        available: true,
     },
     {
         key: "purchase",
@@ -68,6 +76,7 @@ const MODULES: AppModule[] = [
         accent: "from-emerald-400 to-teal-500",
         available: false,
     },
+    /*
     {
         key: "inventory",
         name: "Inventory",
@@ -76,10 +85,22 @@ const MODULES: AppModule[] = [
         accent: "from-teal-400 to-cyan-500",
         available: false,
     },
+*/
+    // ✅ NEW: Inventory Report (external)
+    {
+        key: "inventory-report",
+        name: "Inventory Report",
+        href: INVENTORY_REPORT_URL,
+        icon: FileSpreadsheet,
+        accent: "from-lime-400 to-emerald-500",
+        available: true,
+        external: true,
+    },
+
     {
         key: "fleet-management",
         name: "Fleet Management",
-        href: "/fleet-management", // or /app/fleet-management depending on your route
+        href: "/fleet-management",
         icon: Truck,
         accent: "from-orange-400 to-amber-500",
         available: true,
@@ -142,11 +163,30 @@ const MODULES: AppModule[] = [
     },
 ];
 
+function getInvoiceManagementHref(user?: SessionUser): string {
+    const dept = user?.user_department ?? null;
+    const isAdmin = Boolean(user?.isAdmin);
+
+    // Your rules (same as sidebar):
+    // - invoice-cancellation: dept 7
+    // - invoice-summary-report: dept 11
+    // - invoice-cancellation-approval: dept 11 and isAdmin true
+    if (dept === 7) return "/invoice-management/invoice-cancellation";
+    if (dept === 11 && isAdmin)
+        return "/invoice-management/invoice-cancellation-approval";
+    if (dept === 11) return "/invoice-management/invoice-summary-report";
+
+    // Option B (recommended): keep them on app page.
+    return "/app";
+}
+
 export default function AppModulesPage() {
     const router = useRouter();
     const [displayName, setDisplayName] = useState<string | null>(null);
 
-    // Read user from session
+    // ✅ store full session user so we can compute hrefs
+    const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+
     useEffect(() => {
         if (typeof window === "undefined") return;
 
@@ -159,16 +199,14 @@ export default function AppModulesPage() {
 
             if (!user) return;
 
+            setSessionUser(user);
+
             const fullName = [user.user_fname, user.user_lname]
                 .filter(Boolean)
                 .join(" ")
                 .trim();
 
-            const fallbackName =
-                fullName ||
-                user.name ||
-                user.user_email ||
-                null;
+            const fallbackName = fullName || user.name || user.user_email || null;
 
             if (fallbackName) {
                 setDisplayName(fallbackName);
@@ -177,6 +215,17 @@ export default function AppModulesPage() {
             console.error("Failed to parse session", err);
         }
     }, []);
+
+    const resolvedModules = useMemo(() => {
+        const invoiceHref = getInvoiceManagementHref(sessionUser ?? undefined);
+
+        return MODULES.map((m) => {
+            if (m.key === "invoice-cancellation") {
+                return { ...m, href: invoiceHref };
+            }
+            return m;
+        });
+    }, [sessionUser]);
 
     const handleLogout = () => {
         if (typeof window !== "undefined") {
@@ -188,7 +237,6 @@ export default function AppModulesPage() {
     return (
         <main className="min-h-screen bg-gradient-to-br from-[#020817] via-[#021528] to-[#033560] text-slate-50">
             <div className="mx-auto flex max-w-6xl flex-col px-6 py-10">
-                {/* Top bar inside the apps page */}
                 <header className="mb-8 flex items-center justify-between gap-4">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
@@ -212,9 +260,7 @@ export default function AppModulesPage() {
                   <span className="text-xs font-medium text-slate-50">
                     {displayName}
                   </span>
-                                    <span className="text-[10px] text-slate-400">
-                    Logged in
-                  </span>
+                                    <span className="text-[10px] text-slate-400">Logged in</span>
                                 </div>
                             </div>
                         )}
@@ -228,19 +274,18 @@ export default function AppModulesPage() {
                     </div>
                 </header>
 
-                {/* Apps grid */}
                 <section className="rounded-3xl bg-slate-950/40 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-lg">
                     <div className="mb-6 flex items-center justify-between gap-4">
                         <h2 className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-300">
                             Apps
                         </h2>
                         <span className="text-xs text-slate-400">
-              {MODULES.length} modules
+              {resolvedModules.length} modules
             </span>
                     </div>
 
                     <div className="grid gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                        {MODULES.map((mod) => {
+                        {resolvedModules.map((mod) => {
                             const Icon = mod.icon;
                             const isAvailable = mod.available;
 
@@ -265,6 +310,7 @@ export default function AppModulesPage() {
                                             }`}
                                         />
                                     </div>
+
                                     <p
                                         className={`text-xs font-semibold ${
                                             isAvailable ? "text-slate-900" : "text-slate-200"
@@ -272,6 +318,7 @@ export default function AppModulesPage() {
                                     >
                                         {mod.name}
                                     </p>
+
                                     {!isAvailable && (
                                         <span className="mt-1 inline-flex rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-200">
                       Coming soon
@@ -280,19 +327,38 @@ export default function AppModulesPage() {
                                 </div>
                             );
 
+                            // ✅ Available modules
                             if (isAvailable) {
+                                // ✅ External module link (Inventory Report)
+                                if (mod.external) {
+                                    return (
+                                        <a
+                                            key={mod.key}
+                                            href={mod.href}
+                                            target="_blank"
+                                            rel="noreferrer noopener"
+                                            className="group focus-visible:outline-none"
+                                            aria-label={`Open ${mod.name}`}
+                                        >
+                                            {card}
+                                        </a>
+                                    );
+                                }
+
+                                // ✅ Internal Next.js navigation
                                 return (
                                     <Link
                                         key={mod.key}
                                         href={mod.href}
                                         className="group focus-visible:outline-none"
+                                        aria-label={`Open ${mod.name}`}
                                     >
                                         {card}
                                     </Link>
                                 );
                             }
 
-                            // Disabled / not available yet
+                            // ✅ Disabled cards
                             return (
                                 <button
                                     key={mod.key}
