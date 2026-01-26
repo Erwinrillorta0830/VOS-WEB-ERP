@@ -2,8 +2,8 @@
 
 export interface SummaryFilters {
   dateFrom?: string; // YYYY-MM-DD
-  dateTo?: string;   // YYYY-MM-DD
-  status?: string;   // Pending/Received/All
+  dateTo?: string; // YYYY-MM-DD
+  status?: string; // Pending/Received/All
   customerCode?: string;
   salesmanId?: string | number;
 
@@ -38,23 +38,25 @@ export interface API_SalesReturnType {
 export interface SummaryReturnItem {
   detailId: string | number;
   returnNo: string;
-invoiceNo?: string;
+  invoiceNo?: string;
   productCode: string;
   productName: string;
   brandName: string;
 
-  supplierName: string;      // "A, B, C" (group_concat style)
-  returnCategory: string;    // type_name
+  // 🟢 NEW: Added fields for the new table columns
+  productCategory: string; // For "Category A" column
+  unit: string; // For "Unit" column
+
+  supplierName: string; // "A, B, C" (group_concat style)
+  returnCategory: string; // type_name
   specificReason: string;
 
   quantity: number;
   unitPrice: number;
-  grossAmount: number;
-
-  discountAmount: number;
-  discountApplied: string;   // discount_type or "No Discount"
-
-  netAmount: number;
+  grossAmount: number; // Now strictly Qty * Price
+  discountAmount: number; // From DB
+  discountApplied: string; // Now handles "Custom/Other" logic
+  netAmount: number; // Now strictly Gross - Discount
 }
 
 export interface SummaryReturnHeader {
@@ -87,4 +89,4 @@ export interface SummaryMetricsData {
   netAmount: number;
   pendingInventory: number;
   receivedInventory: number;
-} 
+}

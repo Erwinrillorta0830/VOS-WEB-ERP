@@ -15,7 +15,7 @@ export interface API_Product {
   description: string;
   price_per_unit: number | null;
   priceA: number | null;
-  standard_price?: number; 
+  standard_price?: number;
   unit_of_measurement: number | null;
   isActive: number;
   stock?: number;
@@ -23,11 +23,11 @@ export interface API_Product {
 
 // [UPDATED] Added uom_id so we can save it to the database
 export interface Product {
-  id: string;      
-  code: string;    
+  id: string;
+  code: string;
   name: string;
   price: number;
-  unit: string;    
+  unit: string;
   uom_id: number; // <--- Critical for rts_items table
 }
 
@@ -56,7 +56,7 @@ export interface ProductSupplier {
   id: number;
   supplier_id: number;
   product_id: number;
-  discount_type?: number; 
+  discount_type?: number;
 }
 
 export interface DiscountType {
@@ -88,12 +88,12 @@ export interface ReturnItemDB {
 export interface API_ReturnToSupplier {
   id: number;
   doc_no: string;
-  supplier_id: number | { id: number; supplier_name: string }; 
-  branch_id: number | { id: number; branch_name: string };     
-  transaction_date: string; 
-  total_net_amount: string; 
+  supplier_id: number | { id: number; supplier_name: string };
+  branch_id: number | { id: number; branch_name: string };
+  transaction_date: string;
+  total_net_amount: string;
   remarks: string;
-  is_posted: number; 
+  is_posted: number;
   date_created: string;
 }
 
