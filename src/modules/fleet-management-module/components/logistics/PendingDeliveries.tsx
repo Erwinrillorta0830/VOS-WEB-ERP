@@ -1,3 +1,5 @@
+// src/modules/fleet-management-module/components/logistics/PendingDeliveries.tsx
+
 import { useState, useEffect, useMemo } from "react";
 import {
   Search,
@@ -23,7 +25,13 @@ interface ApiSalesOrder {
   order_no: string;
   customer_code: string;
   order_status: string;
-  total_amount: number;
+
+  // ✅ NEW: per-status computations use this
+  allocated_amount?: number;
+
+  // ✅ fallback (in case upstream still returns total_amount)
+  total_amount?: number;
+
   order_date: string;
   salesman_id: number;
 }
@@ -134,6 +142,14 @@ export function PendingDeliveries() {
   };
 
   const formatTotalCurrency = (amount: number) => {
+    return `₱${amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const formatCardCurrency = (amount: number) => {
+    if (amount === 0) return "₱ -";
     return `₱${amount.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -388,7 +404,9 @@ export function PendingDeliveries() {
           const dateKey = toLocalDayKey(o.order_date);
           const key = `${customer.customerName}||${customer.salesmanName}||${dateKey}`;
 
-          const amt = Number(o.total_amount || 0);
+          // ✅ IMPORTANT: per-status + totals now use allocated_amount
+          const amt = Number((o.allocated_amount ?? o.total_amount ?? 0) as any);
+
           const bucket = statusToBucket(o.order_status);
 
           if (!agg.has(key)) {
@@ -449,6 +467,21 @@ export function PendingDeliveries() {
       { range: dateRange, from: customDateFrom, to: customDateTo }
     );
   }, [rawGroups, searchTerm, salesmanFilter, clusterFilter, dateRange, customDateFrom, customDateTo]);
+
+  const statusTotals = useMemo(() => {
+    return tableRows.reduce(
+      (acc, r) => {
+        acc.approval += r.approval;
+        acc.consolidation += r.consolidation;
+        acc.picking += r.picking;
+        acc.invoicing += r.invoicing;
+        acc.loading += r.loading;
+        acc.shipping += r.shipping;
+        return acc;
+      },
+      { approval: 0, consolidation: 0, picking: 0, invoicing: 0, loading: 0, shipping: 0 }
+    );
+  }, [tableRows]);
 
   const sortedRows = useMemo(() => {
     const base = [...tableRows].sort((a, b) => {
@@ -532,14 +565,31 @@ export function PendingDeliveries() {
     const grandTotal = printRows.reduce((sum, r) => sum + r.amount, 0);
     const uniqueClusters = new Set(printRows.map((r) => r.clusterName)).size;
 
+    const pdfStatusTotals = printRows.reduce(
+      (acc, r) => {
+        acc.approval += r.approval;
+        acc.consolidation += r.consolidation;
+        acc.picking += r.picking;
+        acc.invoicing += r.invoicing;
+        acc.loading += r.loading;
+        acc.shipping += r.shipping;
+        return acc;
+      },
+      { approval: 0, consolidation: 0, picking: 0, invoicing: 0, loading: 0, shipping: 0 }
+    );
+
+    const moneyCard = (amount: number) => (amount === 0 ? "P -" : `P ${formatNumberForPDF(amount)}`);
+
     // =========================
     // LAYOUT CONSTANTS (TIGHT)
     // =========================
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
     const leftX = 14;
     const rightMargin = 14;
 
-    // Smaller cards so they fit with header text (no ugly whitespace)
+    // top cards
     const cardWidth = 58;
     const cardHeight = 18;
     const gap = 4;
@@ -547,7 +597,6 @@ export function PendingDeliveries() {
     const cardsTotalWidth = cardWidth * 3 + gap * 2;
     const startX = pageWidth - rightMargin - cardsTotalWidth;
 
-    // Keep cards high (do not push down)
     const cardsY = 10;
 
     // Header text can only occupy left column (prevents overlap)
@@ -572,12 +621,11 @@ export function PendingDeliveries() {
     doc.text(filterLines, leftX, afterPeriodY + 5);
     doc.setTextColor(0);
 
-    // Approx header bottom (so table never collides)
     const lineH8 = 3.8;
     const headerBottomY = afterPeriodY + 5 + (filterLines.length - 1) * lineH8;
 
     // =========================
-    // CARDS (SMALLER + SAME STYLE)
+    // CARDS (TOP RIGHT)
     // =========================
     const drawCard = (x: number, title: string, value: string, iconColor: [number, number, number]) => {
       doc.setDrawColor(220, 220, 220);
@@ -600,15 +648,58 @@ export function PendingDeliveries() {
 
     drawCard(startX, "Active Clusters", uniqueClusters.toString(), [219, 234, 254]);
     drawCard(startX + cardWidth + gap, "Pending Orders", pdfPendingOrders.toString(), [243, 232, 255]);
-    drawCard(
-      startX + (cardWidth + gap) * 2,
-      "Total Pending Amount",
-      `P ${formatNumberForPDF(grandTotal)}`,
-      [220, 252, 231]
-    );
+    drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", moneyCard(grandTotal), [220, 252, 231]);
 
-    // ✅ Table starts after whichever is lower: header text block OR cards
-    const tableStartY = Math.max(cardsY + cardHeight + 6, headerBottomY + 8);
+    // =========================
+    // STATUS CARDS (ONE ROW, BELOW TITLES/DETAILS)
+    // =========================
+    const statusY = Math.max(cardsY + cardHeight + 4, headerBottomY + 8);
+    const statusCardH = 14;
+    const statusGap = 3;
+    const usableW = pageWidth - leftX - rightMargin;
+    const statusCardW = (usableW - statusGap * 5) / 6;
+
+    const drawStatusCard = (
+      x: number,
+      title: string,
+      value: string,
+      dot: [number, number, number]
+    ) => {
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(x, statusY, statusCardW, statusCardH, 2, 2, "FD");
+
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+      doc.text(title, x + 3, statusY + 5);
+
+      doc.setFontSize(10);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "bold");
+      doc.text(value, x + 3, statusY + 11);
+      doc.setFont("helvetica", "normal");
+
+      doc.setFillColor(...dot);
+      doc.circle(x + statusCardW - 5.5, statusY + 7, 3, "F");
+    };
+
+    const statusCards = [
+      { label: "For Approval", value: moneyCard(pdfStatusTotals.approval), dot: [243, 232, 255] as [number, number, number] },
+      { label: "For Conso", value: moneyCard(pdfStatusTotals.consolidation), dot: [219, 234, 254] as [number, number, number] },
+      { label: "For Picking", value: moneyCard(pdfStatusTotals.picking), dot: [207, 250, 254] as [number, number, number] },
+      { label: "For Invoicing", value: moneyCard(pdfStatusTotals.invoicing), dot: [254, 249, 195] as [number, number, number] },
+      { label: "For Loading", value: moneyCard(pdfStatusTotals.loading), dot: [255, 237, 213] as [number, number, number] },
+      { label: "For Shipping", value: moneyCard(pdfStatusTotals.shipping), dot: [220, 252, 231] as [number, number, number] },
+    ];
+
+    let x = leftX;
+    statusCards.forEach((c, i) => {
+      drawStatusCard(x, c.label, c.value, c.dot);
+      x += statusCardW + (i < 5 ? statusGap : 0);
+    });
+
+    // ✅ Table starts after status cards
+    const tableStartY = statusY + statusCardH + 8;
 
     // =========================
     // PDF TABLE (NO CLUSTER TOTAL)
@@ -616,12 +707,12 @@ export function PendingDeliveries() {
     let tableHeader = ["Cluster", "Customer", "Salesman", "Date"];
 
     const statusMap = [
-      { label: "Approval", key: "approval" as keyof TableRow },
-      { label: "Conso", key: "consolidation" as keyof TableRow },
-      { label: "Picking", key: "picking" as keyof TableRow },
-      { label: "Invoicing", key: "invoicing" as keyof TableRow },
-      { label: "Loading", key: "loading" as keyof TableRow },
-      { label: "Shipping", key: "shipping" as keyof TableRow },
+      { label: "For Approval", key: "approval" as keyof TableRow },
+      { label: "For Conso", key: "consolidation" as keyof TableRow },
+      { label: "For Picking", key: "picking" as keyof TableRow },
+      { label: "For Invoicing", key: "invoicing" as keyof TableRow },
+      { label: "For Loading", key: "loading" as keyof TableRow },
+      { label: "For Shipping", key: "shipping" as keyof TableRow },
     ];
 
     let activeStatusKeys: (keyof TableRow)[] = [];
@@ -674,6 +765,7 @@ export function PendingDeliveries() {
       styles: { fontSize: 7, cellPadding: 1, halign: "left" },
       headStyles: { fillColor: [243, 244, 246], textColor: [20, 20, 20], fontStyle: "bold" },
       columnStyles: baseColStyles,
+      margin: { bottom: 12 }, // ✅ leave room for page number
     });
 
     // =========================
@@ -705,7 +797,7 @@ export function PendingDeliveries() {
       startY: finalY + 5,
       theme: "grid",
       tableWidth: 90,
-      margin: { left: 14 },
+      margin: { left: 14, bottom: 12 }, // ✅ leave room for page number
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [229, 231, 235], textColor: [0, 0, 0], fontStyle: "bold" },
       columnStyles: { 1: { halign: "right" } },
@@ -717,7 +809,7 @@ export function PendingDeliveries() {
             startY: grandTotalStartY,
             theme: "grid",
             tableWidth: 80,
-            margin: { left: 120 },
+            margin: { left: 120, bottom: 12 }, // ✅ leave room for page number
             styles: { fontSize: 10, cellPadding: 3, fontStyle: "bold", valign: "middle" },
             columnStyles: {
               0: { fillColor: [229, 231, 235], cellWidth: 40 },
@@ -727,6 +819,19 @@ export function PendingDeliveries() {
         }
       },
     });
+
+    // =========================
+    // ✅ PAGE NUMBER FOOTER
+    // =========================
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 6, { align: "center" });
+      doc.setTextColor(0);
+    }
 
     doc.save(`delivery_monitor_print.pdf`);
     setIsPrintModalOpen(false);
@@ -1073,6 +1178,81 @@ export function PendingDeliveries() {
           </div>
         </div>
       )}
+
+      {/* ✅ Total per Status Cards (ABOVE MAIN 3 CARDS) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">For Approval</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.approval)}
+            </p>
+          </div>
+          <div className="p-2 bg-purple-50 rounded-full text-purple-600">
+            <span className="font-bold">₱</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">For Conso</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.consolidation)}
+            </p>
+          </div>
+          <div className="p-2 bg-blue-50 rounded-full text-blue-600">
+            <span className="font-bold">₱</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">For Picking</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.picking)}
+            </p>
+          </div>
+          <div className="p-2 bg-cyan-50 rounded-full text-cyan-600">
+            <span className="font-bold">₱</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">For Invoicing</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.invoicing)}
+            </p>
+          </div>
+          <div className="p-2 bg-yellow-50 rounded-full text-yellow-700">
+            <span className="font-bold">₱</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">For Loading</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.loading)}
+            </p>
+          </div>
+          <div className="p-2 bg-orange-50 rounded-full text-orange-700">
+            <span className="font-bold">₱</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">For Shipping</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.shipping)}
+            </p>
+          </div>
+          <div className="p-2 bg-green-50 rounded-full text-green-700">
+            <span className="font-bold">₱</span>
+          </div>
+        </div>
+      </div>
 
       {/* Stats Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
