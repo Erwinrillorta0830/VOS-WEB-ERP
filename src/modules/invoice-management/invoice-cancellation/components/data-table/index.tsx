@@ -75,7 +75,7 @@ export function InvoiceDataTable({ data, onRequest }: DataTableProps) {
           <TableToolbar table={table} />
         </div>
       </div>
-      <div className="rounded-md border overflow-hidden">
+      <div className="rounded-md border overflow-hidden bg-card">
         <Table>
           <TableHeader className="sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (

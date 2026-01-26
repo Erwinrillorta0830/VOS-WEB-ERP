@@ -47,11 +47,10 @@ type SavedView = {
 };
 
 export default function InvoiceSummaryReportPage() {
-  const { rawData, isLoading, refresh } = useSummaryData();
+  const { rawData, refresh } = useSummaryData();
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
 
-  // Load from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("invoice_report_presets");
     if (saved) setSavedViews(JSON.parse(saved));
@@ -83,7 +82,7 @@ export default function InvoiceSummaryReportPage() {
       localStorage.setItem("invoice_report_presets", JSON.stringify(updated));
     }
   };
-  // 1. DYNAMIC FILTERING LOGIC
+
   const filteredData = useMemo(() => {
     if (!rawData) return [];
     if (columnFilters.length === 0) return rawData;
@@ -132,7 +131,6 @@ export default function InvoiceSummaryReportPage() {
     });
   }, [rawData, columnFilters]);
 
-  // 2. DYNAMIC ANALYTICS CALCULATIONS
   const dynamicStats = useMemo(() => {
     const stats = {
       totalAmount: 0,
@@ -181,14 +179,6 @@ export default function InvoiceSummaryReportPage() {
     };
   }, [filteredData]);
 
-  if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex items-center justify-end">
@@ -201,7 +191,7 @@ export default function InvoiceSummaryReportPage() {
                 <span className="text-xs">Saved Filters</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-72 p-0" align="end">
+            <PopoverContent className="w-72" align="end">
               <Command>
                 <CommandInput
                   placeholder="Search views..."
@@ -267,15 +257,6 @@ export default function InvoiceSummaryReportPage() {
               </Command>
             </PopoverContent>
           </Popover>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refresh()}
-            className="h-8 gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span className="text-xs">Refresh</span>
-          </Button>
         </div>
       </div>
 

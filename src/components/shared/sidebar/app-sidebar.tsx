@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/sidebar";
 import { NavMain } from "./nav-main";
 import { TeamSwitcher } from "./nav-header";
-import {Dashboard} from "@/src/modules/fleet-management-module/components/dashboard/Dashboard";
 const data = {
   user: {
     name: "shadcn",
@@ -37,15 +36,15 @@ const data = {
       name: "Vertex Tech Corp.",
       logo: GalleryVerticalEnd,
       type: "Organization",
-        to: "/app",
+      to: "/app",
     },
   ],
   navMain: [
-      {
-          title: "Go Back to Dashboard",
-          icon: ChartNoAxesCombined,
-          to: "/app",
-      },
+    {
+      title: "Go Back to Dashboard",
+      icon: ChartNoAxesCombined,
+      to: "/app",
+    },
     {
       title: "Summary Report",
       icon: ChartNoAxesCombined,

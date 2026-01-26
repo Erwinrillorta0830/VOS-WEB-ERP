@@ -12,38 +12,6 @@ import {
 } from "@/components/ui/sidebar";
 import Link from "next/link";
 
-// Role badge configuration (Phase 1: visual only)
-const roleBadges: Record<string, { text: string; color: string }> = {
-  "/pages/summary-report": {
-    text: "ADMIN",
-    color: "bg-red-100 text-red-700 border-red-300",
-  },
-  "/pages/salesman-performance": {
-    text: "ADMIN",
-    color: "bg-blue-100 text-blue-700 border-blue-300",
-  },
-  "/pages/payment-methods": {
-    text: "ALL",
-    color: "bg-green-100 text-green-700 border-green-300",
-  },
-  "/pages/daily-collection": {
-    text: "MANAGER+",
-    color: "bg-blue-100 text-blue-700 border-blue-300",
-  },
-  "/pages/customer-analysis": {
-    text: "ADMIN",
-    color: "bg-blue-100 text-blue-700 border-blue-300",
-  },
-  "/pages/check-register": {
-    text: "ADMIN",
-    color: "bg-red-100 text-red-700 border-red-300",
-  },
-  "/pages/regional-analysis": {
-    text: "ADMIN",
-    color: "bg-blue-100 text-blue-700 border-blue-300",
-  },
-};
-
 export function NavMain({
   items,
 }: {

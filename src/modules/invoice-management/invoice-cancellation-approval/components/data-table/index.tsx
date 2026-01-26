@@ -179,7 +179,7 @@ export function ApprovalDataTable({
         <TasksTableActionBar table={table} onBulkAction={onBulkAction} />
 
         <TabsContent value={currentTab}>
-          <div className="overflow-hidden rounded-md border">
+          <div className="overflow-hidden rounded-md border bg-card">
             <Table>
               <TableHeader className="sticky top-0 z-10">
                 {table.getHeaderGroups().map((headerGroup) => (
