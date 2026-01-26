@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sidebar } from "@/components/shared/Sidebar";
+import { Sidebar } from "../../../../components/shared/Sidebar";
 import { ThemeProvider } from "../../../components/theme-provide";
 import { cn } from "@/lib/utils";
 

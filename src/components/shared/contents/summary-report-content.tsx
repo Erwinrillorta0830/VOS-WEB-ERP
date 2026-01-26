@@ -10,8 +10,8 @@ import {
   CollectionDetail,
   PaymentMethod,
 } from "@/components/shared/data-table/summary-report-data-table/type";
-import { exportColumns } from "@/src/app/lib/summary-report-utils";
-import { useFilters } from "@/src/app/contexts/filter-context";
+import { exportColumns } from "../../../../src/app/lib/summary-report-utils";
+import { useFilters } from "../../../../src/app/contexts/filter-context";
 import React from "react";
 interface Salesman {
   id: number;

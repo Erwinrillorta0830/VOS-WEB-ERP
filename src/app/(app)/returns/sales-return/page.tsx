@@ -1,5 +1,5 @@
 import React from "react";
-// ✅ Import the V3 Module
+// ✅ Import the V3 vtc-invoice-management
 import { SalesReturnModule } from "../../../../modules/return-management/sales-returnv3/SalesReturnModule";
 
 export const metadata = {

@@ -85,12 +85,48 @@ async function fetchInvoicesBase(filters: ListFilters) {
   }
 
   if (filters.q?.trim()) {
-    directusFilter._and.push({
-      _or: [
-        { invoice_no: { _icontains: filters.q } },
-        { customer_code: { _icontains: filters.q } },
-      ],
-    });
+    const q = filters.q.trim();
+    
+    // 1. Pre-fetch related IDs
+    const [salesmenRes, customersRes, plansRes] = await Promise.all([
+        directusGet<DirectusListResponse<any>>("/salesman", { 
+            filter: JSON.stringify({ salesman_name: { _icontains: q } }), 
+            fields: "id" 
+        }),
+        directusGet<DirectusListResponse<any>>("/customer", { 
+            filter: JSON.stringify({ customer_name: { _icontains: q } }), 
+            fields: "customer_code" 
+        }),
+        directusGet<DirectusListResponse<any>>("/post_dispatch_plan", { 
+            filter: JSON.stringify({ doc_no: { _icontains: q } }), 
+            fields: "id" 
+        })
+    ]);
+
+    const salesIds = (salesmenRes.data ?? []).map((s) => s.id);
+    const customerCodes = (customersRes.data ?? []).map((c) => c.customer_code);
+    const planIds = (plansRes.data ?? []).map((p) => p.id);
+
+    let planInvoiceIds: number[] = [];
+    if (planIds.length > 0) {
+        const planLinks = await directusGet<DirectusListResponse<any>>("/post_dispatch_invoices", {
+            filter: JSON.stringify({ post_dispatch_plan_id: { _in: planIds } }),
+            fields: "invoice_id"
+        });
+        planInvoiceIds = (planLinks.data ?? []).map((p) => p.invoice_id);
+    }
+
+    // 2. Build the OR filter
+    const searchConditions: any[] = [
+        { invoice_no: { _icontains: q } },
+        { customer_code: { _icontains: q } },
+    ];
+
+    if (salesIds.length > 0) searchConditions.push({ salesman_id: { _in: salesIds } });
+    if (customerCodes.length > 0) searchConditions.push({ customer_code: { _in: customerCodes } });
+    if (planInvoiceIds.length > 0) searchConditions.push({ invoice_id: { _in: planInvoiceIds } });
+
+    directusFilter._and.push({ _or: searchConditions });
   }
 
   const res = await directusGet<DirectusListResponse<any>>("/sales_invoice", {
@@ -293,47 +329,63 @@ export async function fetchItemizedReplica(filters: ListFilters) {
 // --- Invoice Details (Single View) ---
 export async function fetchInvoiceDetails(invoiceNo: string) {
     const headRes = await directusGet<DirectusListResponse<any>>("/sales_invoice", {
-        fields: "*",
+        fields: "*,invoice_type", 
         filter: JSON.stringify({_and: [{ invoice_no: { _eq: invoiceNo } },{ sales_type: { _eq: 1 } }]}),
         limit: "1"
     });
     const head = headRes.data?.[0];
     if (!head) return null;
-    const [custRes, saleRes, dispatchMap] = await Promise.all([
+    
+    const [custRes, saleRes, dispatchMap, operationRes, invoiceTypeRes] = await Promise.all([
         directusGet<DirectusListResponse<any>>("/customer", {filter: JSON.stringify({ customer_code: { _eq: head.customer_code } }),limit: "1"}),
         directusGet<DirectusListResponse<any>>("/salesman", {filter: JSON.stringify({ id: { _eq: head.salesman_id } }),limit: "1"}),
         fetchDispatchPlans([head.invoice_id]),
+        directusGet<DirectusListResponse<any>>("/operation", {
+            fields: "operation_name",
+            filter: JSON.stringify({ id: { _eq: head.sales_type } }),
+            limit: "1"
+        }),
+        head.invoice_type ? directusGet<DirectusListResponse<any>>("/sales_invoice_type", {
+            fields: "type",
+            filter: JSON.stringify({ id: { _eq: head.invoice_type } }),
+            limit: "1"
+        }) : Promise.resolve({ data: [] }),
     ]);
+    
+    // ✅ Fetching specific fields for table logic
     const detailsRes = await directusGet<DirectusListResponse<any>>("/sales_invoice_details", {
-        fields: "*,discount_type,gross_amount,total_amount,discount_amount", 
+        fields: "*,discount_type,total_amount,discount_amount,unit_price", 
         filter: JSON.stringify({invoice_no: { _eq: head.invoice_id }}),
         limit: "-1"
     });
     const rawLines = detailsRes.data ?? [];
     
-    // --- Collect IDs for side-loading ---
     const productIds = [...new Set(rawLines.map((l: any) => l.product_id).filter(Boolean))];
     const unitIds = [...new Set(rawLines.map((l: any) => l.unit).filter(Boolean))];
-    // Collect Discount Type IDs
     const discountTypeIds = [...new Set(rawLines.map((l: any) => l.discount_type).filter(Boolean))];
 
     const [productsRes, unitsRes, discountsRes] = await Promise.all([
         productIds.length > 0 ? directusGet<DirectusListResponse<any>>("/products", {fields: "product_id,product_name",filter: JSON.stringify({ product_id: { _in: productIds } }),limit: "-1"}) : { data: [] },
         unitIds.length > 0 ? directusGet<DirectusListResponse<any>>("/units", {fields: "unit_id,unit_name",filter: JSON.stringify({ unit_id: { _in: unitIds } }),limit: "-1"}) : { data: [] },
-        // Fetch Discount Type Labels
         discountTypeIds.length > 0 ? directusGet<DirectusListResponse<any>>("/discount_type", {fields: "id,discount_type",filter: JSON.stringify({ id: { _in: discountTypeIds } }),limit: "-1"}) : { data: [] },
     ]);
 
     const prodMap = new Map((productsRes.data ?? []).map((p: any) => [p.product_id, p.product_name]));
     const unitMap = new Map((unitsRes.data ?? []).map((u: any) => [u.unit_id, u.unit_name]));
-    // Map Discount ID -> Label
     const discountMap = new Map((discountsRes.data ?? []).map((d: any) => [d.id, d.discount_type]));
 
     const cust = custRes.data?.[0];
     const sale = saleRes.data?.[0];
+    const operation = operationRes.data?.[0]; 
+    const invoiceTypeRecord = invoiceTypeRes.data?.[0];
+    
     const docs = dispatchMap.get(head.invoice_id) ?? [];
     const dispatch_plan = docs.length ? docs.join(", ") : "unlinked";
     const status = derivePendingStatus(dispatch_plan, head.transaction_status);
+
+    const gross = toNum(head.gross_amount);
+    const discount = toNum(head.discount_amount);
+    const net = gross - discount; 
 
     return {
         header: {
@@ -344,36 +396,63 @@ export async function fetchInvoiceDetails(invoiceNo: string) {
             customer_name: cust?.customer_name,
             address: [cust?.brgy, cust?.city, cust?.province].filter(Boolean).join(", "),
             salesman: sale?.salesman_name ?? "", 
-            sales_type: "Regular",
+            
+            sales_type: operation?.operation_name ?? "Regular", 
+            invoice_type: invoiceTypeRecord?.type ?? "Unlinked",
+
             price_type: sale?.price_type,
             status,
             dispatch_plan,
         },
-        lines: rawLines.map((l: any, index: number) => ({
-            id: l.id ?? `line-${index}`, 
-            product_id: l.product_id,
-            product_name: prodMap.get(l.product_id) || `Item ${l.product_id}`,
-            unit: unitMap.get(l.unit) || String(l.unit),
-            qty: toNum(l.quantity),
-            price: toNum(l.unit_price),
-            gross: toNum(l.gross_amount) > 0 ? toNum(l.gross_amount) : toNum(l.total_amount), 
+        lines: rawLines.map((l: any, index: number) => {
+            const unitPrice = toNum(l.unit_price);
+            const qty = toNum(l.quantity);
             
-            // Use the fetched label. Fallback to logic if not found.
-            disc_type: discountMap.get(l.discount_type) ?? (toNum(l.discount_amount) > 0 ? "Discount" : "No Discount"),
+            // ✅ FETCHED: 'discount_amount' from Directus
+            const discAmt = toNum(l.discount_amount);
             
-            disc_amt: toNum(l.discount_amount),
-            
-            // ✅ UPDATED: Now strictly uses total_amount per your request
-            net_total: toNum(l.total_amount), 
-        })),
+            // ✅ FETCHED: 'total_amount' from Directus 
+            // (Aliases to 'product_total_amount' in your view, so we use this directly for Gross)
+            const productTotalAmount = toNum(l.total_amount) + discAmt; 
+
+            // ✅ CALCULATED: 'product_net_amount'
+            // View definition says: (total_amount - discount_amount)
+            const productNetAmount = productTotalAmount - discAmt;
+
+            // ✅ FETCHED: Discount Label
+            const discType = discountMap.get(l.discount_type) ?? (discAmt > 0 ? "Discount" : "No Discount");
+
+            return {
+                id: l.id ?? `line-${index}`, 
+                product_id: l.product_id,
+                product_name: prodMap.get(l.product_id) || `Item ${l.product_id}`,
+                unit: unitMap.get(l.unit) || String(l.unit),
+                qty: qty,
+                
+                // ✅ Price = Unit Price
+                price: unitPrice,
+                
+                // ✅ Gross = Total Amount (strictly)
+                gross: productTotalAmount, 
+                
+                // ✅ Disc Type
+                disc_type: discType,
+                
+                // ✅ Disc Amt
+                disc_amt: discAmt,
+                
+                // ✅ Net Total = Total - Discount
+                net_total: productNetAmount, 
+            };
+        }),
         summary: {
-            gross: toNum(head.gross_amount),
-            discount: toNum(head.discount_amount),
-            vatable: toNum(head.net_amount) / 1.12,
-            net: toNum(head.net_amount),
+            gross: gross,
+            discount: discount,
+            vatable: net / 1.12, 
+            net: net, 
             vat: toNum(head.vat_amount),
-            total: toNum(head.net_amount),
-            balance: toNum(head.net_amount),
+            total: net,
+            balance: net,
         },
     };
 }
