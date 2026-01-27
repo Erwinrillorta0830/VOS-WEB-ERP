@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -45,6 +45,18 @@ interface RequestModalProps {
   onSuccess: () => void;
 }
 
+const readVosSession = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("vosSession");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Date.now() > (parsed.expiresAt || 0) ? null : parsed;
+  } catch {
+    return null;
+  }
+};
+
 export function RequestCancellationModal({
   isOpen,
   onClose,
@@ -52,6 +64,13 @@ export function RequestCancellationModal({
   onSuccess,
 }: RequestModalProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [userId, setUserId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const session = readVosSession();
+    const id = session?.user?.user_id || session?.user?.id;
+    if (id) setUserId(Number(id));
+  }, [isOpen]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -63,6 +82,12 @@ export function RequestCancellationModal({
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!invoice) return;
+
+    if (!userId) {
+      toast.error("Session Expired", { description: "Please log in again." });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -74,7 +99,7 @@ export function RequestCancellationModal({
           sales_order_id: invoice.order_id,
           reason_code: values.reason_code,
           remarks: values.remarks,
-          requested_by: 1, // Placeholder for Auth Context
+          requested_by: userId, // Placeholder for Auth Context
         }),
       });
 
