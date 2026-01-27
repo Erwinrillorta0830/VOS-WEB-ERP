@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
+    /*
     {
         title: "Sales Return",
         href: "/returns/sales-return",
@@ -36,6 +37,8 @@ const navItems = [
         href: "/returns/return-to-supplier",
         icon: PackageCheck,
     },
+    */
+
         {
         title: "Sales Return Summary",
         href: "/returns/sales-return-summary",
