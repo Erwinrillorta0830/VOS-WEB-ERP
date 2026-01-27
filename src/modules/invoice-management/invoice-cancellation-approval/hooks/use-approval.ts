@@ -41,10 +41,21 @@ export function useApprovals() {
 
       setIsProcessing(true);
       try {
+        // 1. GET ACTUAL SESSION DATA
+        const raw = window.localStorage.getItem("vosSession");
+        const parsed = raw ? JSON.parse(raw) : null;
+
+        const activeAuditorId = parsed?.user?.user_id;
+
         const res = await fetch("/api/invoice-cancellation-approval", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, updates: paramsArray }),
+          body: JSON.stringify({
+            action,
+            updates: paramsArray,
+            // SUCCESS: No longer hardcoded to 101 or 1
+            auditorId: activeAuditorId,
+          }),
         });
 
         const resData = await res.json();

@@ -8,7 +8,14 @@ export const InvoiceReportRowSchema = z.object({
   amount: z.number(),
   defect_reason: z.string(),
   csr_remarks: z.string().nullable(),
-  approver: z.string().nullable(),
+  approver_fname: z.string().nullable(),
+  approver_lname: z.string().nullable(),
+  approver_mname: z.string().nullable(),
+  approver_dept: z.number(),
+  isAdmin: z.preprocess(
+    (val) => (typeof val === "number" ? val === 1 : val),
+    z.boolean().nullable().optional(),
+  ),
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
 });
 

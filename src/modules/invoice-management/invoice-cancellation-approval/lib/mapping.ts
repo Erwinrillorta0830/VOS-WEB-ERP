@@ -26,10 +26,9 @@ export function mapRequestsToInvoiceRows(
       reason_code: req.reason_code || "N/A",
       remarks: req.remarks ?? null,
       status: req.ui_status,
-      approved_by:
-        Number((req as any).approved_by) === 1
-          ? "Andrei Jam Bacho Siapno"
-          : "N/A",
+      approved_by: (req as any).approver_fname
+        ? `${(req as any).approver_fname} ${(req as any).approver_lname}`.trim()
+        : "Pending Approval",
       date_approved:
         (req as any).date_approved || (req as any).updated_at || null,
     }),

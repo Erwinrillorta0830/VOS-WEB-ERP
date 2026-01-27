@@ -6,7 +6,7 @@ import { DataTableColumnHeader } from "./table-column-header";
 import { formatDate, formatTime } from "../../lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import { STATUS_CONFIG } from "@/components/constant";
-import { CheckCircle2, XCircle, Clock, User } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, User, ShieldCheck } from "lucide-react";
 import { isWithinInterval, startOfDay, endOfDay, parseISO } from "date-fns";
 
 export const columns: ColumnDef<InvoiceReportRow>[] = [
@@ -148,21 +148,37 @@ export const columns: ColumnDef<InvoiceReportRow>[] = [
   },
   {
     accessorKey: "approver",
+    id: "approver",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} label="Approved By" />
+      <DataTableColumnHeader column={column} label="Processed By" />
     ),
-    meta: { label: "Approved By" },
+    meta: { label: "Processed By" },
     cell: ({ row }) => {
-      const approverName = row.original.approver;
-      if (!approverName) {
+      const data = row.original;
+
+      if (data.status === "PENDING") {
         return (
-          <span className="text-muted-foreground italic text-xs">
-            Pending Approval
+          <span className="text-[10px] italic text-muted-foreground animate-pulse">
+            Waiting for Audit...
           </span>
         );
       }
 
-      return <div className="font-medium text-primary">{approverName}</div>;
+      const fullName =
+        `${data.approver_fname ?? ""} ${data.approver_lname ?? ""}`.trim();
+
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-bold uppercase tracking-tight text-foreground">
+            {fullName || "System/Unknown"}
+          </span>
+          {data.approver_dept === 11 && (
+            <span className="text-[9px] text-blue-500 font-medium">
+              Audit Department
+            </span>
+          )}
+        </div>
+      );
     },
   },
   {
