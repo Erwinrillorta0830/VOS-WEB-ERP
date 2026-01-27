@@ -1,4 +1,4 @@
-import { DEPARTMENTS, ROUTES } from "../contants/constants";
+import { DEPARTMENTS, ROUTES } from "../constants/constants";
 
 // Type definition for the permission check function
 type PermissionCheck = (dept: number, isAdmin: boolean) => boolean;
