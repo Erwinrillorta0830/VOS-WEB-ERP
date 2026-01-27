@@ -16,7 +16,7 @@ export function mapRequestsToInvoiceRows(
   }));
 
   return [...pending, ...approved].map(
-    (req): InvoiceRow => ({
+    (req: any): InvoiceRow => ({
       id: req.id,
       invoice_id: req.invoice_id,
       invoice_no: req.invoice_no,
@@ -26,11 +26,25 @@ export function mapRequestsToInvoiceRows(
       reason_code: req.reason_code || "N/A",
       remarks: req.remarks ?? null,
       status: req.ui_status,
-      approved_by: (req as any).approver_fname
-        ? `${(req as any).approver_fname} ${(req as any).approver_lname}`.trim()
+      
+      
+      // Approver Mapping (Resolves)
+      approver_fname: req.approver_fname || null,
+      approver_mname: req.approver_mname || null,
+      approver_lname: req.approver_lname || null,
+      approver_dept: req.approver_dept || null,
+      
+      // Requester Mapping (Resolves)
+      requester_fname: req.requester_fname || null,
+      requester_lname: req.requester_lname || null,
+      requester_dept: req.requester_dept || null,
+
+      // Legacy support for your existing approved_by string
+      approved_by: req.approver_fname
+        ? `${req.approver_fname} ${req.approver_lname}`.trim()
         : "Pending Approval",
-      date_approved:
-        (req as any).date_approved || (req as any).updated_at || null,
+        
+      date_approved: req.date_approved || req.updated_at || null,
     }),
   );
 }

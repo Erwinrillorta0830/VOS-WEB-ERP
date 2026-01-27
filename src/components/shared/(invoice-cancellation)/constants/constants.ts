@@ -9,3 +9,6 @@ export const ROUTES = {
   APPROVAL: "/invoice-management/invoice-cancellation-approval",
   APP_HOME: "/app",
 } as const;
+
+export const toBool = (v: any) =>
+  v === true || v === 1 || v === "true" || v === "1";

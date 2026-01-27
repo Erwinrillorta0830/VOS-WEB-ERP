@@ -27,6 +27,17 @@ export const CancellationRequestSchema = z.object({
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
   order_no: z.string(),
   date_approved: z.string().optional(),
+
+  // NEW: Requester Info (Fixes CSR/UNKNOWN)
+  requester_fname: z.string().nullable(),
+  requester_lname: z.string().nullable(),
+  requester_dept: z.union([z.string(), z.number()]).nullable(),
+
+  // NEW: Approver Info (Fixes IDE Errors)
+  approver_fname: z.string().nullable(),
+  approver_mname: z.string().nullable(),
+  approver_lname: z.string().nullable(),
+  approver_dept: z.union([z.string(), z.number()]).nullable(),
 });
 
 export const SalesInvoiceSchema = z.object({

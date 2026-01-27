@@ -1,5 +1,9 @@
 import { SalesInvoice, CancellationRequest } from "../types";
 import { InvoiceReportRow } from "../../invoice-summary-report/types";
+import {
+  DEPARTMENTS,
+  toBool,
+} from "@/components/shared/(invoice-cancellation)/constants/constants";
 
 const API_BASE = (
   process.env.API_BASE ||
@@ -205,7 +209,7 @@ export const InvoiceService = {
     const allRequests = await fetchAll<any>("invoice_cancellation_requests", {
       "filter[status][_in]": "PENDING,APPROVED,REJECTED",
       fields:
-        "request_id,invoice_id,reason_code,remarks,sales_order_id,status,date_approved,approved_by",
+        "request_id,invoice_id,reason_code,remarks,sales_order_id,status,date_approved,approved_by,requested_by",
       sort: "-date_approved",
     });
 
@@ -231,11 +235,15 @@ export const InvoiceService = {
 
     return allRequests.map((req) => {
       const inv = invoiceMap.get(String(req.invoice_id));
-      const rawId =
-        typeof req.approved_by === "object"
-          ? req.approved_by?.id
-          : req.approved_by;
-      const user = rawId ? userMap.get(String(rawId)) : null;
+      const getCleanId = (val: any) =>
+        typeof val === "object" ? val?.id : val;
+
+      // 1. Map Approver
+      const auditor = userMap.get(String(getCleanId(req.approved_by)));
+
+      // 2. Map Requester - MATCHES MODAL PAYLOAD (requested_by)
+      const requester = userMap.get(String(getCleanId(req.requested_by)));
+
       return {
         ...req,
         id: req.request_id,
@@ -244,11 +252,15 @@ export const InvoiceService = {
         total_amount: inv?.total_amount || 0,
         order_no: req.sales_order_id,
         date_approved: req.date_approved,
-        // Approver data for UI Table
-        approver_fname: user?.user_fname || null,
-        approver_mname: user?.user_mname || null,
-        approver_lname: user?.user_lname || null,
-        approver_dept: user?.user_department || null,
+
+        approver_fname: auditor?.user_fname || null,
+        approver_mname: auditor?.user_mname || null,
+        approver_lname: auditor?.user_lname || null,
+        approver_dept: auditor?.user_department || null,
+
+        requester_fname: requester?.user_fname || null,
+        requester_lname: requester?.user_lname || null,
+        requester_dept: requester?.user_department || null,
       };
     });
   },
@@ -258,7 +270,7 @@ export const InvoiceService = {
   async getReportViewData(): Promise<InvoiceReportRow[]> {
     const requests = await fetchAll<any>("invoice_cancellation_requests", {
       fields:
-        "invoice_id,reason_code,remarks,sales_order_id,status,date_approved,approved_by,created_at",
+        "invoice_id,reason_code,remarks,sales_order_id,status,date_approved,approved_by,created_at,requested_by",
       sort: "-created_at",
     });
 
@@ -286,11 +298,19 @@ export const InvoiceService = {
     return requests.map((req) => {
       const inv = invoiceMap.get(String(req.invoice_id));
 
-      const rawId =
+      // Auditor (Dept 11)
+      const auditorId =
         typeof req.approved_by === "object"
           ? req.approved_by?.id
           : req.approved_by;
-      const user = rawId ? userMap.get(String(rawId)) : null;
+      const auditor = auditorId ? userMap.get(String(auditorId)) : null;
+
+      // CSR (Dept 7)
+      const requesterId =
+        typeof req.requested_by === "object"
+          ? req.requested_by?.id
+          : req.requested_by;
+      const requester = requesterId ? userMap.get(String(requesterId)) : null;
 
       const custName = inv?.customer_code
         ? customerMap.get(String(inv.customer_code).trim())
@@ -305,11 +325,20 @@ export const InvoiceService = {
         defect_reason: req.reason_code || "Uncategorized",
         csr_remarks: req.remarks || null,
         status: req.status as "PENDING" | "APPROVED" | "REJECTED",
-        approver_fname: user?.user_fname || null,
-        approver_mname: user?.user_mname || null,
-        approver_lname: user?.user_lname || null,
-        approver_dept: user?.user_department || null,
-        isAdmin: user?.user_department === 11,
+
+        approver_fname: auditor?.user_fname || null,
+        approver_mname: auditor?.user_mname || null,
+        approver_lname: auditor?.user_lname || null,
+        approver_dept: auditor ? Number(auditor.user_department) : null,
+
+        // Fixes 'requester properties do not exist'
+        requester_fname: requester?.user_fname || null,
+        requester_lname: requester?.user_lname || null,
+        requester_dept: requester ? Number(requester.user_department) : null,
+
+        isAdmin:
+          auditor?.user_department === DEPARTMENTS.AUDITOR &&
+          toBool(auditor?.isAdmin),
       };
     });
   },
