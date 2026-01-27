@@ -1,4 +1,3 @@
-import { timeStamp } from "console";
 import { SalesInvoice, CancellationRequest } from "../types";
 import { InvoiceReportRow } from "../../invoice-summary-report/types";
 
@@ -16,7 +15,6 @@ const getHeaders = () => ({
 /**
  * RECURSIVE FETCH ALL
  * Safely fetches all items from a Directus collection by handling pagination.
- * This is preferred over limit=-1 for stability and memory safety.
  */
 async function fetchAll<T>(
   endpoint: string,
@@ -133,7 +131,7 @@ export const InvoiceService = {
         headers: getHeaders(),
         body: JSON.stringify({
           status: "APPROVED",
-          approved_by: 1, //HARDCOEDED AUDITOR ID
+          approved_by: auditorId,
           action_date: new Date().toISOString(),
           date_approved: timestamp,
         }),
@@ -170,7 +168,11 @@ export const InvoiceService = {
   /**
    * Rejection
    */
-  async rejectRequest(requestId: number, pkInvoiceId: number | string) {
+  async rejectRequest(
+    requestId: number,
+    pkInvoiceId: number | string,
+    auditorId: number,
+  ) {
     await fetch(
       `${API_BASE}/items/invoice_cancellation_requests/${requestId}`,
       {
@@ -179,6 +181,7 @@ export const InvoiceService = {
         body: JSON.stringify({
           status: "REJECTED",
           action_date: new Date().toISOString(),
+          approved_by: auditorId,
         }),
       },
     );
@@ -194,17 +197,15 @@ export const InvoiceService = {
 
     if (!invRes.ok) throw new Error("Could not return invoice to CSR");
   },
-
   /**
-   * AUDIT VIEW (Refactored for fetchAll)
-   * Fetches all pending requests and merges with invoice details.
+   * AUDIT VIEW (Auditor Dashboard)
+   * Fetches all requests and joins User and Invoice details for the Approval Table.
    */
-  async getAllRequests(): Promise<CancellationRequest[]> {
-    // 1. Fetch pending requests and all invoices in parallel
+  async getAllRequests(): Promise<any[]> {
     const allRequests = await fetchAll<any>("invoice_cancellation_requests", {
       "filter[status][_in]": "PENDING,APPROVED,REJECTED",
       fields:
-        "request_id,invoice_id,reason_code,remarks,sales_order_id,status,date_approved",
+        "request_id,invoice_id,reason_code,remarks,sales_order_id,status,date_approved,approved_by",
       sort: "-date_approved",
     });
 
@@ -212,18 +213,29 @@ export const InvoiceService = {
 
     const invoiceIds = [...new Set(allRequests.map((r) => r.invoice_id))];
 
-    const relevantInvoices = await fetchAll<any>("sales_invoice", {
-      "filter[invoice_id][_in]": invoiceIds.join(","),
-      fields: "invoice_id,invoice_no,customer_code,total_amount",
-    });
+    const [relevantInvoices, users] = await Promise.all([
+      fetchAll<any>("sales_invoice", {
+        "filter[invoice_id][_in]": invoiceIds.join(","),
+        fields: "invoice_id,invoice_no,customer_code,total_amount",
+      }),
+      fetchAll<any>("user", {
+        fields: "user_id,user_fname,user_mname,user_lname,user_department",
+      }),
+    ]);
 
+    // Create string-keyed maps for robust ID matching
     const invoiceMap = new Map(
       relevantInvoices.map((inv) => [String(inv.invoice_id), inv]),
     );
+    const userMap = new Map(users.map((u) => [String(u.user_id), u]));
 
-    // 3. Merge data
     return allRequests.map((req) => {
       const inv = invoiceMap.get(String(req.invoice_id));
+      const rawId =
+        typeof req.approved_by === "object"
+          ? req.approved_by?.id
+          : req.approved_by;
+      const user = rawId ? userMap.get(String(rawId)) : null;
       return {
         ...req,
         id: req.request_id,
@@ -232,76 +244,72 @@ export const InvoiceService = {
         total_amount: inv?.total_amount || 0,
         order_no: req.sales_order_id,
         date_approved: req.date_approved,
+        // Approver data for UI Table
+        approver_fname: user?.user_fname || null,
+        approver_mname: user?.user_mname || null,
+        approver_lname: user?.user_lname || null,
+        approver_dept: user?.user_department || null,
       };
     });
   },
   /**
-   * REPORT VIEW DATA
-   * Fetches data and maps it to the InvoiceReportRow format
+   * REPORT VIEW DATA (Fixed Syntax & Redundancy)
    */
   async getReportViewData(): Promise<InvoiceReportRow[]> {
-    // 1. Fetch raw requests with necessary fields
     const requests = await fetchAll<any>("invoice_cancellation_requests", {
       fields:
         "invoice_id,reason_code,remarks,sales_order_id,status,date_approved,approved_by,created_at",
-      sort: "-created_at", // Added sorting: newest first
+      sort: "-created_at",
     });
 
     if (requests.length === 0) return [];
 
-    // 2. Fetch Invoices and Custom Users in parallel
     const [invoices, users, customers] = await Promise.all([
       fetchAll<any>("sales_invoice", {
         fields: "invoice_id,customer_code,total_amount",
       }),
       fetchAll<any>("user", {
-        fields: "user_id,user_fname,user_mname,user_lname",
+        fields: "user_id,user_fname,user_mname,user_lname,user_department",
       }),
-      fetchAll<any>("customer", {
-        fields: "customer_code,customer_name",
-      }),
+      fetchAll<any>("customer", { fields: "customer_code,customer_name" }),
     ]);
 
-    // 3. Create Maps for O(1) efficiency
+    // Create maps using String keys for reliability
     const invoiceMap = new Map(
       invoices.map((inv) => [String(inv.invoice_id), inv]),
     );
     const userMap = new Map(users.map((u) => [String(u.user_id), u]));
     const customerMap = new Map(
-      customers.map((c) => [String(c.customer_code), c.customer_name]),
+      customers.map((c) => [String(c.customer_code).trim(), c.customer_name]),
     );
 
-    // 4. Map to the final row format
     return requests.map((req) => {
       const inv = invoiceMap.get(String(req.invoice_id));
-      const userId = req.approved_by ? String(req.approved_by) : null;
 
-      // Get the name from our new customerMap using the code from the invoice
+      const rawId =
+        typeof req.approved_by === "object"
+          ? req.approved_by?.id
+          : req.approved_by;
+      const user = rawId ? userMap.get(String(rawId)) : null;
+
       const custName = inv?.customer_code
-        ? customerMap.get(String(inv.customer_code))
+        ? customerMap.get(String(inv.customer_code).trim())
         : "N/A";
-
-      let fullName = null;
-      if (String(req.approved_by) === "1") {
-        fullName = "Andrei Jam Bacho Siapno";
-      } else if (userId) {
-        const user = userMap.get(userId);
-        if (user) {
-          fullName =
-            `${user.user_fname || ""} ${user.user_mname ? user.user_mname + " " : ""}${user.user_lname || ""}`.trim();
-        }
-      }
 
       return {
         date_time: req.created_at || req.date_approved || null,
         original_invoice: Number(req.invoice_id),
         sales_order_no: req.sales_order_id || "N/A",
-        customer_name: custName || inv?.customer_code || "N/A",
+        customer_name: custName || "N/A",
         amount: Number(inv?.total_amount) || 0,
         defect_reason: req.reason_code || "Uncategorized",
         csr_remarks: req.remarks || null,
-        approver: fullName || (req.status === "PENDING" ? "Waiting..." : "N/A"),
         status: req.status as "PENDING" | "APPROVED" | "REJECTED",
+        approver_fname: user?.user_fname || null,
+        approver_mname: user?.user_mname || null,
+        approver_lname: user?.user_lname || null,
+        approver_dept: user?.user_department || null,
+        isAdmin: user?.user_department === 11,
       };
     });
   },

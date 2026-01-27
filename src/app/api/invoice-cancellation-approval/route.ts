@@ -28,7 +28,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { action, updates } = body;
+    const { action, updates, auditorId: mainAuditorId } = body;
 
     if (!updates || !Array.isArray(updates) || updates.length === 0) {
       return NextResponse.json(
@@ -36,21 +36,30 @@ export async function PATCH(request: Request) {
         { status: 400 },
       );
     }
+
     const results = await Promise.all(
       updates.map(async (item: any) => {
-        const { requestId, invoiceId, orderNo, auditorId } = item;
+        const { requestId, invoiceId, orderNo } = item;
 
         if (action === "APPROVE") {
+          if (!mainAuditorId) {
+            throw new Error("Auditor ID is required for approval");
+          }
+
           return await InvoiceService.approveRequest(
             requestId,
             invoiceId,
             orderNo,
-            auditorId,
+            mainAuditorId,
           );
         }
 
         if (action === "REJECT") {
-          return await InvoiceService.rejectRequest(requestId, invoiceId);
+          return await InvoiceService.rejectRequest(
+            requestId,
+            invoiceId,
+            mainAuditorId,
+          );
         }
 
         throw new Error(`Invalid action: ${action}`);
