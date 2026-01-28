@@ -42,7 +42,7 @@ const parseBoolean = (val: any): boolean => {
   if (val && val.type === "Buffer" && Array.isArray(val.data)) {
     return val.data[0] === 1;
   }
-  return false;
+  return val === true; // Handle case where API might return true/false directly
 };
 
 // --- HELPER: Format Date to YYYY-MM-DD ---
@@ -73,9 +73,9 @@ export const SalesReturnProvider = {
     filters: { salesman?: string; customer?: string; status?: string } = {},
   ): Promise<{ data: SalesReturn[]; total: number }> {
     try {
-      // 🟢 NOTE: Removed 'order_id' and 'is_third_party' to prevent GET 403 Error
+      // 🟢 RESTORED: Now fetching 'order_id' and 'is_third_party'
       const allowedFields =
-        "return_id,return_number,invoice_no,customer_code,salesman_id,total_amount,status,return_date,remarks";
+        "return_id,return_number,invoice_no,customer_code,salesman_id,total_amount,status,return_date,remarks,order_id,isThirdParty";
       let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_id`;
 
       if (search) {
@@ -111,9 +111,9 @@ export const SalesReturnProvider = {
           totalAmount: parseFloat(item.total_amount) || 0,
           status: item.status || "Pending",
           remarks: item.remarks,
-          // Defaults to handle missing permissions gracefully
-          orderNo: "",
-          isThirdParty: false,
+          // 🟢 Mapped correctly from DB columns
+          orderNo: item.order_id || "",
+          isThirdParty: parseBoolean(item.isThirdParty),
         }),
       );
       return { data: mappedData, total: result.meta?.filter_count || 0 };
@@ -298,11 +298,9 @@ export const SalesReturnProvider = {
         return_date: formattedDate,
         price_type: payload.priceType || "A",
         remarks: payload.remarks || "Created via Web App",
-        // 🟢 NOTE: Leaving these in CREATE might still fail if you lack Insert permission,
-        // but often Insert permissions are broader than Update permissions.
-        // If create fails with 403, comment these out too.
-        // order_id: payload.orderNo || "",
-        // is_third_party: payload.isThirdParty ? 1 : 0
+        // 🟢 RESTORED: Sending these fields now that permissions are fixed
+        order_id: payload.orderNo || "",
+        isThirdParty: payload.isThirdParty ? 1 : 0,
       };
 
       const headerResponse = await fetch(`${API_BASE}/sales_return`, {
@@ -383,16 +381,15 @@ export const SalesReturnProvider = {
       );
       const totalNet = totalGross - totalDiscount;
 
-      // 🟢 REVISION: Commented out forbidden fields to fix 403 Error
+      // 🟢 RESTORED: All fields are sent to PATCH
       const headerPayload = {
         remarks: payload.remarks ?? "",
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         total_amount: totalNet,
         invoice_no: payload.invoiceNo ?? "",
-        // 🔴 BLOCKED BY PERMISSIONS - UNCOMMENT WHEN FIXED IN DB
-        // order_id: payload.orderNo ?? "",
-        // is_third_party: payload.isThirdParty ? 1 : 0
+        order_id: payload.orderNo ?? "",
+        isThirdParty: payload.isThirdParty ? 1 : 0,
       };
 
       const headerResponse = await fetch(
@@ -407,10 +404,9 @@ export const SalesReturnProvider = {
       if (!headerResponse.ok) throw new Error(await headerResponse.text());
 
       const serverResult = await headerResponse.json();
-      // Use server data, or fallback to our calculated total if server response is partial
       const updatedHeader = serverResult.data || {
-        total_amount: totalNet,
         ...headerPayload,
+        total_amount: totalNet,
       };
 
       const returnTypes = await SalesReturnProvider.getSalesReturnTypes();

@@ -355,26 +355,29 @@ export function SalesReturnHistory() {
         isThirdParty: selectedReturn.isThirdParty,
       };
 
-      // 🟢 REVISION: Capture the server response!
       const serverResult = await SalesReturnProvider.updateReturn(payload);
 
-      // 🟢 REVISION: Use server data to update the table immediately
-      // serverResult is the updated record object returned by api.updateReturn
+      // 🟢 OPTIMISTIC UPDATE: Map the returned database fields to Frontend State
+      const newTotal =
+        parseFloat(serverResult.total_amount) ||
+        details.reduce((acc, item) => acc + (item.totalAmount || 0), 0);
+      const is3rdParty =
+        serverResult.is_third_party === 1 ||
+        serverResult.is_third_party === true;
+
       setData((prevData) =>
         prevData.map((row) =>
           row.id === selectedReturn.id
             ? {
                 ...row,
-                // Map DB snake_case to Frontend camelCase
-                totalAmount:
-                  parseFloat(serverResult.total_amount) || row.totalAmount,
+                totalAmount: newTotal,
                 remarks: serverResult.remarks || selectedReturn.remarks,
                 invoiceNo: serverResult.invoice_no || selectedReturn.invoiceNo,
                 orderNo:
                   serverResult.order_id ||
                   selectedReturn.orderNo ||
                   row.orderNo,
-                isThirdParty: serverResult.is_third_party === 1,
+                isThirdParty: is3rdParty,
               }
             : row,
         ),
@@ -921,11 +924,10 @@ export function SalesReturnHistory() {
                         <TableHead className="text-white font-semibold h-11 w-[80px] uppercase text-xs">
                           Unit
                         </TableHead>
-                        {/* 🟢 REVISION 7: Increased width & min-width to prevent squash */}
                         <TableHead className="text-white font-semibold h-11 text-center min-w-[100px] uppercase text-xs">
                           Qty
                         </TableHead>
-                        <TableHead className="text-white font-semibold h-11 text-center min-w-[110px] uppercase text-xs">
+                        <TableHead className="text-white font-semibold h-11 text-right min-w-[120px] uppercase text-xs">
                           Price
                         </TableHead>
                         <TableHead className="text-white font-semibold h-11 text-right w-[100px] uppercase text-xs">
@@ -979,8 +981,14 @@ export function SalesReturnHistory() {
                             <TableCell className="text-xs text-slate-700 font-bold align-middle">
                               {item.code}
                             </TableCell>
-                            <TableCell className="text-xs text-slate-700 align-middle font-medium leading-tight">
-                              {item.description}
+                            {/* 🟢 REVISION: Smooth Hover Effect + Tooltip Logic */}
+                            <TableCell className="align-middle">
+                              <div
+                                className="text-xs text-slate-700 font-medium truncate max-w-[220px] transition-all duration-200 ease-in-out hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 -ml-1.5 rounded-md cursor-help"
+                                title={item.description}
+                              >
+                                {item.description}
+                              </div>
                             </TableCell>
                             <TableCell className="text-xs text-slate-500 align-middle">
                               <Badge
@@ -991,7 +999,6 @@ export function SalesReturnHistory() {
                               </Badge>
                             </TableCell>
 
-                            {/* 🟢 REVISION 7: Added px-2 padding to inputs */}
                             <TableCell className="text-center align-middle p-2">
                               {isEditable ? (
                                 <Input
