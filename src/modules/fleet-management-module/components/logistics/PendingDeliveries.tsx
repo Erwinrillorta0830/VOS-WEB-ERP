@@ -94,9 +94,6 @@ interface PrintConfig {
   cluster: string;
   salesman: string;
   status: string; // 'All', 'For Approval', 'For Picking', etc.
-  dateRange: DateRange;
-  customFrom: string;
-  customTo: string;
 }
 
 export function PendingDeliveries() {
@@ -119,9 +116,6 @@ export function PendingDeliveries() {
     cluster: "All",
     salesman: "All",
     status: "All",
-    dateRange: "this-month",
-    customFrom: "",
-    customTo: "",
   });
 
   // Pagination
@@ -143,16 +137,16 @@ export function PendingDeliveries() {
 
   const formatTotalCurrency = (amount: number) => {
     return `₱${amount.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     })}`;
   };
 
   const formatCardCurrency = (amount: number) => {
     if (amount === 0) return "₱ -";
     return `₱${amount.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     })}`;
   };
 
@@ -164,6 +158,25 @@ export function PendingDeliveries() {
     });
   };
 
+  const formatTotalForPDF = (amount: number) => {
+    if (amount === 0) return "-";
+    return amount.toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  };
+
+  const formatDatePrinted = (d: Date) => {
+    // Example: Jan 27, 2026, 4:15 PM
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
   const toLocalDayKey = (dateString: string) => {
     // Converts any ISO/timestamp into YYYY-MM-DD based on local time (prevents grouping by time)
     if (!dateString) return "";
@@ -172,82 +185,6 @@ export function PendingDeliveries() {
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
-  };
-
-  const formatDateLong = (d: Date) => {
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
-  const getQuickRangeBounds = (
-    range: DateRange,
-    customFrom?: string,
-    customTo?: string
-  ): { from: Date; to: Date } | null => {
-    const now = new Date();
-
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-    if (range === "today") {
-      return { from: startOfToday, to: endOfToday };
-    }
-
-    if (range === "yesterday") {
-      const from = new Date(startOfToday);
-      from.setDate(from.getDate() - 1);
-      const to = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 23, 59, 59, 999);
-      return { from, to };
-    }
-
-    if (range === "this-week") {
-      // Monday-start week (matches your filter logic)
-      const dayOfWeek = startOfToday.getDay(); // 0=Sun
-      const diff = startOfToday.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-      const from = new Date(startOfToday);
-      from.setDate(diff);
-      const to = new Date(from);
-      to.setDate(from.getDate() + 6);
-      to.setHours(23, 59, 59, 999);
-      return { from, to };
-    }
-
-    if (range === "this-month") {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      return { from, to };
-    }
-
-    if (range === "this-year") {
-      const from = new Date(now.getFullYear(), 0, 1);
-      const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-      return { from, to };
-    }
-
-    if (range === "custom") {
-      if (!customFrom || !customTo) return null;
-      const from = new Date(customFrom);
-      const to = new Date(customTo);
-      to.setHours(23, 59, 59, 999);
-      return { from, to };
-    }
-
-    return null;
-  };
-
-  const getPeriodLabel = (range: DateRange, customFrom?: string, customTo?: string) => {
-    const bounds = getQuickRangeBounds(range, customFrom, customTo);
-    if (!bounds) return "All Dates";
-
-    const fromKey = `${bounds.from.getFullYear()}-${bounds.from.getMonth()}-${bounds.from.getDate()}`;
-    const toKey = `${bounds.to.getFullYear()}-${bounds.to.getMonth()}-${bounds.to.getDate()}`;
-
-    if (fromKey === toKey) return formatDateLong(bounds.from);
-
-    return `${formatDateLong(bounds.from)} - ${formatDateLong(bounds.to)}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -262,7 +199,7 @@ export function PendingDeliveries() {
     });
   };
 
-  // Generic Date Logic (Used by both Dashboard and Print)
+  // Generic Date Logic (Used by dashboard filters)
   const checkDateRange = (dateString: string, range: DateRange, customFrom?: string, customTo?: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -270,6 +207,7 @@ export function PendingDeliveries() {
     const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
     if (range === "custom") {
+      // ✅ If custom bounds not provided, treat as ALL dates
       if (!customFrom || !customTo) return true;
       const from = new Date(customFrom);
       const to = new Date(customTo);
@@ -532,19 +470,23 @@ export function PendingDeliveries() {
   }, [tableRows, sortConfig]);
 
   // ===========================
-  // PDF (UPDATED HEADER + CARDS)
+  // PDF (PRINT ALWAYS ALL DATES)
   // ===========================
   const executePrint = () => {
+    // ✅ Always print ALL dates regardless of dashboard date filter
+    const printDateSettings = { range: "custom" as DateRange, from: "", to: "" };
+
+    // ✅ Main printed table honors selected cluster (and salesman/status)
     const printRows = getGroupedRows(
       rawGroups,
       { cluster: printConfig.cluster, salesman: printConfig.salesman, status: printConfig.status },
-      { range: printConfig.dateRange, from: printConfig.customFrom, to: printConfig.customTo }
+      printDateSettings
     );
 
     const pdfPendingOrders = countFilteredOrders(
       rawGroups,
       { cluster: printConfig.cluster, salesman: printConfig.salesman, status: printConfig.status },
-      { range: printConfig.dateRange, from: printConfig.customFrom, to: printConfig.customTo }
+      printDateSettings
     );
 
     printRows.sort((a, b) => {
@@ -559,11 +501,12 @@ export function PendingDeliveries() {
 
     const doc = new jsPDF("l", "mm", "a4");
 
-    const periodLabel = getPeriodLabel(printConfig.dateRange, printConfig.customFrom, printConfig.customTo);
+    // ✅ Replace "Period" with "Date Printed"
+    const printedAt = formatDatePrinted(new Date());
     const filterText = `Cluster: ${printConfig.cluster} | Salesman: ${printConfig.salesman} | Status: ${printConfig.status}`;
 
-    const grandTotal = printRows.reduce((sum, r) => sum + r.amount, 0);
-    const uniqueClusters = new Set(printRows.map((r) => r.clusterName)).size;
+    const grandTotalPrinted = printRows.reduce((sum, r) => sum + r.amount, 0);
+    const uniqueClustersPrinted = new Set(printRows.map((r) => r.clusterName)).size;
 
     const pdfStatusTotals = printRows.reduce(
       (acc, r) => {
@@ -578,7 +521,7 @@ export function PendingDeliveries() {
       { approval: 0, consolidation: 0, picking: 0, invoicing: 0, loading: 0, shipping: 0 }
     );
 
-    const moneyCard = (amount: number) => (amount === 0 ? "P -" : `P ${formatNumberForPDF(amount)}`);
+    const moneyTotalCard = (amount: number) => (amount === 0 ? "P -" : `P ${formatTotalForPDF(amount)}`);
 
     // =========================
     // LAYOUT CONSTANTS (TIGHT)
@@ -609,20 +552,20 @@ export function PendingDeliveries() {
     doc.text("Delivery Monitor Report", leftX, 15);
 
     doc.setFontSize(10);
-    const periodLines = doc.splitTextToSize(`Period: ${periodLabel}`, leftMaxWidth);
-    doc.text(periodLines, leftX, 22);
+    const printedLines = doc.splitTextToSize(`Date Printed: ${printedAt}`, leftMaxWidth);
+    doc.text(printedLines, leftX, 22);
 
     const lineH10 = 4.5;
-    const afterPeriodY = 22 + (periodLines.length - 1) * lineH10;
+    const afterPrintedY = 22 + (printedLines.length - 1) * lineH10;
 
     doc.setFontSize(8);
     doc.setTextColor(100);
     const filterLines = doc.splitTextToSize(filterText, leftMaxWidth);
-    doc.text(filterLines, leftX, afterPeriodY + 5);
+    doc.text(filterLines, leftX, afterPrintedY + 5);
     doc.setTextColor(0);
 
     const lineH8 = 3.8;
-    const headerBottomY = afterPeriodY + 5 + (filterLines.length - 1) * lineH8;
+    const headerBottomY = afterPrintedY + 5 + (filterLines.length - 1) * lineH8;
 
     // =========================
     // CARDS (TOP RIGHT)
@@ -646,9 +589,9 @@ export function PendingDeliveries() {
       doc.circle(x + cardWidth - 7, cardsY + 9, 3.5, "F");
     };
 
-    drawCard(startX, "Active Clusters", uniqueClusters.toString(), [219, 234, 254]);
+    drawCard(startX, "Active Clusters", uniqueClustersPrinted.toString(), [219, 234, 254]);
     drawCard(startX + cardWidth + gap, "Pending Orders", pdfPendingOrders.toString(), [243, 232, 255]);
-    drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", moneyCard(grandTotal), [220, 252, 231]);
+    drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", moneyTotalCard(grandTotalPrinted), [220, 252, 231]);
 
     // =========================
     // STATUS CARDS (ONE ROW, BELOW TITLES/DETAILS)
@@ -684,12 +627,12 @@ export function PendingDeliveries() {
     };
 
     const statusCards = [
-      { label: "For Approval", value: moneyCard(pdfStatusTotals.approval), dot: [243, 232, 255] as [number, number, number] },
-      { label: "For Conso", value: moneyCard(pdfStatusTotals.consolidation), dot: [219, 234, 254] as [number, number, number] },
-      { label: "For Picking", value: moneyCard(pdfStatusTotals.picking), dot: [207, 250, 254] as [number, number, number] },
-      { label: "For Invoicing", value: moneyCard(pdfStatusTotals.invoicing), dot: [254, 249, 195] as [number, number, number] },
-      { label: "For Loading", value: moneyCard(pdfStatusTotals.loading), dot: [255, 237, 213] as [number, number, number] },
-      { label: "For Shipping", value: moneyCard(pdfStatusTotals.shipping), dot: [220, 252, 231] as [number, number, number] },
+      { label: "For Approval", value: moneyTotalCard(pdfStatusTotals.approval), dot: [243, 232, 255] as [number, number, number] },
+      { label: "For Conso", value: moneyTotalCard(pdfStatusTotals.consolidation), dot: [219, 234, 254] as [number, number, number] },
+      { label: "For Picking", value: moneyTotalCard(pdfStatusTotals.picking), dot: [207, 250, 254] as [number, number, number] },
+      { label: "For Invoicing", value: moneyTotalCard(pdfStatusTotals.invoicing), dot: [254, 249, 195] as [number, number, number] },
+      { label: "For Loading", value: moneyTotalCard(pdfStatusTotals.loading), dot: [255, 237, 213] as [number, number, number] },
+      { label: "For Shipping", value: moneyTotalCard(pdfStatusTotals.shipping), dot: [220, 252, 231] as [number, number, number] },
     ];
 
     let x = leftX;
@@ -769,10 +712,17 @@ export function PendingDeliveries() {
     });
 
     // =========================
-    // CLUSTER SUMMARY
+    // CLUSTER SUMMARY (ALWAYS ALL CLUSTERS)
     // =========================
+    // ✅ Ignore printConfig.cluster here; still respect salesman/status + all dates
+    const summaryAllClustersRows = getGroupedRows(
+      rawGroups,
+      { cluster: "All", salesman: printConfig.salesman, status: printConfig.status },
+      printDateSettings
+    );
+
     const summaryMap = new Map<string, number>();
-    printRows.forEach((r) => {
+    summaryAllClustersRows.forEach((r) => {
       summaryMap.set(r.clusterName, (summaryMap.get(r.clusterName) || 0) + r.amount);
     });
 
@@ -805,15 +755,16 @@ export function PendingDeliveries() {
         if (data.pageCount === data.pageNumber) {
           const grandTotalStartY = data.cursor.y + 5;
           autoTable(doc, {
-            body: [["GRAND TOTAL", formatNumberForPDF(grandTotal)]],
+            // ✅ Keep this as the printed table total (respects selected cluster)
+            body: [["GRAND TOTAL (Printed)", formatNumberForPDF(grandTotalPrinted)]],
             startY: grandTotalStartY,
             theme: "grid",
-            tableWidth: 80,
+            tableWidth: 90,
             margin: { left: 120, bottom: 12 }, // ✅ leave room for page number
             styles: { fontSize: 10, cellPadding: 3, fontStyle: "bold", valign: "middle" },
             columnStyles: {
-              0: { fillColor: [229, 231, 235], cellWidth: 40 },
-              1: { halign: "right", cellWidth: 40 },
+              0: { fillColor: [229, 231, 235], cellWidth: 55 },
+              1: { halign: "right", cellWidth: 35 },
             },
           });
         }
@@ -1061,7 +1012,10 @@ export function PendingDeliveries() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-bold text-gray-800">What needs to be printed?</h3>
-              <button onClick={() => setIsPrintModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+              <button
+                onClick={() => setIsPrintModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1118,47 +1072,7 @@ export function PendingDeliveries() {
                 <p className="text-xs text-gray-400 mt-1">If a specific status is selected, only that column will be printed.</p>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Date Range</label>
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  {(["today", "this-week", "this-month", "custom"] as DateRange[]).map((range) => (
-                    <button
-                      key={range}
-                      onClick={() => setPrintConfig({ ...printConfig, dateRange: range })}
-                      className={`px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
-                        printConfig.dateRange === range
-                          ? "bg-blue-50 border-blue-500 text-blue-700"
-                          : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      {range === "custom" ? "Custom" : range.replace("-", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
-                    </button>
-                  ))}
-                </div>
-
-                {printConfig.dateRange === "custom" && (
-                  <div className="flex gap-3 bg-gray-50 p-3 rounded-md border border-gray-200">
-                    <div className="flex-1">
-                      <span className="text-[10px] uppercase text-gray-400 font-bold">From</span>
-                      <input
-                        type="date"
-                        value={printConfig.customFrom}
-                        onChange={(e) => setPrintConfig({ ...printConfig, customFrom: e.target.value })}
-                        className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <span className="text-[10px] uppercase text-gray-400 font-bold">To</span>
-                      <input
-                        type="date"
-                        value={printConfig.customTo}
-                        onChange={(e) => setPrintConfig({ ...printConfig, customTo: e.target.value })}
-                        className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              {/* ✅ Date Range removed from modal — printing always uses ALL dates */}
             </div>
 
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
