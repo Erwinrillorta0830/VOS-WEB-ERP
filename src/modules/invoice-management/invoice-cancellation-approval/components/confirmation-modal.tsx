@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
-import { Loader2, AlertTriangle, AlertCircle } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import {
+  Loader2,
+  AlertTriangle,
+  AlertCircle,
+  ClipboardList,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +18,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { formatCurrency } from "@/lib/utils";
 import { ApprovalAction, InvoiceRow } from "../types";
 
@@ -24,7 +32,8 @@ interface ConfirmationModalProps {
     data: InvoiceRow | InvoiceRow[];
   } | null;
   isProcessing: boolean;
-  onConfirm: () => Promise<void>;
+  // Updated to pass reasons back
+  onConfirm: (reasons?: string | Record<number, string>) => Promise<void>;
 }
 
 export function ActionConfirmationModal({
@@ -34,6 +43,21 @@ export function ActionConfirmationModal({
   isProcessing,
   onConfirm,
 }: ConfirmationModalProps) {
+  const [useSameReason, setUseSameReason] = useState(true);
+  const [commonReason, setCommonReason] = useState("");
+  const [individualReasons, setIndividualReasons] = useState<
+    Record<number, string>
+  >({});
+
+  // Reset local state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setCommonReason("");
+      setIndividualReasons({});
+      setUseSameReason(true);
+    }
+  }, [open]);
+
   const selectedItems = useMemo(() => {
     if (!pendingAction?.data) return [];
     return Array.isArray(pendingAction.data)
@@ -42,17 +66,44 @@ export function ActionConfirmationModal({
   }, [pendingAction]);
 
   const isBulk = selectedItems.length > 1;
+  const isRejection = pendingAction?.type === "REJECT";
+
   const totalAmount = useMemo(
     () =>
       selectedItems.reduce((sum, item) => sum + (item.total_amount || 0), 0),
     [selectedItems],
   );
 
+  const handleConfirm = () => {
+    if (isRejection) {
+      onConfirm(useSameReason ? commonReason : individualReasons);
+    } else {
+      onConfirm();
+    }
+  };
+
+  const isConfirmDisabled = useMemo(() => {
+    if (isProcessing) return true;
+    if (isRejection) {
+      if (useSameReason) return !commonReason.trim();
+      // For individual mode, ensure every item has a reason
+      return selectedItems.some((item) => !individualReasons[item.id]?.trim());
+    }
+    return false;
+  }, [
+    isProcessing,
+    isRejection,
+    useSameReason,
+    commonReason,
+    individualReasons,
+    selectedItems,
+  ]);
+
   if (!pendingAction) return null;
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md">
+      <AlertDialogContent className="max-w-md lg:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             Confirm{" "}
@@ -79,75 +130,105 @@ export function ActionConfirmationModal({
                 the cancellation request{isBulk ? "s" : ""}?
               </p>
 
-              <div className="rounded-md border bg-muted/30 p-3 text-xs">
-                {!isBulk ? (
-                  <table className="w-full">
-                    <tbody>
-                      <tr className="border-b border-border/50">
-                        <td className="py-1.5 text-muted-foreground font-medium uppercase text-[10px]">
-                          Invoice No.
-                        </td>
-                        <td className="py-1.5 text-right font-bold text-foreground">
-                          {selectedItems[0]?.invoice_no}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="py-1.5 text-muted-foreground font-medium uppercase text-[10px]">
-                          Total Amount
-                        </td>
-                        <td className="py-1.5 text-right text-foreground">
-                          {formatCurrency(selectedItems[0]?.total_amount)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-                      {selectedItems.map((item) => (
+              {/* REJECTION REASON SECTION */}
+              {isRejection && (
+                <div className="space-y-4 border rounded-lg p-4 bg-background/50">
+                  {isBulk && (
+                    <div className="flex items-center space-x-2 pb-2 border-b">
+                      <Switch
+                        id="bulk-reason-mode"
+                        checked={useSameReason}
+                        onCheckedChange={setUseSameReason}
+                      />
+                      <Label htmlFor="bulk-reason-mode" className="text-xs">
+                        Apply the same reason to all items
+                      </Label>
+                    </div>
+                  )}
+
+                  <div className="max-h-60 overflow-y-auto pr-2 space-y-3">
+                    {useSameReason ? (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase font-bold">
+                          Reason for Rejection
+                        </Label>
+                        <Textarea
+                          placeholder="Why are these being rejected?"
+                          value={commonReason}
+                          onChange={(e) => setCommonReason(e.target.value)}
+                          className="min-h-20 bg-background"
+                        />
+                      </div>
+                    ) : (
+                      selectedItems.map((item) => (
                         <div
                           key={item.id}
-                          className="flex justify-between items-center py-1 border-b last:border-0"
+                          className="space-y-1.5 p-2 rounded border bg-background"
                         >
-                          <span className="font-semibold text-foreground">
-                            {item.invoice_no}
-                          </span>
-                          <span className="font-mono">
-                            {formatCurrency(item.total_amount)}
-                          </span>
+                          <Label className="text-[10px] uppercase font-bold text-blue-600">
+                            Invoice: {item.invoice_no}
+                          </Label>
+                          <Textarea
+                            placeholder="Specific reason..."
+                            value={individualReasons[item.id] || ""}
+                            onChange={(e) =>
+                              setIndividualReasons((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }))
+                            }
+                            className="min-h-[60px] text-xs"
+                          />
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-between pt-2 border-t font-bold text-blue-700">
-                      <span>Total Batch Amount</span>
-                      <span>{formatCurrency(totalAmount)}</span>
-                    </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* BATCH SUMMARY */}
+              <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                {isBulk ? (
+                  <div className="flex justify-between font-bold text-blue-700">
+                    <span>
+                      Total Batch Amount ({selectedItems.length} items)
+                    </span>
+                    <span>{formatCurrency(totalAmount)}</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between">
+                    <span className="font-medium uppercase text-[10px]">
+                      Invoice {selectedItems[0]?.invoice_no}
+                    </span>
+                    <span className="font-bold">
+                      {formatCurrency(selectedItems[0]?.total_amount)}
+                    </span>
                   </div>
                 )}
               </div>
 
-              <div className="pt-1">
+              <Alert
+                variant={
+                  pendingAction.type === "APPROVE" ? "destructive" : "default"
+                }
+                className="py-2"
+              >
                 {pendingAction.type === "APPROVE" ? (
-                  <Alert
-                    variant="destructive"
-                    className="bg-destructive/5 py-2"
-                  >
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Irreversible Action</AlertTitle>
-                    <AlertDescription className="text-[11px]">
-                      Voids invoice and resets Sales Order.
-                    </AlertDescription>
-                  </Alert>
+                  <AlertTriangle className="h-4 w-4" />
                 ) : (
-                  <Alert className="py-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Return to Dispatch</AlertTitle>
-                    <AlertDescription className="text-[11px]">
-                      Returns items to the active list.
-                    </AlertDescription>
-                  </Alert>
+                  <AlertCircle className="h-4 w-4" />
                 )}
-              </div>
+                <AlertTitle>
+                  {pendingAction.type === "APPROVE"
+                    ? "Irreversible"
+                    : "Return to Dispatch"}
+                </AlertTitle>
+                <AlertDescription className="text-[11px]">
+                  {pendingAction.type === "APPROVE"
+                    ? "This will void the invoice and reset the Sales Order."
+                    : "This will return items to the active dispatch list."}
+                </AlertDescription>
+              </Alert>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -156,10 +237,14 @@ export function ActionConfirmationModal({
           <AlertDialogAction
             onClick={(e) => {
               e.preventDefault();
-              onConfirm();
+              handleConfirm();
             }}
-            disabled={isProcessing}
-            className="bg-blue-600 hover:bg-blue-700"
+            disabled={isConfirmDisabled}
+            className={
+              pendingAction.type === "APPROVE"
+                ? "bg-blue-600 hover:bg-blue-700"
+                : "bg-red-600 hover:bg-red-700"
+            }
           >
             {isProcessing ? (
               <>

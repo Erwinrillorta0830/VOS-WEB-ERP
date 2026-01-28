@@ -57,6 +57,41 @@ async function fetchAll<T>(
   return allItems;
 }
 
+const notifyCSR = async (
+  userId: number | string,
+  subject: string,
+  htmlContent: string,
+) => {
+  try {
+    // 1. Fetch user email (Directus standard field is usually 'email', yours might be 'user_email')
+    const userRes = await fetch(`${API_BASE}/users/${userId}`, {
+      headers: getHeaders(),
+    });
+    const userData = await userRes.json();
+
+    const email = userData.data?.email || userData.data?.user_email;
+
+    if (!email) {
+      console.warn(`⚠️ No email found for user ID: ${userId}`);
+      return;
+    }
+
+    // 2. Send via Directus Mail Endpoint
+    await fetch(`${API_BASE}/mail`, {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({
+        to: email,
+        subject: subject,
+        type: "html",
+        content: htmlContent,
+      }),
+    });
+  } catch (error) {
+    console.error("📧 Email Notification Failed:", error);
+  }
+};
+
 export const InvoiceService = {
   /**
    * Discovery (CSR View)
@@ -129,32 +164,28 @@ export const InvoiceService = {
     const timestamp = new Date().toISOString();
     // 1. Update request status
     const reqUpdate = await fetch(
-      `${API_BASE}/items/invoice_cancellation_requests/${requestId}`,
+      `${API_BASE}/items/invoice_cancellation_requests/${requestId}?fields=requested_by,invoice_id.invoice_no`,
       {
         method: "PATCH",
         headers: getHeaders(),
         body: JSON.stringify({
           status: "APPROVED",
           approved_by: auditorId,
-          action_date: new Date().toISOString(),
+          action_date: timestamp,
           date_approved: timestamp,
         }),
       },
     );
     if (!reqUpdate.ok) throw new Error("Failed to update request status");
 
+    const reqData = await reqUpdate.json();
     // 2. Update invoice status
-    const invUpdate = await fetch(
-      `${API_BASE}/items/sales_invoice/${pkInvoiceId}`,
-      {
-        method: "PATCH",
-        headers: getHeaders(),
-        body: JSON.stringify({ transaction_status: "CANCELLED" }),
-      },
-    );
-    if (!invUpdate.ok) throw new Error("Failed to set invoice to Cancelled");
+    await fetch(`${API_BASE}/items/sales_invoice/${pkInvoiceId}`, {
+      method: "PATCH",
+      headers: getHeaders(),
+      body: JSON.stringify({ transaction_status: "CANCELLED" }),
+    });
 
-    // 3. Update related order
     const orders = await fetchAll<any>("sales_order", {
       "filter[order_no][_eq]": orderNo,
       fields: "order_id",
@@ -167,8 +198,14 @@ export const InvoiceService = {
         body: JSON.stringify({ order_status: "For Invoicing" }),
       });
     }
-  },
 
+    // 3. Send Notification
+    await notifyCSR(
+      reqData.data.requested_by,
+      `Invoice Cancellation Approved: ${reqData.data.invoice_id?.invoice_no || "N/A"}`,
+      `<p>Your request to cancel invoice <b>${reqData.data.invoice_id?.invoice_no}</b> has been <b>APPROVED</b>.</p>`,
+    );
+  },
   /**
    * Rejection
    */
@@ -176,9 +213,10 @@ export const InvoiceService = {
     requestId: number,
     pkInvoiceId: number | string,
     auditorId: number,
+    rejectionReason: string,
   ) {
-    await fetch(
-      `${API_BASE}/items/invoice_cancellation_requests/${requestId}`,
+    const reqUpdate = await fetch(
+      `${API_BASE}/items/invoice_cancellation_requests/${requestId}?fields=requested_by,invoice_id.invoice_no`,
       {
         method: "PATCH",
         headers: getHeaders(),
@@ -186,10 +224,16 @@ export const InvoiceService = {
           status: "REJECTED",
           action_date: new Date().toISOString(),
           approved_by: auditorId,
+          rejection_reason: rejectionReason,
         }),
       },
     );
 
+    if (!reqUpdate.ok) throw new Error("Failed to reject request");
+
+    const { data: reqData } = await reqUpdate.json();
+
+    // 2. Return invoice to dispatch status
     const invRes = await fetch(
       `${API_BASE}/items/sales_invoice/${pkInvoiceId}`,
       {
@@ -200,6 +244,30 @@ export const InvoiceService = {
     );
 
     if (!invRes.ok) throw new Error("Could not return invoice to CSR");
+
+    // 3. Send Notification with Reason
+    if (reqData.requested_by) {
+      const invoiceNo = reqData.invoice_id?.invoice_no || "N/A";
+      const requesterId =
+        typeof reqData.requested_by === "object"
+          ? reqData.requested_by.id
+          : reqData.requested_by;
+      await notifyCSR(
+        requesterId,
+        `Invoice Cancellation Rejected: ${invoiceNo}`,
+        `
+        <div style="font-family: sans-serif; line-height: 1.5;">
+          <p>Hello,</p>
+          <p>Your request to cancel invoice <b>${invoiceNo}</b> has been <b>REJECTED</b>.</p>
+          <p style="background: #f4f4f4; padding: 10px; border-left: 4px solid #e11d48;">
+            <strong>Reason for Rejection:</strong><br/>
+            ${rejectionReason}
+          </p>
+          <p>Please review the remarks and re-submit if necessary.</p>
+        </div>
+        `,
+      );
+    }
   },
   /**
    * AUDIT VIEW (Auditor Dashboard)

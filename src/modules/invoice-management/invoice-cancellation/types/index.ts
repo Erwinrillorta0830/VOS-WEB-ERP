@@ -11,7 +11,8 @@ export const ApprovalParamsSchema = z.object({
   requestId: z.number(),
   invoiceId: z.number(),
   orderNo: z.string(),
-  auditorId: z.number(),
+  auditorId: z.number().optional(),
+  rejection_reason: z.string().nullable().optional(),
 });
 
 export const CancellationRequestSchema = z.object({
@@ -27,6 +28,7 @@ export const CancellationRequestSchema = z.object({
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
   order_no: z.string(),
   date_approved: z.string().optional(),
+  rejection_reason: z.string().nullable().optional(),
 
   // NEW: Requester Info (Fixes CSR/UNKNOWN)
   requester_fname: z.string().nullable(),

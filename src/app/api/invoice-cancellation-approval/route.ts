@@ -28,7 +28,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { action, updates, auditorId: mainAuditorId } = body;
+    const { action, updates, reason: bulkReason } = body;
 
     if (!updates || !Array.isArray(updates) || updates.length === 0) {
       return NextResponse.json(
@@ -39,10 +39,11 @@ export async function PATCH(request: Request) {
 
     const results = await Promise.all(
       updates.map(async (item: any) => {
-        const { requestId, invoiceId, orderNo } = item;
+        const { requestId, invoiceId, orderNo, auditorId, rejection_reason } =
+          item;
 
         if (action === "APPROVE") {
-          if (!mainAuditorId) {
+          if (!auditorId) {
             throw new Error("Auditor ID is required for approval");
           }
 
@@ -50,15 +51,19 @@ export async function PATCH(request: Request) {
             requestId,
             invoiceId,
             orderNo,
-            mainAuditorId,
+            auditorId,
           );
         }
 
         if (action === "REJECT") {
+          const finalReason =
+            rejection_reason || bulkReason || "No reason provided";
+
           return await InvoiceService.rejectRequest(
             requestId,
             invoiceId,
-            mainAuditorId,
+            auditorId,
+            finalReason || "No reason provided",
           );
         }
 
