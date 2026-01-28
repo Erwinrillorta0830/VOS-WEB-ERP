@@ -42,7 +42,7 @@ const parseBoolean = (val: any): boolean => {
   if (val && val.type === "Buffer" && Array.isArray(val.data)) {
     return val.data[0] === 1;
   }
-  return val === true; // Handle case where API might return true/false directly
+  return val === true;
 };
 
 // --- HELPER: Format Date to YYYY-MM-DD ---
@@ -73,7 +73,6 @@ export const SalesReturnProvider = {
     filters: { salesman?: string; customer?: string; status?: string } = {},
   ): Promise<{ data: SalesReturn[]; total: number }> {
     try {
-      // 🟢 RESTORED: Now fetching 'order_id' and 'is_third_party'
       const allowedFields =
         "return_id,return_number,invoice_no,customer_code,salesman_id,total_amount,status,return_date,remarks,order_id,isThirdParty";
       let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_id`;
@@ -111,7 +110,6 @@ export const SalesReturnProvider = {
           totalAmount: parseFloat(item.total_amount) || 0,
           status: item.status || "Pending",
           remarks: item.remarks,
-          // 🟢 Mapped correctly from DB columns
           orderNo: item.order_id || "",
           isThirdParty: parseBoolean(item.isThirdParty),
         }),
@@ -298,7 +296,6 @@ export const SalesReturnProvider = {
         return_date: formattedDate,
         price_type: payload.priceType || "A",
         remarks: payload.remarks || "Created via Web App",
-        // 🟢 RESTORED: Sending these fields now that permissions are fixed
         order_id: payload.orderNo || "",
         isThirdParty: payload.isThirdParty ? 1 : 0,
       };
@@ -381,7 +378,6 @@ export const SalesReturnProvider = {
       );
       const totalNet = totalGross - totalDiscount;
 
-      // 🟢 RESTORED: All fields are sent to PATCH
       const headerPayload = {
         remarks: payload.remarks ?? "",
         gross_amount: totalGross,
@@ -473,7 +469,6 @@ export const SalesReturnProvider = {
           });
         }
       }
-
       return updatedHeader;
     } catch (error) {
       throw error;

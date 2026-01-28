@@ -1,13 +1,32 @@
 "use client";
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { 
-  X, Plus, Minus, Trash2, Package, Filter, ScanBarcode, 
-  ChevronDown, Search, Box, ShoppingCart 
-} from "lucide-react"; 
+import {
+  X,
+  Plus,
+  Minus,
+  Trash2,
+  Package,
+  Filter,
+  ScanBarcode,
+  ChevronDown,
+  Search,
+  Box,
+  ShoppingCart,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { SalesReturnItem, Brand, Category, Supplier, Unit, Product, ProductSupplierConnection } from "../type";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  SalesReturnItem,
+  Brand,
+  Category,
+  Supplier,
+  Unit,
+  Product,
+  ProductSupplierConnection,
+} from "../type";
 import { SalesReturnProvider } from "../provider/api";
+import { cn } from "@/lib/utils"; // Ensure cn is imported for class merging
 
 interface Props {
   isOpen: boolean;
@@ -18,8 +37,8 @@ interface Props {
 export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
   // --- STATES ---
   const [searchCode, setSearchCode] = useState("");
-  const [filterName, setFilterName] = useState(""); 
-    
+  const [filterName, setFilterName] = useState("");
+
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("All");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("All");
   const [selectedBrandId, setSelectedBrandId] = useState<string>("All");
@@ -27,8 +46,10 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
   const [brandsList, setBrandsList] = useState<Brand[]>([]);
   const [categoriesList, setCategoriesList] = useState<Category[]>([]);
   const [suppliersList, setSuppliersList] = useState<Supplier[]>([]);
-  const [unitsList, setUnitsList] = useState<Unit[]>([]); 
-  const [supplierConnections, setSupplierConnections] = useState<ProductSupplierConnection[]>([]);
+  const [unitsList, setUnitsList] = useState<Unit[]>([]);
+  const [supplierConnections, setSupplierConnections] = useState<
+    ProductSupplierConnection[]
+  >([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -53,24 +74,25 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
       const loadData = async () => {
         setIsLoading(true);
         try {
-            const [brands, cats, supps, units, connections, prods] = await Promise.all([
+          const [brands, cats, supps, units, connections, prods] =
+            await Promise.all([
               SalesReturnProvider.getBrands(),
               SalesReturnProvider.getCategories(),
               SalesReturnProvider.getSuppliers(),
               SalesReturnProvider.getUnits(),
               SalesReturnProvider.getProductSupplierConnections(),
-              SalesReturnProvider.getProducts()
+              SalesReturnProvider.getProducts(),
             ]);
-            setBrandsList(Array.isArray(brands) ? brands : []);
-            setCategoriesList(Array.isArray(cats) ? cats : []);
-            setSuppliersList(Array.isArray(supps) ? supps : []);
-            setUnitsList(Array.isArray(units) ? units : []); 
-            setSupplierConnections(Array.isArray(connections) ? connections : []);
-            setProducts(Array.isArray(prods) ? prods : []);
+          setBrandsList(Array.isArray(brands) ? brands : []);
+          setCategoriesList(Array.isArray(cats) ? cats : []);
+          setSuppliersList(Array.isArray(supps) ? supps : []);
+          setUnitsList(Array.isArray(units) ? units : []);
+          setSupplierConnections(Array.isArray(connections) ? connections : []);
+          setProducts(Array.isArray(prods) ? prods : []);
         } catch (error) {
-            console.error("Failed to load data", error);
+          console.error("Failed to load data", error);
         } finally {
-            setIsLoading(false);
+          setIsLoading(false);
         }
       };
       loadData();
@@ -81,122 +103,131 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
-      
-      // Supplier Dropdown
-      if (supplierWrapperRef.current && !supplierWrapperRef.current.contains(target)) {
+
+      if (
+        supplierWrapperRef.current &&
+        !supplierWrapperRef.current.contains(target)
+      ) {
         setIsSupplierOpen(false);
-        if (selectedSupplierId === "All") {
-            setSupplierSearch("All Suppliers");
-        } else {
-             const found = suppliersList.find(s => s.id?.toString() === selectedSupplierId);
-             if (found) setSupplierSearch(found.supplier_name);
-        }
       }
-
-      // Category Dropdown
-      if (categoryWrapperRef.current && !categoryWrapperRef.current.contains(target)) {
+      if (
+        categoryWrapperRef.current &&
+        !categoryWrapperRef.current.contains(target)
+      ) {
         setIsCategoryOpen(false);
-        if (selectedCategoryId === "All") {
-            setCategorySearch("All Categories");
-        } else {
-             const found = categoriesList.find(c => c.category_id?.toString() === selectedCategoryId);
-             if (found) setCategorySearch(found.category_name);
-        }
       }
-
-      // Brand Dropdown
-      if (brandWrapperRef.current && !brandWrapperRef.current.contains(target)) {
+      if (
+        brandWrapperRef.current &&
+        !brandWrapperRef.current.contains(target)
+      ) {
         setIsBrandOpen(false);
-        if (selectedBrandId === "All") {
-            setBrandSearch("All Brands");
-        } else {
-             const found = brandsList.find(b => b.brand_id?.toString() === selectedBrandId);
-             if (found) setBrandSearch(found.brand_name);
-        }
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [selectedSupplierId, suppliersList, selectedCategoryId, categoriesList, selectedBrandId, brandsList]);
+  }, []);
 
   // --- 3. FILTERING LOGIC ---
   const allowedProductIds = useMemo(() => {
-    if (selectedSupplierId === "All") return null; 
-    
+    if (selectedSupplierId === "All") return null;
+
     const validIds = new Set<number>();
-    supplierConnections.forEach(conn => {
+    supplierConnections.forEach((conn) => {
       if (conn.supplier_id?.toString() === selectedSupplierId) {
-        if(conn.product_id) validIds.add(Number(conn.product_id));
+        if (conn.product_id) validIds.add(Number(conn.product_id));
       }
     });
     return validIds;
   }, [selectedSupplierId, supplierConnections]);
 
-  const filteredSuppliers = suppliersList.filter((s) =>
-    (s.supplier_name || "").toLowerCase().includes((supplierSearch || "").toLowerCase()) && 
-    supplierSearch !== "All Suppliers"
+  const filteredSuppliers = suppliersList.filter(
+    (s) =>
+      (s.supplier_name || "")
+        .toLowerCase()
+        .includes((supplierSearch || "").toLowerCase()) &&
+      supplierSearch !== "All Suppliers",
   );
 
-  const filteredCategories = categoriesList.filter((c) =>
-    (c.category_name || "").toLowerCase().includes((categorySearch || "").toLowerCase()) && 
-    categorySearch !== "All Categories"
+  const filteredCategories = categoriesList.filter(
+    (c) =>
+      (c.category_name || "")
+        .toLowerCase()
+        .includes((categorySearch || "").toLowerCase()) &&
+      categorySearch !== "All Categories",
   );
 
-  const filteredBrands = brandsList.filter((b) =>
-    (b.brand_name || "").toLowerCase().includes((brandSearch || "").toLowerCase()) && 
-    brandSearch !== "All Brands"
+  const filteredBrands = brandsList.filter(
+    (b) =>
+      (b.brand_name || "")
+        .toLowerCase()
+        .includes((brandSearch || "").toLowerCase()) &&
+      brandSearch !== "All Brands",
   );
 
   const visibleProducts = products.filter((p) => {
-    const matchesSearch = 
-        (filterName === "" || (p.product_name || "").toLowerCase().includes(filterName.toLowerCase())) &&
-        (searchCode === "" || (p.product_code || "").includes(searchCode) || (p.barcode || "").includes(searchCode));
-    
-    const matchesBrand = selectedBrandId === "All" || p.product_brand?.toString() === selectedBrandId;
-    const matchesCategory = selectedCategoryId === "All" || p.product_category?.toString() === selectedCategoryId;
-    
+    const matchesSearch =
+      (filterName === "" ||
+        (p.product_name || "")
+          .toLowerCase()
+          .includes(filterName.toLowerCase())) &&
+      (searchCode === "" ||
+        (p.product_code || "").includes(searchCode) ||
+        (p.barcode || "").includes(searchCode));
+
+    const matchesBrand =
+      selectedBrandId === "All" ||
+      p.product_brand?.toString() === selectedBrandId;
+    const matchesCategory =
+      selectedCategoryId === "All" ||
+      p.product_category?.toString() === selectedCategoryId;
+
     let matchesSupplier = true;
     if (allowedProductIds !== null) {
-        matchesSupplier = p.product_id ? allowedProductIds.has(Number(p.product_id)) : false;
+      matchesSupplier = p.product_id
+        ? allowedProductIds.has(Number(p.product_id))
+        : false;
     }
 
     return matchesSearch && matchesBrand && matchesCategory && matchesSupplier;
   });
 
   // --- HANDLERS ---
-  const handleAddItem = (product: Product, unitLabel: string, selectedPrice: number) => {
+  const handleAddItem = (
+    product: Product,
+    unitLabel: string,
+    selectedPrice: number,
+  ) => {
     setSelectedItems((prevItems) => {
       const uniqueCode = `${product.product_code}-${unitLabel}`;
-      const existingItemIndex = prevItems.findIndex((item) => item.code === uniqueCode);
+      const existingItemIndex = prevItems.findIndex(
+        (item) => item.code === uniqueCode,
+      );
 
       if (existingItemIndex !== -1) {
         const updatedItems = [...prevItems];
         const currentItem = updatedItems[existingItemIndex];
         const newQuantity = currentItem.quantity + 1;
-        
+
         updatedItems[existingItemIndex] = {
           ...currentItem,
-          productId: product.product_id, 
-          product_id: product.product_id, 
           quantity: newQuantity,
-          totalAmount: newQuantity * currentItem.unitPrice
+          totalAmount: newQuantity * currentItem.unitPrice,
         };
         return updatedItems;
       } else {
         const newItem: SalesReturnItem = {
-          tempId: Math.random().toString(36).substr(2, 9),
-          productId: product.product_id, 
-          product_id: product.product_id, 
-          
-          code: uniqueCode, 
+          tempId: `added-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          productId: product.product_id,
+          product_id: product.product_id,
+          code: uniqueCode,
           description: product.product_name,
           unit: unitLabel,
           quantity: 1,
-          unitPrice: selectedPrice, 
+          unitPrice: selectedPrice,
           discountAmount: 0,
           totalAmount: selectedPrice,
           returnType: "Good Order",
-          reason: ""
+          reason: "",
         };
         return [...prevItems, newItem];
       }
@@ -205,29 +236,31 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
 
   const updateItemQuantity = (tempId: string | undefined, change: number) => {
     if (!tempId) return;
-    setSelectedItems(prev => prev.map(item => {
+    setSelectedItems((prev) =>
+      prev.map((item) => {
         if (item.tempId === tempId) {
-            const newQty = item.quantity + change;
-            if (newQty < 1) return item; 
-            return {
-                ...item,
-                quantity: newQty,
-                totalAmount: newQty * item.unitPrice
-            };
+          const newQty = item.quantity + change;
+          if (newQty < 1) return item;
+          return {
+            ...item,
+            quantity: newQty,
+            totalAmount: newQty * item.unitPrice,
+          };
         }
         return item;
-    }));
+      }),
+    );
   };
 
   const handleRemoveItem = (tempId: string | undefined) => {
-    if(!tempId) return;
-    setSelectedItems(prev => prev.filter(i => i.tempId !== tempId));
+    if (!tempId) return;
+    setSelectedItems((prev) => prev.filter((i) => i.tempId !== tempId));
   };
 
   const handleConfirm = () => {
     onConfirm(selectedItems);
     onClose();
-    setSelectedItems([]); 
+    setSelectedItems([]);
   };
 
   const resetFilters = () => {
@@ -241,34 +274,41 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
     setBrandSearch("All Brands");
   };
 
-  const totalCartPrice = selectedItems.reduce((sum, item) => sum + item.totalAmount, 0);
-
-  if (!isOpen) return null;
+  const totalCartPrice = selectedItems.reduce(
+    (sum, item) => sum + item.totalAmount,
+    0,
+  );
 
   return (
-    // 🟢 CRITICAL FIX: Z-Index set to 200 to be ABOVE the Edit Modal
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-50 w-full max-w-[1400px] h-[90vh] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/20">
-        
+    // 🟢 FIX: Added z-[200] to ensure it sits above the edit modal (usually z-50)
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className={cn(
+          "flex flex-col p-0 overflow-hidden bg-slate-50 border-0 shadow-2xl [&>button]:hidden",
+          "h-[90vh] w-[95vw] !max-w-[1400px] z-[200]", // 🟢 Force width and Z-Index
+        )}
+      >
         {/* --- HEADER --- */}
-        <div className="flex justify-between items-center px-6 py-4 bg-white border-b border-gray-200 z-20">
+        <div className="flex justify-between items-center px-6 py-4 bg-white border-b border-gray-200 z-20 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 rounded-lg">
-                <Package className="h-5 w-5 text-blue-600"/>
+              <Package className="h-5 w-5 text-blue-600" />
             </div>
             <div>
-                <h2 className="font-bold text-lg text-gray-800">Product Lookup</h2>
-                <div className="flex items-center gap-2">
-                    <p className="text-xs text-gray-500">Search and add products</p>
-                    <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200">
-                        {visibleProducts.length} variants found
-                    </span>
-                </div>
+              <DialogTitle className="font-bold text-lg text-gray-800">
+                Product Lookup
+              </DialogTitle>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">Search and add products</p>
+                <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                  {visibleProducts.length} variants found
+                </span>
+              </div>
             </div>
           </div>
-          
-          <button 
-            onClick={onClose} 
+
+          <button
+            onClick={onClose}
             className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md shadow-sm transition-all duration-200 active:scale-95 flex items-center justify-center"
             title="Close"
           >
@@ -278,326 +318,473 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
 
         {/* --- CONTENT BODY --- */}
         <div className="flex flex-1 overflow-hidden">
-          
           {/* LEFT PANEL: FILTERS & GRID */}
           <div className="flex-1 flex flex-col bg-slate-50/50 min-w-0">
-            
             {/* Filter Section */}
             <div className="p-5 bg-white border-b border-gray-200 shadow-sm z-10 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    
-                    {/* 1. Supplier */}
-                    <div className="space-y-1.5 relative" ref={supplierWrapperRef}>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Supplier</label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                className={`h-10 w-full border rounded-md text-sm pl-3 pr-8 transition-all outline-none ${selectedSupplierId !== "All" ? "border-blue-500 bg-white ring-1 ring-blue-500 text-gray-900 font-bold" : "border-gray-200 bg-slate-50 focus:border-blue-500 focus:bg-white text-gray-500"}`}
-                                value={supplierSearch}
-                                onChange={(e) => { setSupplierSearch(e.target.value); setIsSupplierOpen(true); }}
-                                onFocus={() => { setIsSupplierOpen(true); if (supplierSearch === "All Suppliers") setSupplierSearch(""); }}
-                                placeholder="Select Supplier"
-                            />
-                            <ChevronDown className={`h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${selectedSupplierId !== "All" ? "text-blue-500" : "text-gray-400"}`} />
-                        </div>
-                        {isSupplierOpen && (
-                            <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
-                                <div className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedSupplierId === "All" ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`} onClick={() => { setSelectedSupplierId("All"); setSupplierSearch("All Suppliers"); setIsSupplierOpen(false); }}>All Suppliers</div>
-                                {filteredSuppliers.map((s) => {
-                                    const safeId = s.id?.toString() ?? "";
-                                    if(!safeId) return null;
-                                    return (
-                                        <div key={safeId} className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedSupplierId === safeId ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`} onClick={() => { setSelectedSupplierId(safeId); setSupplierSearch(s.supplier_name); setIsSupplierOpen(false); }}>{s.supplier_name}</div>
-                                    )
-                                })}
-                            </div>
-                        )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* 1. Supplier */}
+                <div className="space-y-1.5 relative" ref={supplierWrapperRef}>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Supplier
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`h-10 w-full border rounded-md text-sm pl-3 pr-8 transition-all outline-none ${selectedSupplierId !== "All" ? "border-blue-500 bg-white ring-1 ring-blue-500 text-gray-900 font-bold" : "border-gray-200 bg-slate-50 focus:border-blue-500 focus:bg-white text-gray-500"}`}
+                      value={supplierSearch}
+                      onChange={(e) => {
+                        setSupplierSearch(e.target.value);
+                        setIsSupplierOpen(true);
+                      }}
+                      onFocus={() => {
+                        setIsSupplierOpen(true);
+                        if (supplierSearch === "All Suppliers")
+                          setSupplierSearch("");
+                      }}
+                      placeholder="Select Supplier"
+                    />
+                    <ChevronDown
+                      className={`h-4 w-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${selectedSupplierId !== "All" ? "text-blue-500" : "text-gray-400"}`}
+                    />
+                  </div>
+                  {isSupplierOpen && (
+                    <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+                      <div
+                        className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedSupplierId === "All" ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`}
+                        onClick={() => {
+                          setSelectedSupplierId("All");
+                          setSupplierSearch("All Suppliers");
+                          setIsSupplierOpen(false);
+                        }}
+                      >
+                        All Suppliers
+                      </div>
+                      {filteredSuppliers.map((s) => {
+                        const safeId = s.id?.toString() ?? "";
+                        if (!safeId) return null;
+                        return (
+                          <div
+                            key={safeId}
+                            className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedSupplierId === safeId ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`}
+                            onClick={() => {
+                              setSelectedSupplierId(safeId);
+                              setSupplierSearch(s.supplier_name);
+                              setIsSupplierOpen(false);
+                            }}
+                          >
+                            {s.supplier_name}
+                          </div>
+                        );
+                      })}
                     </div>
-
-                    {/* 2. Product Name */}
-                    <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Product Name</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"/>
-                            <Input 
-                                placeholder="Filter by name..." 
-                                className="h-10 text-sm pl-9 bg-slate-50 border-gray-200 focus:bg-white transition-all text-gray-700"
-                                value={filterName}
-                                onChange={(e) => setFilterName(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {/* 3. Category */}
-                    <div className="space-y-1.5 relative" ref={categoryWrapperRef}>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Category</label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                className={`h-10 w-full border rounded-md text-sm pl-3 pr-8 transition-all outline-none ${selectedCategoryId !== "All" ? "border-blue-500 bg-white ring-1 ring-blue-500 text-gray-900 font-medium" : "border-gray-200 bg-slate-50 focus:border-blue-500 focus:bg-white text-gray-700"}`}
-                                value={categorySearch}
-                                onChange={(e) => { setCategorySearch(e.target.value); setIsCategoryOpen(true); }}
-                                onFocus={() => { setIsCategoryOpen(true); if (categorySearch === "All Categories") setCategorySearch(""); }}
-                                placeholder="Select Category"
-                            />
-                            <ChevronDown className="h-4 w-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        </div>
-                        {isCategoryOpen && (
-                            <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
-                                <div className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedCategoryId === "All" ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`} onClick={() => { setSelectedCategoryId("All"); setCategorySearch("All Categories"); setIsCategoryOpen(false); }}>All Categories</div>
-                                {filteredCategories.map((c) => (
-                                    <div key={c.category_id} className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedCategoryId === c.category_id.toString() ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`} onClick={() => { setSelectedCategoryId(c.category_id.toString()); setCategorySearch(c.category_name); setIsCategoryOpen(false); }}>{c.category_name}</div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 4. Brand */}
-                    <div className="space-y-1.5 relative" ref={brandWrapperRef}>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Brand</label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                className={`h-10 w-full border rounded-md text-sm pl-3 pr-8 transition-all outline-none ${selectedBrandId !== "All" ? "border-blue-500 bg-white ring-1 ring-blue-500 text-gray-900 font-medium" : "border-gray-200 bg-slate-50 focus:border-blue-500 focus:bg-white text-gray-700"}`}
-                                value={brandSearch}
-                                onChange={(e) => { setBrandSearch(e.target.value); setIsBrandOpen(true); }}
-                                onFocus={() => { setIsBrandOpen(true); if (brandSearch === "All Brands") setBrandSearch(""); }}
-                                placeholder="Select Brand"
-                            />
-                            <ChevronDown className="h-4 w-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        </div>
-                        {isBrandOpen && (
-                            <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
-                                <div className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedBrandId === "All" ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`} onClick={() => { setSelectedBrandId("All"); setBrandSearch("All Brands"); setIsBrandOpen(false); }}>All Brands</div>
-                                {filteredBrands.map((b) => (
-                                    <div key={b.brand_id} className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedBrandId === b.brand_id.toString() ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`} onClick={() => { setSelectedBrandId(b.brand_id.toString()); setBrandSearch(b.brand_name); setIsBrandOpen(false); }}>{b.brand_name}</div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                  )}
                 </div>
 
-                {/* Scanner */}
-                <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-transparent opacity-0 group-focus-within:opacity-20 rounded-md transition-opacity pointer-events-none" />
-                    <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 group-focus-within:text-blue-600 transition-colors"/>
-                    <Input 
-                        autoFocus
-                        placeholder="Scan or enter barcode / product code here..." 
-                        className="pl-10 h-12 bg-white border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-mono text-sm shadow-sm transition-all"
-                        value={searchCode}
-                        onChange={(e) => setSearchCode(e.target.value)}
+                {/* 2. Product Name */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Product Name
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Filter by name..."
+                      className="h-10 text-sm pl-9 bg-slate-50 border-gray-200 focus:bg-white transition-all text-gray-700"
+                      value={filterName}
+                      onChange={(e) => setFilterName(e.target.value)}
                     />
-                </div>  
+                  </div>
+                </div>
+
+                {/* 3. Category */}
+                <div className="space-y-1.5 relative" ref={categoryWrapperRef}>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Category
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`h-10 w-full border rounded-md text-sm pl-3 pr-8 transition-all outline-none ${selectedCategoryId !== "All" ? "border-blue-500 bg-white ring-1 ring-blue-500 text-gray-900 font-medium" : "border-gray-200 bg-slate-50 focus:border-blue-500 focus:bg-white text-gray-700"}`}
+                      value={categorySearch}
+                      onChange={(e) => {
+                        setCategorySearch(e.target.value);
+                        setIsCategoryOpen(true);
+                      }}
+                      onFocus={() => {
+                        setIsCategoryOpen(true);
+                        if (categorySearch === "All Categories")
+                          setCategorySearch("");
+                      }}
+                      placeholder="Select Category"
+                    />
+                    <ChevronDown className="h-4 w-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                  {isCategoryOpen && (
+                    <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+                      <div
+                        className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedCategoryId === "All" ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`}
+                        onClick={() => {
+                          setSelectedCategoryId("All");
+                          setCategorySearch("All Categories");
+                          setIsCategoryOpen(false);
+                        }}
+                      >
+                        All Categories
+                      </div>
+                      {filteredCategories.map((c) => (
+                        <div
+                          key={c.category_id}
+                          className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedCategoryId === c.category_id.toString() ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`}
+                          onClick={() => {
+                            setSelectedCategoryId(c.category_id.toString());
+                            setCategorySearch(c.category_name);
+                            setIsCategoryOpen(false);
+                          }}
+                        >
+                          {c.category_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Brand */}
+                <div className="space-y-1.5 relative" ref={brandWrapperRef}>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Brand
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className={`h-10 w-full border rounded-md text-sm pl-3 pr-8 transition-all outline-none ${selectedBrandId !== "All" ? "border-blue-500 bg-white ring-1 ring-blue-500 text-gray-900 font-medium" : "border-gray-200 bg-slate-50 focus:border-blue-500 focus:bg-white text-gray-700"}`}
+                      value={brandSearch}
+                      onChange={(e) => {
+                        setBrandSearch(e.target.value);
+                        setIsBrandOpen(true);
+                      }}
+                      onFocus={() => {
+                        setIsBrandOpen(true);
+                        if (brandSearch === "All Brands") setBrandSearch("");
+                      }}
+                      placeholder="Select Brand"
+                    />
+                    <ChevronDown className="h-4 w-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                  {isBrandOpen && (
+                    <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+                      <div
+                        className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedBrandId === "All" ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`}
+                        onClick={() => {
+                          setSelectedBrandId("All");
+                          setBrandSearch("All Brands");
+                          setIsBrandOpen(false);
+                        }}
+                      >
+                        All Brands
+                      </div>
+                      {filteredBrands.map((b) => (
+                        <div
+                          key={b.brand_id}
+                          className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-slate-50 ${selectedBrandId === b.brand_id.toString() ? "text-blue-600 font-medium bg-blue-50" : "text-gray-700"}`}
+                          onClick={() => {
+                            setSelectedBrandId(b.brand_id.toString());
+                            setBrandSearch(b.brand_name);
+                            setIsBrandOpen(false);
+                          }}
+                        >
+                          {b.brand_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Scanner */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-transparent opacity-0 group-focus-within:opacity-20 rounded-md transition-opacity pointer-events-none" />
+                <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 group-focus-within:text-blue-600 transition-colors" />
+                <Input
+                  autoFocus
+                  placeholder="Scan or enter barcode / product code here..."
+                  className="pl-10 h-12 bg-white border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-mono text-sm shadow-sm transition-all"
+                  value={searchCode}
+                  onChange={(e) => setSearchCode(e.target.value)}
+                />
+              </div>
             </div>
 
             {/* Scrollable Grid */}
             <div className="flex-1 overflow-y-auto p-5 bg-slate-50">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-4 pb-20">
-                    {isLoading && (
-                        <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-400 animate-pulse">
-                            <div className="h-10 w-10 bg-gray-200 rounded-full mb-3"></div>
-                            <p>Loading products...</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-5 pb-20">
+                {isLoading && (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-400 animate-pulse">
+                    <div className="h-10 w-10 bg-gray-200 rounded-full mb-3"></div>
+                    <p>Loading products...</p>
+                  </div>
+                )}
+
+                {!isLoading &&
+                  visibleProducts.map((product) => {
+                    const safePricePcs = product.priceA ?? 0;
+                    const boxMultiplier =
+                      product.unit_of_measurement_count || 1;
+                    const safePriceBox = safePricePcs * boxMultiplier;
+
+                    const unitObj = unitsList.find(
+                      (u) => u.unit_id === product.unit_of_measurement,
+                    );
+                    const baseUnitName = unitObj ? unitObj.unit_name : "Piece";
+                    const baseUnitShortcut = unitObj
+                      ? unitObj.unit_shortcut
+                      : "pcs";
+
+                    const showBoxOption = boxMultiplier > 1;
+
+                    return (
+                      <div
+                        key={product.product_id}
+                        className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden p-5 group"
+                      >
+                        {/* --- Card Header: Name & Code --- */}
+                        <div className="mb-3">
+                          <h3
+                            className="font-bold text-gray-800 text-sm leading-snug mb-1 line-clamp-2"
+                            title={product.product_name}
+                          >
+                            {product.product_name}
+                          </h3>
+                          <div className="text-xs text-gray-500 font-mono flex justify-between">
+                            <span>
+                              Code:{" "}
+                              <span className="text-gray-700">
+                                {product.product_code ||
+                                  product.barcode ||
+                                  "N/A"}
+                              </span>
+                            </span>
+                          </div>
                         </div>
-                    )}
-                    
-                    {!isLoading && visibleProducts.map((product) => {
-                        const safePricePcs = product.priceA ?? 0;
-                        const boxMultiplier = product.unit_of_measurement_count || 1; 
-                        const safePriceBox = safePricePcs * boxMultiplier;
 
-                        const unitObj = unitsList.find(u => u.unit_id === product.unit_of_measurement);
-                        const baseUnitName = unitObj ? unitObj.unit_name : "Piece";
-                        const baseUnitShortcut = unitObj ? unitObj.unit_shortcut : "pcs";
-
-                        const showBoxOption = boxMultiplier > 1;
-
-                        return (
-                        <div key={product.product_id} className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden p-4 group">
-                            
-                            {/* --- Card Header: Name & Code --- */}
-                            <div className="mb-3">
-                                <h3 className="font-bold text-gray-800 text-sm leading-snug mb-1 line-clamp-2" title={product.product_name}>
-                                    {product.product_name}
-                                </h3>
-                                <div className="text-xs text-gray-500 font-mono flex justify-between">
-                                    <span>Code: <span className="text-gray-700">{product.product_code || product.barcode || "N/A"}</span></span>
-                                </div>
+                        {/* --- Option 1: Base Unit (e.g. Bag 1pcs) --- */}
+                        <div className="mt-auto space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-gray-900 text-sm">
+                                ₱
+                                {safePricePcs.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {baseUnitName} (1 {baseUnitShortcut})
+                              </span>
                             </div>
-
-                            {/* --- Option 1: Base Unit (e.g. Bag 1pcs) --- */}
-                            <div className="mt-auto space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-gray-900 text-sm">₱{safePricePcs.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                                        <span className="text-xs text-gray-500">{baseUnitName} (1 {baseUnitShortcut})</span>
-                                    </div>
-                                    <Button 
-                                        size="sm" 
-                                        className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 shadow-sm shadow-blue-200"
-                                        onClick={() => handleAddItem(product, "PCS", safePricePcs)}
-                                    >
-                                        <Plus className="h-3.5 w-3.5 mr-1"/> Add
-                                    </Button>
-                                </div>
-
-                                {/* --- Option 2: Bulk Unit (e.g. Box 10pcs) - Conditional --- */}
-                                {showBoxOption && (
-                                    <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-gray-900 text-sm">₱{safePriceBox.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                                                <span className="text-xs text-gray-500">Box ({boxMultiplier} {baseUnitShortcut})</span>
-                                            </div>
-                                            <Button 
-                                                size="sm" 
-                                                className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 shadow-sm shadow-blue-200"
-                                                onClick={() => handleAddItem(product, "BOX", safePriceBox)}
-                                            >
-                                                <Plus className="h-3.5 w-3.5 mr-1"/> Add
-                                            </Button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        );
-                    })}
-                    
-                    {!isLoading && visibleProducts.length === 0 && (
-                        <div className="col-span-full flex flex-col items-center justify-center py-20">
-                            <div className="bg-white p-6 rounded-full shadow-sm mb-4 border border-gray-100">
-                                <Filter className="h-10 w-10 text-gray-300"/>
-                            </div>
-                            <h3 className="font-semibold text-gray-900">No products found</h3>
-                            <p className="text-gray-500 text-sm mt-1">
-                                {selectedSupplierId !== "All" 
-                                    ? "This supplier has no products linked."
-                                    : "Try adjusting your search or filters"}
-                            </p>
-                            <Button 
-                                variant="outline" 
-                                onClick={resetFilters} 
-                                className="mt-4 border-dashed"
+                            <Button
+                              size="sm"
+                              className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 shadow-sm shadow-blue-200"
+                              onClick={() =>
+                                handleAddItem(product, "PCS", safePricePcs)
+                              }
                             >
-                                Clear all filters
+                              <Plus className="h-3.5 w-3.5 mr-1" /> Add
                             </Button>
+                          </div>
+
+                          {/* --- Option 2: Bulk Unit (e.g. Box 10pcs) - Conditional --- */}
+                          {showBoxOption && (
+                            <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-gray-900 text-sm">
+                                  ₱
+                                  {safePriceBox.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  Box ({boxMultiplier} {baseUnitShortcut})
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 shadow-sm shadow-blue-200"
+                                onClick={() =>
+                                  handleAddItem(product, "BOX", safePriceBox)
+                                }
+                              >
+                                <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                    )}
-                </div>
+                      </div>
+                    );
+                  })}
+
+                {!isLoading && visibleProducts.length === 0 && (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20">
+                    <div className="bg-white p-6 rounded-full shadow-sm mb-4 border border-gray-100">
+                      <Filter className="h-10 w-10 text-gray-300" />
+                    </div>
+                    <h3 className="font-semibold text-gray-900">
+                      No products found
+                    </h3>
+                    <p className="text-gray-500 text-sm mt-1">
+                      {selectedSupplierId !== "All"
+                        ? "This supplier has no products linked."
+                        : "Try adjusting your search or filters"}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={resetFilters}
+                      className="mt-4 border-dashed"
+                    >
+                      Clear all filters
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* RIGHT PANEL: SELECTED SUMMARY (SIDEBAR) */}
           <div className="w-[380px] bg-white border-l border-gray-200 flex flex-col h-full shadow-2xl z-30">
-              {/* Sidebar Header */}
-              <div className="p-5 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/50">
-                <div className="flex justify-between items-end mb-1">
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                        <ShoppingCart className="h-5 w-5 text-blue-600" />
-                        Selected Items
-                    </h3>
-                    {selectedItems.length > 0 && (
-                        <button 
-                            onClick={() => setSelectedItems([])} 
-                            className="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded transition-colors uppercase tracking-wide"
-                        >
-                            Clear All
-                        </button>
-                    )}
-                </div>
-                <p className="text-xs text-gray-400 font-medium">
-                    {selectedItems.length} product{selectedItems.length !== 1 ? 's' : ''} added to list
-                </p>
-              </div>
-
-              {/* Sidebar Content */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/30">
-                 {selectedItems.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-60">
-                        <div className="bg-gray-100 p-4 rounded-full mb-3">
-                            <Box className="h-8 w-8 text-gray-400"/>
-                        </div>
-                        <p className="text-sm font-medium text-gray-500">Your selection is empty</p>
-                        <p className="text-xs text-gray-400 mt-1 max-w-[200px]">Scan a barcode or select products from the grid to begin.</p>
-                    </div>
-                 ) : (
-                    <>
-                        {selectedItems.map((item, idx) => (
-                            <div key={item.tempId || idx} className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow relative group">
-                                <div className="flex justify-between gap-3">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${item.unit === 'BOX' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                                                {item.unit}
-                                            </span>
-                                            <span className="text-[10px] text-gray-400 font-mono truncate">{item.code}</span>
-                                        </div>
-                                        <h4 className="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-2" title={item.description}>
-                                            {item.description}
-                                        </h4>
-                                    </div>
-
-                                    {/* --- DELETE BUTTON --- */}
-                                    <button 
-                                        onClick={() => handleRemoveItem(item.tempId)} 
-                                        className="bg-red-500 hover:bg-red-600 text-white h-7 w-7 rounded-md flex items-center justify-center shadow-sm transition-all active:scale-95"
-                                    >
-                                        <Trash2 className="h-4 w-4"/>
-                                    </button>
-                                </div>
-                                
-                                {/* Controls Row */}
-                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                                    {/* Qty Stepper */}
-                                    <div className="flex items-center bg-gray-50 rounded-md border border-gray-200 h-7">
-                                        <button 
-                                            className="px-2 h-full text-gray-500 hover:text-blue-600 hover:bg-white rounded-l-md disabled:opacity-30 transition-colors"
-                                            onClick={() => updateItemQuantity(item.tempId, -1)}
-                                            disabled={item.quantity <= 1}
-                                        >
-                                            <Minus className="h-3 w-3" />
-                                        </button>
-                                        <span className="w-8 text-center text-xs font-bold text-gray-700">
-                                            {item.quantity}
-                                        </span>
-                                        <button 
-                                            className="px-2 h-full text-gray-500 hover:text-blue-600 hover:bg-white rounded-r-md transition-colors"
-                                            onClick={() => updateItemQuantity(item.tempId, 1)}
-                                        >
-                                            <Plus className="h-3 w-3" />
-                                        </button>
-                                    </div>
-                                    {/* Item Total */}
-                                    <div className="text-right">
-                                        <span className="block text-sm font-bold text-gray-900">
-                                            ₱{item.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </>
-                 )}
-              </div>
-
-              {/* Sidebar Footer */}
-              <div className="p-5 border-t border-gray-200 bg-white z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                  <div className="flex justify-between items-center mb-4">
-                    <div>
-                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Amount</p>
-                        <p className="text-2xl font-bold text-gray-900 tracking-tight">₱{totalCartPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
-                    </div>
-                  </div>
-                  <Button 
-                    className="w-full h-12 text-base font-semibold shadow-blue-200 shadow-lg bg-blue-600 hover:bg-blue-700 transition-all active:scale-[0.98]" 
-                    disabled={selectedItems.length === 0} 
-                    onClick={handleConfirm}
+            {/* Sidebar Header */}
+            <div className="p-5 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/50">
+              <div className="flex justify-between items-end mb-1">
+                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5 text-blue-600" />
+                  Selected Items
+                </h3>
+                {selectedItems.length > 0 && (
+                  <button
+                    onClick={() => setSelectedItems([])}
+                    className="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded transition-colors uppercase tracking-wide"
                   >
-                    Confirm Selection
-                  </Button>
+                    Clear All
+                  </button>
+                )}
               </div>
+              <p className="text-xs text-gray-400 font-medium">
+                {selectedItems.length} product
+                {selectedItems.length !== 1 ? "s" : ""} added to list
+              </p>
+            </div>
+
+            {/* Sidebar Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/30">
+              {selectedItems.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-60">
+                  <div className="bg-gray-100 p-4 rounded-full mb-3">
+                    <Box className="h-8 w-8 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-500">
+                    Your selection is empty
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1 max-w-[200px]">
+                    Scan a barcode or select products from the grid to begin.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {selectedItems.map((item, idx) => (
+                    <div
+                      key={item.tempId || idx}
+                      className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow relative group"
+                    >
+                      <div className="flex justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${item.unit === "BOX" ? "bg-orange-50 text-orange-600 border-orange-100" : "bg-blue-50 text-blue-600 border-blue-100"}`}
+                            >
+                              {item.unit}
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-mono truncate">
+                              {item.code}
+                            </span>
+                          </div>
+                          <h4
+                            className="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-2"
+                            title={item.description}
+                          >
+                            {item.description}
+                          </h4>
+                        </div>
+
+                        {/* --- DELETE BUTTON --- */}
+                        <button
+                          onClick={() => handleRemoveItem(item.tempId)}
+                          className="bg-red-500 hover:bg-red-600 text-white h-7 w-7 rounded-md flex items-center justify-center shadow-sm transition-all active:scale-95"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {/* Controls Row */}
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                        {/* Qty Stepper */}
+                        <div className="flex items-center bg-gray-50 rounded-md border border-gray-200 h-7">
+                          <button
+                            className="px-2 h-full text-gray-500 hover:text-blue-600 hover:bg-white rounded-l-md disabled:opacity-30 transition-colors"
+                            onClick={() => updateItemQuantity(item.tempId, -1)}
+                            disabled={item.quantity <= 1}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <span className="w-8 text-center text-xs font-bold text-gray-700">
+                            {item.quantity}
+                          </span>
+                          <button
+                            className="px-2 h-full text-gray-500 hover:text-blue-600 hover:bg-white rounded-r-md transition-colors"
+                            onClick={() => updateItemQuantity(item.tempId, 1)}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                        {/* Item Total */}
+                        <div className="text-right">
+                          <span className="block text-sm font-bold text-gray-900">
+                            ₱
+                            {item.totalAmount.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* Sidebar Footer */}
+            <div className="p-5 border-t border-gray-200 bg-white z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                    Total Amount
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 tracking-tight">
+                    ₱
+                    {totalCartPrice.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="w-full h-12 text-base font-semibold shadow-blue-200 shadow-lg bg-blue-600 hover:bg-blue-700 transition-all active:scale-[0.98]"
+                disabled={selectedItems.length === 0}
+                onClick={handleConfirm}
+              >
+                Confirm Selection
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

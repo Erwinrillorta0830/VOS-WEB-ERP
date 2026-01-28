@@ -311,7 +311,8 @@ export function SalesReturnHistory() {
       const discAmt = Number(item.discountAmount) || 0;
 
       return {
-        id: `added-${Date.now()}-${index}`,
+        // Unique ID ensures React doesn't discard this as a duplicate
+        id: `added-${Date.now()}-${index}-${Math.floor(Math.random() * 10000)}`,
         productId: item.productId || item.product_id || item.id,
         code: item.code || "N/A",
         description: item.description || item.product_name || "Unknown Item",
@@ -357,7 +358,6 @@ export function SalesReturnHistory() {
 
       const serverResult = await SalesReturnProvider.updateReturn(payload);
 
-      // 🟢 OPTIMISTIC UPDATE: Map the returned database fields to Frontend State
       const newTotal =
         parseFloat(serverResult.total_amount) ||
         details.reduce((acc, item) => acc + (item.totalAmount || 0), 0);
@@ -924,6 +924,7 @@ export function SalesReturnHistory() {
                         <TableHead className="text-white font-semibold h-11 w-[80px] uppercase text-xs">
                           Unit
                         </TableHead>
+                        {/* 🟢 REVISION 7: Increased Widths for Input Visibility */}
                         <TableHead className="text-white font-semibold h-11 text-center min-w-[100px] uppercase text-xs">
                           Qty
                         </TableHead>
