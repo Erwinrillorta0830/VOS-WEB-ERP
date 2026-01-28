@@ -142,6 +142,7 @@ export const columns = (
       );
     },
   },
+
   /* INDIVIDUAL ACTIONS COMMENTED OUT - Using Bulk Actions instead ,Dont remove this
   {
     id: "actions",

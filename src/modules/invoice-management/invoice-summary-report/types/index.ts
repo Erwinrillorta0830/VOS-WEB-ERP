@@ -8,6 +8,7 @@ export const InvoiceReportRowSchema = z.object({
   amount: z.number(),
   defect_reason: z.string(),
   csr_remarks: z.string().nullable(),
+  rejection_reason: z.string().nullable().optional(),
   // Auditor Fields
   approver_fname: z.string().nullable(),
   approver_lname: z.string().nullable(),

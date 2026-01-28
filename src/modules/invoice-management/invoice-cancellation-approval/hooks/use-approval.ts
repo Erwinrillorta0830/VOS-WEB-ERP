@@ -36,7 +36,11 @@ export function useApprovals() {
   const approvedRequests = allData.filter((r) => r.status === "APPROVED");
 
   const handleAction = useCallback(
-    async (action: ApprovalAction, paramsArray: ApprovalParams[]) => {
+    async (
+      action: ApprovalAction,
+      paramsArray: ApprovalParams[],
+      reason?: string,
+    ) => {
       if (isProcessing) return;
 
       setIsProcessing(true);
@@ -52,9 +56,14 @@ export function useApprovals() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action,
-            updates: paramsArray,
-            // SUCCESS: No longer hardcoded to 101 or 1
-            auditorId: activeAuditorId,
+            // FIX: Merged into one 'updates' key
+            updates: paramsArray.map((p) => ({
+              ...p,
+              auditorId: activeAuditorId,
+              // Prioritize the reason attached to the item, then the common reason
+              rejection_reason: p.rejection_reason || reason || "",
+            })),
+            reason: reason, // Top-level reason for overall logs
           }),
         });
 

@@ -11,6 +11,7 @@ export const InvoiceSchema = z.object({
   remarks: z.string().nullable(),
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
   date_approved: z.string().nullable().optional(),
+  rejection_reason: z.string().nullable().optional(),
 
   // This MUST be here to fix the mapping error
   approved_by: z.string().nullable().optional(),
