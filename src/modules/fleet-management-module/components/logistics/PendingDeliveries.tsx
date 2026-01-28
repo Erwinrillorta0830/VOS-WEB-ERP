@@ -1,6 +1,6 @@
 // src/modules/fleet-management-module/components/logistics/PendingDeliveries.tsx
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Search,
   Filter,
@@ -14,6 +14,7 @@ import {
   ArrowDown,
   Printer,
   X,
+  ChevronDown,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -91,9 +92,139 @@ interface SortConfig {
 
 // --- Print Configuration Interface ---
 interface PrintConfig {
-  cluster: string;
+  cluster: string[]; // ✅ MULTI
   salesman: string;
   status: string; // 'All', 'For Approval', 'For Picking', etc.
+}
+
+// ✅ Cluster filter input type (keeps functions backward-safe)
+type ClusterFilterValue = string | string[];
+
+// ✅ Normalize cluster selection:
+// - string "All" => all
+// - [] => all
+// - ["A","B"] => only those
+function normalizeClusterFilter(v: ClusterFilterValue): { all: boolean; set: Set<string> } {
+  if (Array.isArray(v)) {
+    const cleaned = v.filter(Boolean);
+    if (cleaned.length === 0 || cleaned.includes("All")) return { all: true, set: new Set() };
+    return { all: false, set: new Set(cleaned) };
+  }
+  if (!v || v === "All") return { all: true, set: new Set() };
+  return { all: false, set: new Set([v]) };
+}
+
+// ✅ Label used by the multi-select trigger
+function clusterLabel(selected: string[], allLabel = "All Clusters") {
+  if (!selected || selected.length === 0) return allLabel;
+  if (selected.length <= 2) return selected.join(", ");
+  return `${selected.length} clusters`;
+}
+
+// ✅ Reusable Cluster Multi-Select (no external libs)
+function ClusterMultiSelect({
+  options,
+  value,
+  onChange,
+  allLabel = "All Clusters",
+  buttonClassName,
+}: {
+  options: string[];
+  value: string[];
+  onChange: (next: string[]) => void;
+  allLabel?: string;
+  buttonClassName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onDown = (e: MouseEvent) => {
+      const el = wrapRef.current;
+      if (!el) return;
+      if (!el.contains(e.target as Node)) setOpen(false);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const toggle = (opt: string) => {
+    let next: string[];
+    if (value.includes(opt)) next = value.filter((x) => x !== opt);
+    else next = [...value, opt];
+
+    // If user selected ALL clusters explicitly, collapse to [] (meaning ALL)
+    if (next.length === options.length) next = [];
+
+    onChange(next);
+  };
+
+  const isAll = value.length === 0;
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className={buttonClassName}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="truncate">{clusterLabel(value, allLabel)}</span>
+        <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg overflow-hidden">
+          <div className="max-h-64 overflow-auto">
+            {/* All Clusters */}
+            <button
+              type="button"
+              onClick={() => {
+                onChange([]);
+                setOpen(false);
+              }}
+              className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${
+                isAll
+                  ? "bg-blue-600 text-white hover:bg-blue-600 hover:text-white"
+                  : "hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className="min-w-[14px] inline-flex justify-center">
+                <input type="checkbox" checked={isAll} readOnly className="pointer-events-none" />
+              </span>
+              <span className="truncate">{allLabel}</span>
+            </button>
+
+            {/* Cluster options */}
+            {options.map((c) => {
+              const checked = value.includes(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => toggle(c)}
+                  className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${
+                    checked
+                      ? "bg-blue-600 text-white hover:bg-blue-600 hover:text-white"
+                      : "hover:bg-gray-50 hover:text-gray-900"
+                  }`}
+                >
+                  <span className="min-w-[14px] inline-flex justify-center">
+                    <input type="checkbox" checked={checked} readOnly className="pointer-events-none" />
+                  </span>
+                  <span className="truncate">{c}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PendingDeliveries() {
@@ -105,7 +236,10 @@ export function PendingDeliveries() {
   // Dashboard Filters
   const [searchTerm, setSearchTerm] = useState("");
   const [salesmanFilter, setSalesmanFilter] = useState<string>("All");
-  const [clusterFilter, setClusterFilter] = useState<string>("All");
+
+  // ✅ MULTI CLUSTER FILTER (empty array = ALL)
+  const [clusterFilter, setClusterFilter] = useState<string[]>([]);
+
   const [dateRange, setDateRange] = useState<DateRange>("this-month");
   const [customDateFrom, setCustomDateFrom] = useState("");
   const [customDateTo, setCustomDateTo] = useState("");
@@ -113,7 +247,7 @@ export function PendingDeliveries() {
   // Print Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printConfig, setPrintConfig] = useState<PrintConfig>({
-    cluster: "All",
+    cluster: [], // ✅ MULTI (empty array = ALL)
     salesman: "All",
     status: "All",
   });
@@ -272,14 +406,16 @@ export function PendingDeliveries() {
   // Counts RAW orders (not grouped) but respects the same filters/date/search logic.
   const countFilteredOrders = (
     data: ClusterGroupRaw[],
-    filters: { cluster: string; salesman: string; search?: string; status?: string },
+    filters: { cluster: ClusterFilterValue; salesman: string; search?: string; status?: string },
     dateSettings: { range: DateRange; from: string; to: string }
   ) => {
     const searchLower = (filters.search || "").toLowerCase();
     let count = 0;
 
+    const clusterSel = normalizeClusterFilter(filters.cluster);
+
     data.forEach((group) => {
-      if (filters.cluster !== "All" && group.clusterName !== filters.cluster) return;
+      if (!clusterSel.all && !clusterSel.set.has(group.clusterName)) return;
 
       group.customers.forEach((customer) => {
         customer.orders.forEach((o) => {
@@ -310,14 +446,16 @@ export function PendingDeliveries() {
   // --- Grouping + Flattening Logic (Reusable) ---
   const getGroupedRows = (
     data: ClusterGroupRaw[],
-    filters: { cluster: string; salesman: string; search?: string; status?: string },
+    filters: { cluster: ClusterFilterValue; salesman: string; search?: string; status?: string },
     dateSettings: { range: DateRange; from: string; to: string }
   ) => {
     const rows: TableRow[] = [];
     const searchLower = (filters.search || "").toLowerCase();
 
+    const clusterSel = normalizeClusterFilter(filters.cluster);
+
     data.forEach((group) => {
-      if (filters.cluster !== "All" && group.clusterName !== filters.cluster) return;
+      if (!clusterSel.all && !clusterSel.set.has(group.clusterName)) return;
 
       const agg = new Map<string, TableRow>();
 
@@ -476,7 +614,7 @@ export function PendingDeliveries() {
     // ✅ Always print ALL dates regardless of dashboard date filter
     const printDateSettings = { range: "custom" as DateRange, from: "", to: "" };
 
-    // ✅ Main printed table honors selected cluster (and salesman/status)
+    // ✅ Main printed table honors selected clusters (and salesman/status)
     const printRows = getGroupedRows(
       rawGroups,
       { cluster: printConfig.cluster, salesman: printConfig.salesman, status: printConfig.status },
@@ -503,7 +641,9 @@ export function PendingDeliveries() {
 
     // ✅ Replace "Period" with "Date Printed"
     const printedAt = formatDatePrinted(new Date());
-    const filterText = `Cluster: ${printConfig.cluster} | Salesman: ${printConfig.salesman} | Status: ${printConfig.status}`;
+
+    const clusterText = printConfig.cluster.length === 0 ? "All" : printConfig.cluster.join(", ");
+    const filterText = `Cluster: ${clusterText} | Salesman: ${printConfig.salesman} | Status: ${printConfig.status}`;
 
     const grandTotalPrinted = printRows.reduce((sum, r) => sum + r.amount, 0);
     const uniqueClustersPrinted = new Set(printRows.map((r) => r.clusterName)).size;
@@ -591,7 +731,9 @@ export function PendingDeliveries() {
 
     drawCard(startX, "Active Clusters", uniqueClustersPrinted.toString(), [219, 234, 254]);
     drawCard(startX + cardWidth + gap, "Pending Orders", pdfPendingOrders.toString(), [243, 232, 255]);
-    drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", moneyTotalCard(grandTotalPrinted), [220, 252, 231]);
+    drawCard(startX + (cardWidth + gap) * 2, "Total Pending Amount", moneyTotalCard(grandTotalPrinted), [
+      220, 252, 231,
+    ]);
 
     // =========================
     // STATUS CARDS (ONE ROW, BELOW TITLES/DETAILS)
@@ -602,12 +744,7 @@ export function PendingDeliveries() {
     const usableW = pageWidth - leftX - rightMargin;
     const statusCardW = (usableW - statusGap * 5) / 6;
 
-    const drawStatusCard = (
-      x: number,
-      title: string,
-      value: string,
-      dot: [number, number, number]
-    ) => {
+    const drawStatusCard = (x: number, title: string, value: string, dot: [number, number, number]) => {
       doc.setDrawColor(220, 220, 220);
       doc.setFillColor(255, 255, 255);
       doc.roundedRect(x, statusY, statusCardW, statusCardH, 2, 2, "FD");
@@ -714,10 +851,10 @@ export function PendingDeliveries() {
     // =========================
     // CLUSTER SUMMARY (ALWAYS ALL CLUSTERS)
     // =========================
-    // ✅ Ignore printConfig.cluster here; still respect salesman/status + all dates
+    // ✅ Ignore selected clusters here; still respect salesman/status + all dates
     const summaryAllClustersRows = getGroupedRows(
       rawGroups,
-      { cluster: "All", salesman: printConfig.salesman, status: printConfig.status },
+      { cluster: [], salesman: printConfig.salesman, status: printConfig.status },
       printDateSettings
     );
 
@@ -755,7 +892,7 @@ export function PendingDeliveries() {
         if (data.pageCount === data.pageNumber) {
           const grandTotalStartY = data.cursor.y + 5;
           autoTable(doc, {
-            // ✅ Keep this as the printed table total (respects selected cluster)
+            // ✅ Keep this as the printed table total (respects selected clusters)
             body: [["GRAND TOTAL (Printed)", formatNumberForPDF(grandTotalPrinted)]],
             startY: grandTotalStartY,
             theme: "grid",
@@ -923,22 +1060,18 @@ export function PendingDeliveries() {
               </div>
             </div>
 
+            {/* ✅ CLUSTER (MULTI SELECT) */}
             <div>
               <label className="block text-sm text-gray-700 mb-2">Cluster</label>
               <div className="relative">
-                <Layers className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <select
+                <Layers className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 z-10" />
+                <ClusterMultiSelect
+                  options={availableClusters}
                   value={clusterFilter}
-                  onChange={(e) => setClusterFilter(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                >
-                  <option value="All">All Clusters</option>
-                  {availableClusters.map((cluster) => (
-                    <option key={cluster} value={cluster}>
-                      {cluster}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setClusterFilter}
+                  allLabel="All Clusters"
+                  buttonClassName="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-left relative"
+                />
               </div>
             </div>
 
@@ -1009,7 +1142,8 @@ export function PendingDeliveries() {
       {/* Print Modal */}
       {isPrintModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backdropFilter: "blur(4px)" }}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-visible animate-in fade-in zoom-in duration-200">
+
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="text-lg font-bold text-gray-800">What needs to be printed?</h3>
               <button
@@ -1022,20 +1156,19 @@ export function PendingDeliveries() {
 
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-4">
+                {/* ✅ CLUSTER (MULTI SELECT) */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Cluster</label>
-                  <select
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Cluster
+                  </label>
+
+                  <ClusterMultiSelect
+                    options={availableClusters}
                     value={printConfig.cluster}
-                    onChange={(e) => setPrintConfig({ ...printConfig, cluster: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="All">All Clusters</option>
-                    {availableClusters.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setPrintConfig({ ...printConfig, cluster: next })}
+                    allLabel="All Clusters"
+                    buttonClassName="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-left relative"
+                  />
                 </div>
 
                 <div>
@@ -1069,7 +1202,9 @@ export function PendingDeliveries() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-400 mt-1">If a specific status is selected, only that column will be printed.</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  If a specific status is selected, only that column will be printed.
+                </p>
               </div>
 
               {/* ✅ Date Range removed from modal — printing always uses ALL dates */}
@@ -1099,7 +1234,11 @@ export function PendingDeliveries() {
           <div>
             <p className="text-xs font-medium text-gray-500">For Approval</p>
             <p className="text-lg font-bold text-gray-900 mt-1">
-              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.approval)}
+              {loading ? (
+                <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span>
+              ) : (
+                formatCardCurrency(statusTotals.approval)
+              )}
             </p>
           </div>
           <div className="p-2 bg-purple-50 rounded-full text-purple-600">
@@ -1111,7 +1250,11 @@ export function PendingDeliveries() {
           <div>
             <p className="text-xs font-medium text-gray-500">For Conso</p>
             <p className="text-lg font-bold text-gray-900 mt-1">
-              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.consolidation)}
+              {loading ? (
+                <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span>
+              ) : (
+                formatCardCurrency(statusTotals.consolidation)
+              )}
             </p>
           </div>
           <div className="p-2 bg-blue-50 rounded-full text-blue-600">
@@ -1123,7 +1266,11 @@ export function PendingDeliveries() {
           <div>
             <p className="text-xs font-medium text-gray-500">For Picking</p>
             <p className="text-lg font-bold text-gray-900 mt-1">
-              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.picking)}
+              {loading ? (
+                <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span>
+              ) : (
+                formatCardCurrency(statusTotals.picking)
+              )}
             </p>
           </div>
           <div className="p-2 bg-cyan-50 rounded-full text-cyan-600">
@@ -1135,7 +1282,11 @@ export function PendingDeliveries() {
           <div>
             <p className="text-xs font-medium text-gray-500">For Invoicing</p>
             <p className="text-lg font-bold text-gray-900 mt-1">
-              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.invoicing)}
+              {loading ? (
+                <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span>
+              ) : (
+                formatCardCurrency(statusTotals.invoicing)
+              )}
             </p>
           </div>
           <div className="p-2 bg-yellow-50 rounded-full text-yellow-700">
@@ -1147,7 +1298,11 @@ export function PendingDeliveries() {
           <div>
             <p className="text-xs font-medium text-gray-500">For Loading</p>
             <p className="text-lg font-bold text-gray-900 mt-1">
-              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.loading)}
+              {loading ? (
+                <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span>
+              ) : (
+                formatCardCurrency(statusTotals.loading)
+              )}
             </p>
           </div>
           <div className="p-2 bg-orange-50 rounded-full text-orange-700">
@@ -1159,7 +1314,11 @@ export function PendingDeliveries() {
           <div>
             <p className="text-xs font-medium text-gray-500">For Shipping</p>
             <p className="text-lg font-bold text-gray-900 mt-1">
-              {loading ? <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span> : formatCardCurrency(statusTotals.shipping)}
+              {loading ? (
+                <span className="animate-pulse bg-gray-200 rounded h-6 w-24 inline-block"></span>
+              ) : (
+                formatCardCurrency(statusTotals.shipping)
+              )}
             </p>
           </div>
           <div className="p-2 bg-green-50 rounded-full text-green-700">
