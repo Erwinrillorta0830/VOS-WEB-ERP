@@ -20,7 +20,7 @@ import {
 
 const API_BASE = "/api/items";
 
-// --- HELPER: Get Auth Headers ---
+// ... [Keep existing helper functions: getHeaders, parseBoolean, formatDateForAPI, cleanId] ...
 const getHeaders = () => {
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (typeof window !== "undefined") {
@@ -36,7 +36,6 @@ const getHeaders = () => {
   return headers;
 };
 
-// --- HELPER: Parse Buffer to Boolean ---
 const parseBoolean = (val: any): boolean => {
   if (typeof val === "number") return val === 1;
   if (val && val.type === "Buffer" && Array.isArray(val.data)) {
@@ -45,7 +44,6 @@ const parseBoolean = (val: any): boolean => {
   return val === true;
 };
 
-// --- HELPER: Format Date to YYYY-MM-DD ---
 const formatDateForAPI = (dateString: string | Date) => {
   try {
     if (!dateString) return new Date().toISOString().split("T")[0];
@@ -55,17 +53,21 @@ const formatDateForAPI = (dateString: string | Date) => {
   }
 };
 
-// --- HELPER: Clean IDs ---
 const cleanId = (id: any) => {
   if (id === null || id === undefined || id === "") return null;
   const num = Number(id);
   return isNaN(num) ? id : num;
 };
 
+// 🟢 HELPER: Normalize code (strips spaces) to ensure "MAIN - 123" matches "MAIN-123"
+const normalizeCode = (code: string) => {
+  return code ? code.replace(/\s+/g, "").toUpperCase() : "";
+};
+
 export const SalesReturnProvider = {
-  // =========================================================
-  // SECTION 1: SALES RETURN HISTORY
-  // =========================================================
+  // ... [Keep getReturns, getSalesmenList, getCustomersList, getFormSalesmen, getFormCustomers, getFormBranches] ...
+
+  // Re-pasting getReturns for context, but you can leave it as is if unchanged
   async getReturns(
     page: number = 1,
     limit: number = 10,
@@ -121,9 +123,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  // =========================================================
-  // SECTION 2: LIST PAGE FILTERS
-  // =========================================================
   async getSalesmenList(): Promise<
     { value: string; label: string; code: string; branch: string }[]
   > {
@@ -177,9 +176,7 @@ export const SalesReturnProvider = {
     }
   },
 
-  // =========================================================
-  // SECTION 3: FORM DATA FETCHERS
-  // =========================================================
+  // ... [Keep form data fetchers] ...
   async getFormSalesmen(): Promise<SalesmanOption[]> {
     try {
       const fields = "id,salesman_name,salesman_code,price_type,branch_code";
@@ -238,33 +235,50 @@ export const SalesReturnProvider = {
     }
   },
 
-  async getInvoiceReturnList(): Promise<InvoiceOption[]> {
+  // 🟢 REVISED: Using correct primary key 'invoice_id'
+  async getInvoiceReturnList(customerCode?: string): Promise<InvoiceOption[]> {
+    // 1. Prepare the Normalized Customer Code
+    const targetCode = customerCode ? normalizeCode(customerCode) : "";
+
+    // 2. Base URL - Request 'invoice_id' instead of 'id'
+    const baseUrl = `${API_BASE}/sales_invoice?limit=-1&fields=invoice_id,invoice_no,customer_code`;
+
+    // 3. Construct URL with Filter
+    const queryUrl = targetCode
+      ? `${baseUrl}&filter[customer_code][_contains]=${encodeURIComponent(targetCode)}`
+      : baseUrl;
+
     try {
-      const response = await fetch(
-        `${API_BASE}/sales_invoice_sales_return?limit=-1`,
-        { headers: getHeaders() },
-      );
-      if (!response.ok) return [];
+      const response = await fetch(queryUrl, { headers: getHeaders() });
+
+      if (!response.ok) {
+        console.error(`[API] Error fetching invoices: ${response.status}`);
+        return [];
+      }
+
       const result = await response.json();
       const rawData = result.data || [];
+
+      // 4. Map Results (Map invoice_id -> id)
       const uniqueInvoices = new Map();
       rawData.forEach((item: any) => {
         if (item.invoice_no && !uniqueInvoices.has(item.invoice_no)) {
           uniqueInvoices.set(item.invoice_no, {
-            id: item.id,
+            // 🟢 CRITICAL FIX: Map invoice_id to id
+            id: item.invoice_id,
             invoice_no: item.invoice_no.toString(),
+            customerCode: item.customer_code || "",
           });
         }
       });
       return Array.from(uniqueInvoices.values());
     } catch (error) {
+      console.error("[API] Failed to load invoices:", error);
       return [];
     }
   },
 
-  // =========================================================
-  // SECTION 4: ACTIONS (SUBMIT)
-  // =========================================================
+  // ... [Rest of the file remains the same: submitReturn, updateReturn, updateStatus, lookups...]
   async submitReturn(payload: any): Promise<any> {
     try {
       const totalGross = payload.items.reduce(
@@ -354,9 +368,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  // =========================================================
-  // SECTION 5: UPDATE RETURN
-  // =========================================================
   async updateReturn(payload: {
     returnId: number;
     returnNo: string;
@@ -490,9 +501,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  // =========================================================
-  // SECTION 6: LOOKUPS (ALL RESTORED)
-  // =========================================================
   async getBrands(): Promise<Brand[]> {
     try {
       const response = await fetch(`${API_BASE}/brand?limit=-1`, {
@@ -612,9 +620,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  // =========================================================
-  // SECTION 7: PRODUCT SUMMARY
-  // =========================================================
   async getProductsSummary(
     id: string | number,
     returnString?: string,

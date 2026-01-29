@@ -269,10 +269,14 @@ export function SalesReturnHistory() {
       setDetailsLoading(true);
       setStatusCardData(null);
 
+      // 🟢 DEBUG: Check what we are sending
+      // console.log("Fetching invoices for:", record.customerCode);
+
       const [items, statusData, invoices] = await Promise.all([
         SalesReturnProvider.getProductsSummary(record.id, record.returnNo),
         SalesReturnProvider.getStatusCardData(record.id),
-        SalesReturnProvider.getInvoiceReturnList(),
+        // 🟢 Pass the customer code to the API
+        SalesReturnProvider.getInvoiceReturnList(record.customerCode),
       ]);
 
       setDetails(items);
@@ -521,7 +525,8 @@ export function SalesReturnHistory() {
       c.label.toLowerCase().includes(customerSearch.toLowerCase()) &&
       customerSearch !== "All Customers",
   );
-
+  // 🟢 UPDATE: Simplified Filter
+  // The API has already filtered by Customer. We only filter by the search box here.
   const filteredInvoices = invoiceOptions.filter((inv) =>
     inv.invoice_no.toLowerCase().includes(invoiceSearch.toLowerCase()),
   );
@@ -1039,7 +1044,7 @@ export function SalesReturnHistory() {
                             </TableCell>
                             <TableCell className="align-middle">
                               <div
-                                className="text-xs text-slate-700 font-medium truncate max-w-40 transition-all duration-200 ease-in-out hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 -ml-1.5 rounded-md"
+                                className="text-xs text-slate-700 font-medium truncate max-w-[220px] transition-all duration-200 ease-in-out hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 -ml-1.5 rounded-md cursor-help"
                                 title={item.description}
                               >
                                 {item.description}
@@ -1467,7 +1472,12 @@ export function SalesReturnHistory() {
       <Dialog open={isInvoiceLookupOpen} onOpenChange={setIsInvoiceLookupOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Select Invoice</DialogTitle>
+            <DialogTitle>
+              Select Invoice{" "}
+              <Badge variant="secondary" className="text-xs font-normal">
+                {invoiceOptions.length} Found
+              </Badge>
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="relative">
