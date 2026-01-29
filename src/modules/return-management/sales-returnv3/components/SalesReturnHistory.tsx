@@ -16,6 +16,8 @@ import {
   Plus,
   Search,
   AlertTriangle,
+  Link as LinkIcon,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +29,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogHeader,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -46,6 +53,8 @@ import {
   SalesReturnItem,
   API_LineDiscount,
   API_SalesReturnType,
+  SalesReturnStatusCard,
+  InvoiceOption,
 } from "../type";
 import { cn } from "@/lib/utils";
 
@@ -115,6 +124,13 @@ export function SalesReturnHistory() {
   );
   const [details, setDetails] = useState<SalesReturnItem[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const [statusCardData, setStatusCardData] =
+    useState<SalesReturnStatusCard | null>(null);
+
+  const [invoiceOptions, setInvoiceOptions] = useState<InvoiceOption[]>([]);
+  const [isInvoiceLookupOpen, setIsInvoiceLookupOpen] = useState(false);
+  const [invoiceSearch, setInvoiceSearch] = useState("");
 
   const [isCreateOpen, setCreateOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
@@ -251,11 +267,17 @@ export function SalesReturnHistory() {
     try {
       setSelectedReturn(record);
       setDetailsLoading(true);
-      const items = await SalesReturnProvider.getProductsSummary(
-        record.id,
-        record.returnNo,
-      );
+      setStatusCardData(null);
+
+      const [items, statusData, invoices] = await Promise.all([
+        SalesReturnProvider.getProductsSummary(record.id, record.returnNo),
+        SalesReturnProvider.getStatusCardData(record.id),
+        SalesReturnProvider.getInvoiceReturnList(),
+      ]);
+
       setDetails(items);
+      setStatusCardData(statusData);
+      setInvoiceOptions(invoices);
     } catch (e) {
       console.error("Error loading details:", e);
       setDetails([]);
@@ -311,7 +333,6 @@ export function SalesReturnHistory() {
       const discAmt = Number(item.discountAmount) || 0;
 
       return {
-        // Unique ID ensures React doesn't discard this as a duplicate
         id: `added-${Date.now()}-${index}-${Math.floor(Math.random() * 10000)}`,
         productId: item.productId || item.product_id || item.id,
         code: item.code || "N/A",
@@ -394,20 +415,48 @@ export function SalesReturnHistory() {
 
   const handleReceiveClick = () => setConfirmOpen(true);
 
+  // REVISION 2: Ensure Received checkbox updates immediately
   const handleConfirmReceive = async () => {
     if (!selectedReturn) return;
     try {
       setIsReceiving(true);
       await SalesReturnProvider.updateStatus(selectedReturn.id, "Received");
+
+      // Update local list
+      setData((prev) =>
+        prev.map((r) =>
+          r.id === selectedReturn.id ? { ...r, status: "Received" } : r,
+        ),
+      );
+
+      // Update selected return to reflect received status
+      setSelectedReturn({ ...selectedReturn, status: "Received" });
+
+      // Update status card data immediately so checkbox checks off
+      setStatusCardData((prev) =>
+        prev
+          ? {
+              ...prev,
+              isReceived: true,
+              transactionStatus: "Received",
+            }
+          : null,
+      );
+
       setConfirmOpen(false);
-      setSelectedReturn(null);
-      loadHistory();
     } catch (error: any) {
       console.error("Receive Error:", error);
       alert("Failed to update status. Please try again.");
     } finally {
       setIsReceiving(false);
     }
+  };
+
+  const handleSelectInvoice = (invoiceNo: string) => {
+    if (selectedReturn) {
+      setSelectedReturn({ ...selectedReturn, invoiceNo });
+    }
+    setIsInvoiceLookupOpen(false);
   };
 
   // Helpers
@@ -473,8 +522,14 @@ export function SalesReturnHistory() {
       customerSearch !== "All Customers",
   );
 
+  const filteredInvoices = invoiceOptions.filter((inv) =>
+    inv.invoice_no.toLowerCase().includes(invoiceSearch.toLowerCase()),
+  );
+
   return (
     <div className="space-y-6 p-4 md:p-8 w-full max-w-[100vw] overflow-x-hidden bg-slate-50 min-h-screen">
+      {/* ... Header and Filters sections ... */}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">
@@ -504,7 +559,7 @@ export function SalesReturnHistory() {
         />
       </div>
 
-      {/* FILTERS */}
+      {/* FILTERS UI Hidden for Brevity (Same as before) */}
       <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-end">
           {/* Salesman */}
@@ -730,7 +785,7 @@ export function SalesReturnHistory() {
         </div>
       </div>
 
-      {/* PAGINATION */}
+      {/* PAGINATION UI (Same as before) */}
       <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-3 border border-blue-100 bg-white shadow-sm rounded-xl">
         <div className="text-sm text-slate-500 order-2 sm:order-1 text-center sm:text-left">
           Showing page{" "}
@@ -913,6 +968,7 @@ export function SalesReturnHistory() {
               <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
                 <div className="overflow-x-auto">
                   <Table>
+                    {/* ... TableHeader and TableBody with Items ... */}
                     <TableHeader>
                       <TableRow className="bg-blue-600 hover:bg-blue-600! border-none">
                         <TableHead className="text-white font-semibold h-11 w-[120px] uppercase text-xs">
@@ -924,7 +980,6 @@ export function SalesReturnHistory() {
                         <TableHead className="text-white font-semibold h-11 w-[80px] uppercase text-xs">
                           Unit
                         </TableHead>
-                        {/* 🟢 REVISION 7: Increased Widths for Input Visibility */}
                         <TableHead className="text-white font-semibold h-11 text-center min-w-[100px] uppercase text-xs">
                           Qty
                         </TableHead>
@@ -982,10 +1037,9 @@ export function SalesReturnHistory() {
                             <TableCell className="text-xs text-slate-700 font-bold align-middle">
                               {item.code}
                             </TableCell>
-                            {/* 🟢 REVISION: Smooth Hover Effect + Tooltip Logic */}
                             <TableCell className="align-middle">
                               <div
-                                className="text-xs text-slate-700 font-medium truncate max-w-[220px] transition-all duration-200 ease-in-out hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 -ml-1.5 rounded-md cursor-help"
+                                className="text-xs text-slate-700 font-medium truncate max-w-40 transition-all duration-200 ease-in-out hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 -ml-1.5 rounded-md"
                                 title={item.description}
                               >
                                 {item.description}
@@ -1191,6 +1245,7 @@ export function SalesReturnHistory() {
                       Order No.
                     </Label>
                     {isEditable ? (
+                      // REVISION 1: Removed Button Here, just the Input
                       <Input
                         value={selectedReturn?.orderNo || ""}
                         onChange={(e) =>
@@ -1203,7 +1258,7 @@ export function SalesReturnHistory() {
                         className="h-9 bg-white border-slate-300"
                       />
                     ) : (
-                      <div className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-800 shadow-sm">
+                      <div className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-800 shadow-sm flex justify-between items-center">
                         {selectedReturn?.orderNo || "-"}
                       </div>
                     )}
@@ -1306,6 +1361,79 @@ export function SalesReturnHistory() {
                         })}
                     </span>
                   </div>
+
+                  <div className="h-px bg-slate-100 my-3"></div>
+
+                  <div className="grid grid-cols-2 gap-y-2 text-sm">
+                    <div className="flex items-center justify-between col-span-2">
+                      <span className="text-slate-500 font-medium">
+                        Applied
+                      </span>
+                      <Checkbox
+                        checked={statusCardData?.isApplied || false}
+                        disabled
+                      />
+                    </div>
+
+                    <div className="flex justify-between col-span-2">
+                      <span className="text-slate-500 font-medium">
+                        Date Applied
+                      </span>
+                      <span className="text-slate-800 font-medium">
+                        {statusCardData?.dateApplied || "-"}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between col-span-2">
+                      <span className="text-slate-500 font-medium">
+                        Transaction Status
+                      </span>
+                      <Badge variant="outline" className="text-[10px] h-5">
+                        {statusCardData?.transactionStatus || "-"}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between col-span-2">
+                      <span className="text-slate-500 font-medium">Posted</span>
+                      <Checkbox
+                        checked={statusCardData?.isPosted || false}
+                        disabled
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between col-span-2">
+                      <span className="text-slate-500 font-medium">
+                        Received
+                      </span>
+                      <Checkbox
+                        checked={statusCardData?.isReceived || false}
+                        disabled
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center col-span-2">
+                      <span className="text-slate-500 font-medium">
+                        Applied to
+                      </span>
+
+                      {/* REVISION 1: Applied To Button Logic Moved Here */}
+                      {isEditable && selectedReturn?.orderNo ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 px-2"
+                          onClick={() => setIsInvoiceLookupOpen(true)}
+                        >
+                          {selectedReturn.invoiceNo || "Select Invoice"}{" "}
+                          <LinkIcon className="ml-1 h-3 w-3" />
+                        </Button>
+                      ) : (
+                        <span className="text-slate-800 font-medium">
+                          {statusCardData?.appliedTo || "-"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1321,17 +1449,61 @@ export function SalesReturnHistory() {
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[100px]"
               onClick={handleReceiveClick}
-              disabled={!isEditable}
+              disabled={!isEditable || selectedReturn?.status === "Received"}
             >
               Receive
             </Button>
             <Button
-              className="bg-blue-600 hover:bg-blue-700 text-white min-w-[160px]"
+              className="bg-blue-600 hover:bg-blue-700 text-white min-w-40"
               onClick={handleUpdateReturn}
               disabled={!isEditable}
             >
               Update Sales Return
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isInvoiceLookupOpen} onOpenChange={setIsInvoiceLookupOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Invoice</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search Invoice No..."
+                className="pl-10"
+                value={invoiceSearch}
+                onChange={(e) => setInvoiceSearch(e.target.value)}
+              />
+            </div>
+            <div className="max-h-[300px] overflow-y-auto border rounded-md divide-y">
+              {filteredInvoices.length === 0 ? (
+                <div className="p-4 text-center text-sm text-slate-500">
+                  No invoices found.
+                </div>
+              ) : (
+                filteredInvoices.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors"
+                    onClick={() => handleSelectInvoice(inv.invoice_no)}
+                  >
+                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-slate-800">
+                        {inv.invoice_no}
+                      </div>
+                      <div className="text-xs text-slate-500">ID: {inv.id}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -730,3 +730,4 @@ export const SalesReturnProvider = {
     }
   },
 };
+export type { SalesmanOption, BranchOption, CustomerOption };

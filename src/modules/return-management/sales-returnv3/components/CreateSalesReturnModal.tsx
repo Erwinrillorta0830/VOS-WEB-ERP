@@ -240,7 +240,7 @@ export function CreateSalesReturnModal({ isOpen, onClose, onSuccess }: Props) {
   const handleSelectCustomer = (customer: CustomerOption) => {
     setSelectedCustomerId(customer.id.toString());
     setCustomerSearch(customer.name);
-    setCustomerCode(customer.code);
+    setCustomerCode(customer.code || "");
     setValidationError(null);
     setIsCustomerOpen(false);
   };

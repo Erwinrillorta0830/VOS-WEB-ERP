@@ -135,7 +135,8 @@ export interface SalesmanOption {
 // type.ts
 export interface CustomerOption {
   id: number;
-  customer_name: string;
+  name: string; // Changed from 'customer_name' to 'name'
+  code?: string; // Optional: Add this if your API returns a customer code
 }
 
 // If you need the full object elsewhere, we can keep a separate type for that,
