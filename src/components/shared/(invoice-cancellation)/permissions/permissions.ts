@@ -8,9 +8,9 @@ type PermissionCheck = (dept: number, isAdmin: boolean) => boolean;
  * Centralized mapping of routes to the roles allowed to access them.
  */
 export const PERMISSION_SCHEMA: Record<string, PermissionCheck> = {
-  [ROUTES.CANCELLATION]: (dept) => dept === DEPARTMENTS.CSR,
-  [ROUTES.REPORT]: (dept) => dept === DEPARTMENTS.AUDITOR,
-  [ROUTES.APPROVAL]: (dept, admin) => dept === DEPARTMENTS.AUDITOR && admin,
+  [ROUTES.CANCELLATION]: (dept) => dept === DEPARTMENTS.CSR || dept === DEPARTMENTS.IT,
+  [ROUTES.REPORT]: (dept) => dept === DEPARTMENTS.AUDITOR || dept === DEPARTMENTS.IT,
+  [ROUTES.APPROVAL]: (dept, admin) => (dept === DEPARTMENTS.AUDITOR && admin) || dept === DEPARTMENTS.IT,
 
   // To add a new department in the future, just add one line here:
   // [ROUTES.WAREHOUSE]: (dept) => dept === DEPARTMENTS.WAREHOUSE,
@@ -34,7 +34,7 @@ export function getInvoiceFallback(
   dept: number | null,
   isAdmin: boolean,
 ): string {
-  if (dept === DEPARTMENTS.CSR) return ROUTES.CANCELLATION;
+  if (dept === DEPARTMENTS.CSR || dept === DEPARTMENTS.IT) return ROUTES.CANCELLATION;
   if (dept === DEPARTMENTS.AUDITOR) {
     return isAdmin ? ROUTES.APPROVAL : ROUTES.REPORT;
   }

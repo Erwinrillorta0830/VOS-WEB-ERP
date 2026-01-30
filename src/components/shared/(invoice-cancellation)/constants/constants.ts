@@ -1,6 +1,7 @@
 export const DEPARTMENTS = {
   CSR: 7,
   AUDITOR: 11,
+  IT: 14,
 } as const;
 
 export const ROUTES = {

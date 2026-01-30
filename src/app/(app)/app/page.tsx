@@ -175,10 +175,10 @@ function getInvoiceManagementHref(user?: SessionUser): string {
     // - invoice-cancellation: dept 7
     // - invoice-summary-report: dept 11
     // - invoice-cancellation-approval: dept 11 and isAdmin true
-    if (dept === 7) return "/invoice-management/invoice-cancellation";
-    if (dept === 11 && isAdmin)
+    if (dept === 7 || dept === 14) return "/invoice-management/invoice-cancellation";
+    if ((dept === 11 && isAdmin) || dept === 14)    
         return "/invoice-management/invoice-cancellation-approval";
-    if (dept === 11) return "/invoice-management/invoice-summary-report";
+    if (dept === 11 || dept === 14) return "/invoice-management/invoice-summary-report";
 
     // Option B (recommended): keep them on app page.
     return "/app";
