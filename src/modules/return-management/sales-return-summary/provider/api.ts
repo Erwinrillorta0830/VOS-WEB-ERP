@@ -329,19 +329,25 @@ export const SalesReturnProvider = {
       const product = d.product_id || {};
       const baseProdId = String(product.parent_id || product.product_id || "");
       const brandId =
-        typeof product.product_brand === "object"
+        product.product_brand && typeof product.product_brand === "object"
           ? String(product.product_brand.brand_id)
-          : String(product.product_brand);
+          : String(product.product_brand || "");
+
       const returnTypeName =
         returnTypeMap.get(String(d.sales_return_type_id))?.type_name || "";
+
+      // 🟢 FIX: Added check for 'product.unit_of_measurement'
       const unitId =
+        product.unit_of_measurement &&
         typeof product.unit_of_measurement === "object"
           ? String(product.unit_of_measurement.unit_id)
-          : String(product.unit_of_measurement);
+          : String(product.unit_of_measurement || "");
+
+      // 🟢 FIX: Added check for 'product.product_category'
       const catId =
-        typeof product.product_category === "object"
+        product.product_category && typeof product.product_category === "object"
           ? String(product.product_category.category_id)
-          : String(product.product_category);
+          : String(product.product_category || "");
 
       let discountApplied = "No Discount";
       const mappedType = lineDiscountMap.get(String(d.discount_type));
