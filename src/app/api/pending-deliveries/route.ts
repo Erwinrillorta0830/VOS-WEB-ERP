@@ -1,3 +1,4 @@
+//src/app/api/pending-deliveries/route.ts
 import { NextResponse } from "next/server";
 
 // Use environment variable
@@ -6,7 +7,7 @@ const BASE_URL = process.env.REMOTE_API_BASE;
 interface ApiCluster { id: number; cluster_name: string; }
 interface ApiCustomer { id: number; customer_code: string; customer_name: string; cluster_id?: number; province?: string; city?: string; }
 interface ApiSalesman { id: number; salesman_name: string; salesman_code: string; }
-interface ApiSalesOrder { order_id: number; order_no: string; customer_code: string; order_status: string; total_amount: number; order_date: string; salesman_id: number; }
+interface ApiSalesOrder { order_id: number; order_no: string; customer_code: string; order_status: string; allocated_amount: number; order_date: string; salesman_id: number; }
 interface ApiAreaPerCluster { id: number; cluster_id: number; province: string; city: string; }
 
 interface CustomerGroupRaw { id: string; customerName: string; salesmanName: string; orders: ApiSalesOrder[]; }

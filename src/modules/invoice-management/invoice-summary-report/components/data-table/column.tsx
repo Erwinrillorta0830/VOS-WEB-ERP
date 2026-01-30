@@ -107,6 +107,30 @@ export const columns: ColumnDef<InvoiceReportRow>[] = [
     },
   },
   {
+    accessorKey: "requested_by",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} label="Requested By" />
+    ),
+    cell: ({ row }) => {
+      const data = row.original;
+      const fullName =
+        `${data.requester_fname ?? ""} ${data.requester_lname ?? ""}`.trim();
+
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-bold uppercase tracking-tight text-foreground">
+            {fullName || "CSR/Unknown"}
+          </span>
+          {data.requester_dept === 7 && (
+            <span className="text-[9px] text-emerald-600 font-medium">
+              Customer Service Dept
+            </span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
     accessorKey: "status",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} label="Status" />

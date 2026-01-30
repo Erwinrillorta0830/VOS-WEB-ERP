@@ -10,6 +10,7 @@ import { ActionConfirmationModal } from "./components/confirmation-modal";
 import { mapRequestsToInvoiceRows } from "./lib/mapping";
 import { mapToApprovalParams } from "./lib/utils";
 import { ApprovalAction, InvoiceRow } from "./types";
+import { RejectionModal } from "./components/rejection-modal";
 
 export default function InvoiceCancellationApprovalPage() {
   const {
@@ -22,6 +23,10 @@ export default function InvoiceCancellationApprovalPage() {
 
   const [activeTab, setActiveTab] = useState<string>("PENDING");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+  const [selectedForRejection, setSelectedForRejection] =
+    useState<InvoiceRow | null>(null);
+
   const [pendingAction, setPendingAction] = useState<{
     type: ApprovalAction;
     data: InvoiceRow | InvoiceRow[];
@@ -55,23 +60,51 @@ export default function InvoiceCancellationApprovalPage() {
   // 3. Action Handlers
   const triggerActionConfirmation = useCallback(
     (type: ApprovalAction, data: any | any[]) => {
-      setPendingAction({ type, data });
-      setConfirmOpen(true);
+      // If it's a rejection and not a bulk action, open the Rejection Modal instead
+      if (type === "REJECT" && !Array.isArray(data)) {
+        setSelectedForRejection(data);
+        setRejectionModalOpen(true);
+      } else {
+        setPendingAction({ type, data });
+        setConfirmOpen(true);
+      }
     },
     [],
   );
 
-  const confirmAndExecute = async () => {
+  const handleRejectionSuccess = () => {
+    setRejectionModalOpen(false);
+    setSelectedForRejection(null);
+  };
+
+  const confirmAndExecute = async (
+    reasons?: string | Record<number, string>,
+  ) => {
     if (!pendingAction?.data) return;
 
     const itemsToProcess = Array.isArray(pendingAction.data)
       ? pendingAction.data
       : [pendingAction.data];
-    const paramsArray = itemsToProcess.map((item) =>
-      mapToApprovalParams(item, 1),
-    );
 
-    await handleAction(pendingAction.type, paramsArray);
+    let paramsArray;
+    let bulkReasonFallback: string | undefined = undefined;
+
+    // Check if we are in "Individual Reasons" mode
+    if (reasons && typeof reasons === "object" && !Array.isArray(reasons)) {
+      paramsArray = itemsToProcess.map((item) => {
+        const specificReason = reasons[item.id] || ""; // Ensure it's at least an empty string, not undefined
+        return mapToApprovalParams(item, undefined, specificReason);
+      });
+      // In individual mode, we don't send a top-level bulk reason
+      bulkReasonFallback = undefined;
+    } else {
+      // "Apply to All" or Single Rejection mode
+      paramsArray = itemsToProcess.map((item) => mapToApprovalParams(item));
+      bulkReasonFallback = reasons as string;
+    }
+
+    await handleAction(pendingAction.type, paramsArray, bulkReasonFallback);
+
     setConfirmOpen(false);
     setPendingAction(null);
   };
@@ -104,6 +137,22 @@ export default function InvoiceCancellationApprovalPage() {
           pendingAction={pendingAction}
           isProcessing={isProcessing}
           onConfirm={confirmAndExecute}
+        />
+
+        <RejectionModal
+          isOpen={rejectionModalOpen}
+          onClose={() => setRejectionModalOpen(false)}
+          requestData={
+            selectedForRejection
+              ? {
+                  id: selectedForRejection.id,
+                  invoice_id: selectedForRejection.invoice_id,
+                }
+              : null
+          }
+          onSuccess={handleRejectionSuccess}
+          onReject={handleAction}
+          isProcessing={isProcessing}
         />
       </div>
     </div>
