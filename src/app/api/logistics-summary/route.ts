@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
+// testing 123
 // Use environment variable or fallback to localhost for safety
 const BASE_URL = process.env.REMOTE_API_BASE;
 const ITEMS_PER_PAGE = 50;
