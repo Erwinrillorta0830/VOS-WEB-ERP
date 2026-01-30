@@ -274,19 +274,15 @@ export function CreateSalesReturnModal({ isOpen, onClose, onSuccess }: Props) {
       return;
     }
 
-    // Validate that all items have a Reason and Return Type
+    // 🟢 REVISION: Removed check for 'reason'
+    // Validate that all items have a Return Type (Reason is now optional)
     const invalidItems = items.some(
-      (item) =>
-        !item.reason ||
-        !item.returnType ||
-        item.reason.trim() === "" ||
-        item.returnType === "",
+      (item) => !item.returnType || item.returnType === "",
     );
 
     if (invalidItems) {
-      setValidationError(
-        "Please enter a Reason and select a Return Type for all items.",
-      );
+      // 🟢 REVISION: Updated error message
+      setValidationError("Please select a Return Type for all items.");
       return;
     }
 
@@ -801,10 +797,9 @@ export function CreateSalesReturnModal({ isOpen, onClose, onSuccess }: Props) {
                           ₱{item.totalAmount.toLocaleString()}
                         </td>
                         <td className="px-4 py-2">
-                          {/* 🟡 REVISION: Changed to Input & Removed Red Border Logic */}
+                          {/* 🟢 REVISION: Removed 'required' attribute */}
                           <input
                             type="text"
-                            required
                             placeholder="Enter reason"
                             className="w-full border border-gray-300 rounded h-8 text-xs px-2 outline-none focus:border-blue-500 transition-all duration-200 placeholder:text-gray-400"
                             value={item.reason || ""}
@@ -814,7 +809,6 @@ export function CreateSalesReturnModal({ isOpen, onClose, onSuccess }: Props) {
                           />
                         </td>
                         <td className="px-4 py-2">
-                          {/* 🟡 REVISION: Removed Red Border Logic */}
                           <select
                             required
                             className="w-full border border-gray-300 rounded h-8 text-xs px-1 bg-white outline-none focus:border-blue-500 transition-all duration-200"
@@ -1012,7 +1006,7 @@ export function CreateSalesReturnModal({ isOpen, onClose, onSuccess }: Props) {
         open={isSuccessOpen}
         onOpenChange={(open) => !open && handleFinalize()}
       >
-        <DialogContent className="max-w-[400px] p-8 bg-white rounded-2xl shadow-2xl border-0 focus:outline-none z-[60]">
+        <DialogContent className="max-w-[400px] p-8 bg-white rounded-2xl shadow-2xl border-0 focus:outline-none z-60">
           <div className="flex flex-col items-center text-center gap-6">
             <div className="h-20 w-20 rounded-full bg-emerald-50 flex items-center justify-center animate-in zoom-in duration-300">
               <CheckCircle className="h-10 w-10 text-emerald-500" />

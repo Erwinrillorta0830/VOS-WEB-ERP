@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function SalesReturnV3Page() {
   return (
-    <main className="p-6 bg-slate-50 min-h-screen">
+    <main>
       {/* Renders the full module with History and Create tabs */}
       <SalesReturnModule />
     </main>

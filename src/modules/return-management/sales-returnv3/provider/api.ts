@@ -75,8 +75,10 @@ export const SalesReturnProvider = {
     filters: { salesman?: string; customer?: string; status?: string } = {},
   ): Promise<{ data: SalesReturn[]; total: number }> {
     try {
+      // 🟢 UPDATE: Changed 'created_date' to 'created_at' (Correct DB Column) & added 'price_type'
       const allowedFields =
-        "return_id,return_number,invoice_no,customer_code,salesman_id,total_amount,status,return_date,remarks,order_id,isThirdParty";
+        "return_id,return_number,invoice_no,customer_code,salesman_id,total_amount,status,return_date,remarks,order_id,isThirdParty,created_at,price_type";
+
       let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_id`;
 
       if (search) {
@@ -114,6 +116,11 @@ export const SalesReturnProvider = {
           remarks: item.remarks,
           orderNo: item.order_id || "",
           isThirdParty: parseBoolean(item.isThirdParty),
+          // 🟢 NEW: Mapping for Price Type and Received Date (created_at)
+          priceType: item.price_type || "-",
+          createdAt: item.created_at
+            ? new Date(item.created_at).toLocaleDateString()
+            : "-",
         }),
       );
       return { data: mappedData, total: result.meta?.filter_count || 0 };

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import {
   Loader2,
   ChevronLeft,
@@ -18,6 +19,9 @@ import {
   AlertTriangle,
   Link as LinkIcon,
   FileText,
+  AlertCircle,
+  Save,
+  CheckCircle, // 🟢 NEW: Added CheckCircle import
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,7 +64,6 @@ import { cn } from "@/lib/utils";
 
 import { CreateSalesReturnModal } from "./CreateSalesReturnModal";
 import { ProductLookupModal } from "./ProductLookupModal";
-import { useReactToPrint } from "react-to-print";
 import { SalesReturnPrintSlip } from "./SalesReturnPrintSlip";
 
 const ReadOnlyField = ({
@@ -136,16 +139,16 @@ export function SalesReturnHistory() {
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
 
+  // Update State
+  const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
+  const [isUpdateSuccessOpen, setIsUpdateSuccessOpen] = useState(false); // 🟢 NEW: Success Modal State
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   // Product Lookup State
   const [isProductLookupOpen, setIsProductLookupOpen] = useState(false);
 
   const isEditable = selectedReturn?.status === "Pending";
-  const printComponentRef = useRef<HTMLDivElement>(null);
-
-  const handlePrint = useReactToPrint({
-    contentRef: printComponentRef,
-    documentTitle: `Return-Slip-${selectedReturn?.returnNo || "Draft"}`,
-  });
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -266,16 +269,13 @@ export function SalesReturnHistory() {
   const handleViewDetails = async (record: SalesReturn) => {
     try {
       setSelectedReturn(record);
+      setValidationError(null);
       setDetailsLoading(true);
       setStatusCardData(null);
-
-      // 🟢 DEBUG: Check what we are sending
-      // console.log("Fetching invoices for:", record.customerCode);
 
       const [items, statusData, invoices] = await Promise.all([
         SalesReturnProvider.getProductsSummary(record.id, record.returnNo),
         SalesReturnProvider.getStatusCardData(record.id),
-        // 🟢 Pass the customer code to the API
         SalesReturnProvider.getInvoiceReturnList(record.customerCode),
       ]);
 
@@ -357,20 +357,28 @@ export function SalesReturnHistory() {
     setIsProductLookupOpen(false);
   };
 
-  const handleUpdateReturn = async () => {
+  const handleUpdateClick = () => {
+    setValidationError(null);
     if (!selectedReturn) return;
 
     const hasIncompleteItems = details.some(
       (item) => !item.reason || !item.returnType,
     );
+
     if (hasIncompleteItems) {
-      alert(
+      setValidationError(
         "Please enter a 'Reason' and select a 'Return Type' for all added items before saving.",
       );
       return;
     }
 
+    setIsUpdateConfirmOpen(true);
+  };
+
+  const handleConfirmUpdate = async () => {
+    if (!selectedReturn) return;
     try {
+      setIsUpdating(true);
       const payload = {
         returnId: selectedReturn.id,
         returnNo: selectedReturn.returnNo,
@@ -403,40 +411,47 @@ export function SalesReturnHistory() {
                   selectedReturn.orderNo ||
                   row.orderNo,
                 isThirdParty: is3rdParty,
+                priceType: selectedReturn.priceType,
+                createdDate: selectedReturn.createdAt,
               }
             : row,
         ),
       );
 
-      alert("Sales Return Updated Successfully!");
-      setSelectedReturn(null);
-      loadHistory();
+      // 🟢 CHANGE: Close confirm dialog and open success dialog
+      setIsUpdateConfirmOpen(false);
+      setIsUpdateSuccessOpen(true);
     } catch (error) {
       console.error("Update failed", error);
       alert("Failed to update sales return.");
+    } finally {
+      setIsUpdating(false);
     }
+  };
+
+  // 🟢 NEW: Finalize function to close everything and refresh
+  const handleFinalizeUpdate = () => {
+    setIsUpdateSuccessOpen(false);
+    setSelectedReturn(null);
+    loadHistory();
   };
 
   const handleReceiveClick = () => setConfirmOpen(true);
 
-  // REVISION 2: Ensure Received checkbox updates immediately
   const handleConfirmReceive = async () => {
     if (!selectedReturn) return;
     try {
       setIsReceiving(true);
       await SalesReturnProvider.updateStatus(selectedReturn.id, "Received");
 
-      // Update local list
       setData((prev) =>
         prev.map((r) =>
           r.id === selectedReturn.id ? { ...r, status: "Received" } : r,
         ),
       );
 
-      // Update selected return to reflect received status
       setSelectedReturn({ ...selectedReturn, status: "Received" });
 
-      // Update status card data immediately so checkbox checks off
       setStatusCardData((prev) =>
         prev
           ? {
@@ -461,6 +476,54 @@ export function SalesReturnHistory() {
       setSelectedReturn({ ...selectedReturn, invoiceNo });
     }
     setIsInvoiceLookupOpen(false);
+  };
+
+  const handlePrintInNewTab = () => {
+    if (!selectedReturn) return;
+
+    const printData = {
+      returnNo: selectedReturn.returnNo,
+      returnDate: selectedReturn.returnDate,
+      status: selectedReturn.status,
+      remarks: selectedReturn.remarks,
+      salesmanName: getSalesmanName(selectedReturn.salesmanId),
+      salesmanCode: getSalesmanCode(selectedReturn.salesmanId),
+      customerName: getCustomerName(selectedReturn.customerCode),
+      customerCode: selectedReturn.customerCode,
+      branchName: getSalesmanBranch(selectedReturn.salesmanId),
+      items: details,
+      totalAmount: selectedReturn.totalAmount,
+    };
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Pop-up blocked. Please allow pop-ups for this site.");
+      return;
+    }
+
+    printWindow.document.write(
+      "<html><head><title>Print Preview</title></head><body><div id='print-root'></div></body></html>",
+    );
+
+    const styles = document.querySelectorAll('link[rel="stylesheet"], style');
+    styles.forEach((styleNode) => {
+      printWindow.document.head.appendChild(styleNode.cloneNode(true));
+    });
+
+    const styleOverride = printWindow.document.createElement("style");
+    styleOverride.innerHTML = `
+      body { background-color: #e5e7eb; padding: 40px; display: flex; justify-content: center; }
+      #print-root { background-color: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+      .hidden { display: block !important; }
+    `;
+    printWindow.document.head.appendChild(styleOverride);
+
+    const root = createRoot(printWindow.document.getElementById("print-root")!);
+    root.render(<SalesReturnPrintSlip data={printData} />);
+
+    printWindow.setTimeout(() => {
+      printWindow.print();
+    }, 1000);
   };
 
   // Helpers
@@ -525,16 +588,13 @@ export function SalesReturnHistory() {
       c.label.toLowerCase().includes(customerSearch.toLowerCase()) &&
       customerSearch !== "All Customers",
   );
-  // 🟢 UPDATE: Simplified Filter
-  // The API has already filtered by Customer. We only filter by the search box here.
   const filteredInvoices = invoiceOptions.filter((inv) =>
     inv.invoice_no.toLowerCase().includes(invoiceSearch.toLowerCase()),
   );
 
   return (
     <div className="space-y-6 p-4 md:p-8 w-full max-w-[100vw] overflow-x-hidden bg-slate-50 min-h-screen">
-      {/* ... Header and Filters sections ... */}
-
+      {/* ... (Header, Filters, Table, Pagination - Unchanged) ... */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">
@@ -564,7 +624,6 @@ export function SalesReturnHistory() {
         />
       </div>
 
-      {/* FILTERS UI Hidden for Brevity (Same as before) */}
       <div className="bg-white p-5 rounded-xl border border-blue-100 shadow-sm">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-end">
           {/* Salesman */}
@@ -696,7 +755,6 @@ export function SalesReturnHistory() {
         </div>
       </div>
 
-      {/* TABLE */}
       <div className="rounded-xl border border-blue-100 bg-white shadow-sm min-h-[400px] flex flex-col overflow-hidden">
         <div className="overflow-x-auto w-full flex-1">
           <Table className="min-w-[1000px]">
@@ -790,7 +848,6 @@ export function SalesReturnHistory() {
         </div>
       </div>
 
-      {/* PAGINATION UI (Same as before) */}
       <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-3 border border-blue-100 bg-white shadow-sm rounded-xl">
         <div className="text-sm text-slate-500 order-2 sm:order-1 text-center sm:text-left">
           Showing page{" "}
@@ -899,6 +956,22 @@ export function SalesReturnHistory() {
             </button>
           </div>
 
+          {/* 🟢 NEW: Validation Error Banner */}
+          {validationError && (
+            <div className="mx-8 mt-6 mb-0 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex items-center justify-between rounded-r shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                <span className="text-sm font-medium">{validationError}</span>
+              </div>
+              <button
+                onClick={() => setValidationError(null)}
+                className="bg-red-500 hover:bg-red-600 text-white h-7 w-7 rounded-md flex items-center justify-center shadow-sm transition-all active:scale-95"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 rounded-xl border border-blue-100 shadow-sm">
               <div className="space-y-4">
@@ -924,13 +997,21 @@ export function SalesReturnHistory() {
                   label="Customer Code"
                   value={selectedReturn?.customerCode}
                 />
+                <ReadOnlyField
+                  label="Price Type"
+                  value={selectedReturn?.priceType}
+                />
               </div>
-              <div className="space-y-4">
+              <div className="flex flex-col space-y-4 h-full">
                 <ReadOnlyField
                   label="Return Date"
                   value={selectedReturn?.returnDate}
                 />
-                <div className="flex items-center space-x-2 pt-2">
+                <ReadOnlyField
+                  label="Received Date"
+                  value={selectedReturn?.createdAt}
+                />
+                <div className="flex items-center space-x-2 pt-2 mt-auto">
                   <Checkbox
                     id="isThirdParty"
                     checked={selectedReturn?.isThirdParty || false}
@@ -973,7 +1054,6 @@ export function SalesReturnHistory() {
               <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
                 <div className="overflow-x-auto">
                   <Table>
-                    {/* ... TableHeader and TableBody with Items ... */}
                     <TableHeader>
                       <TableRow className="bg-blue-600 hover:bg-blue-600! border-none">
                         <TableHead className="text-white font-semibold h-11 w-[120px] uppercase text-xs">
@@ -1250,7 +1330,6 @@ export function SalesReturnHistory() {
                       Order No.
                     </Label>
                     {isEditable ? (
-                      // REVISION 1: Removed Button Here, just the Input
                       <Input
                         value={selectedReturn?.orderNo || ""}
                         onChange={(e) =>
@@ -1370,58 +1449,11 @@ export function SalesReturnHistory() {
                   <div className="h-px bg-slate-100 my-3"></div>
 
                   <div className="grid grid-cols-2 gap-y-2 text-sm">
-                    <div className="flex items-center justify-between col-span-2">
-                      <span className="text-slate-500 font-medium">
-                        Applied
-                      </span>
-                      <Checkbox
-                        checked={statusCardData?.isApplied || false}
-                        disabled
-                      />
-                    </div>
-
-                    <div className="flex justify-between col-span-2">
-                      <span className="text-slate-500 font-medium">
-                        Date Applied
-                      </span>
-                      <span className="text-slate-800 font-medium">
-                        {statusCardData?.dateApplied || "-"}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between col-span-2">
-                      <span className="text-slate-500 font-medium">
-                        Transaction Status
-                      </span>
-                      <Badge variant="outline" className="text-[10px] h-5">
-                        {statusCardData?.transactionStatus || "-"}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center justify-between col-span-2">
-                      <span className="text-slate-500 font-medium">Posted</span>
-                      <Checkbox
-                        checked={statusCardData?.isPosted || false}
-                        disabled
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between col-span-2">
-                      <span className="text-slate-500 font-medium">
-                        Received
-                      </span>
-                      <Checkbox
-                        checked={statusCardData?.isReceived || false}
-                        disabled
-                      />
-                    </div>
-
                     <div className="flex justify-between items-center col-span-2">
                       <span className="text-slate-500 font-medium">
                         Applied to
                       </span>
 
-                      {/* REVISION 1: Applied To Button Logic Moved Here */}
                       {isEditable && selectedReturn?.orderNo ? (
                         <Button
                           variant="ghost"
@@ -1445,7 +1477,7 @@ export function SalesReturnHistory() {
           </div>
 
           <div className="border-t border-slate-100 p-5 bg-white flex justify-end gap-3 shrink-0">
-            <Button variant="outline" onClick={() => handlePrint()}>
+            <Button variant="outline" onClick={handlePrintInNewTab}>
               <Printer className="h-4 w-4 mr-2" /> Print Slip
             </Button>
             <Button variant="outline" onClick={() => setSelectedReturn(null)}>
@@ -1458,9 +1490,10 @@ export function SalesReturnHistory() {
             >
               Receive
             </Button>
+            {/* 🟢 UPDATE: Changed onClick to trigger Confirmation Dialog */}
             <Button
               className="bg-blue-600 hover:bg-blue-700 text-white min-w-40"
-              onClick={handleUpdateReturn}
+              onClick={handleUpdateClick}
               disabled={!isEditable}
             >
               Update Sales Return
@@ -1469,6 +1502,7 @@ export function SalesReturnHistory() {
         </DialogContent>
       </Dialog>
 
+      {/* ... (Keep Invoice Modal, Product Lookup, Create Modal, Receipt Confirm) ... */}
       <Dialog open={isInvoiceLookupOpen} onOpenChange={setIsInvoiceLookupOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1568,6 +1602,76 @@ export function SalesReturnHistory() {
               ) : (
                 "Confirm"
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 🟢 NEW: Update Confirmation Dialog */}
+      <Dialog open={isUpdateConfirmOpen} onOpenChange={setIsUpdateConfirmOpen}>
+        <DialogContent className="max-w-[400px] p-6 bg-white rounded-xl shadow-2xl border-0">
+          <div className="flex flex-col items-center text-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+              <Save className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="space-y-2">
+              <DialogTitle className="text-lg font-bold">
+                Confirm Update
+              </DialogTitle>
+              <div className="text-sm text-slate-500">
+                Are you sure you want to save changes to Sales Return{" "}
+                <span className="font-bold">{selectedReturn?.returnNo}</span>?
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setIsUpdateConfirmOpen(false)}
+              disabled={isUpdating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmUpdate}
+              disabled={isUpdating}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isUpdating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Confirm Update"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 🟢 NEW: Update Success Dialog */}
+      <Dialog
+        open={isUpdateSuccessOpen}
+        onOpenChange={(open) => !open && handleFinalizeUpdate()}
+      >
+        <DialogContent className="max-w-[400px] p-8 bg-white rounded-2xl shadow-2xl border-0 focus:outline-none z-60">
+          <div className="flex flex-col items-center text-center gap-6">
+            <div className="h-20 w-20 rounded-full bg-emerald-50 flex items-center justify-center animate-in zoom-in duration-300">
+              <CheckCircle className="h-10 w-10 text-emerald-500" />
+            </div>
+
+            <div className="space-y-2">
+              <DialogTitle className="text-xl font-bold text-slate-800">
+                Success!
+              </DialogTitle>
+              <div className="text-slate-500">
+                Sales Return updated successfully.
+              </div>
+            </div>
+
+            <Button
+              onClick={handleFinalizeUpdate}
+              className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base rounded-xl shadow-emerald-200 shadow-lg transition-all active:scale-95"
+            >
+              Done
             </Button>
           </div>
         </DialogContent>

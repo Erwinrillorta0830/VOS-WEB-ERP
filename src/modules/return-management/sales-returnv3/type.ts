@@ -33,6 +33,8 @@ export interface SalesReturn {
   remarks: string;
   orderNo?: string;
   isThirdParty?: boolean;
+  priceType?: string;
+  createdAt?: string;
 }
 
 // --- BASIC ENTITIES ---
