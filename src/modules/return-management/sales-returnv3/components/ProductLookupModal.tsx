@@ -26,7 +26,7 @@ import {
   ProductSupplierConnection,
 } from "../type";
 import { SalesReturnProvider } from "../provider/api";
-import { cn } from "@/lib/utils"; // Ensure cn is imported for class merging
+import { cn } from "@/lib/utils";
 
 interface Props {
   isOpen: boolean;
@@ -208,13 +208,18 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
         const currentItem = updatedItems[existingItemIndex];
         const newQuantity = currentItem.quantity + 1;
 
+        // Recalculate gross for existing item
+        const newGross = newQuantity * currentItem.unitPrice;
+
         updatedItems[existingItemIndex] = {
           ...currentItem,
           quantity: newQuantity,
-          totalAmount: newQuantity * currentItem.unitPrice,
+          grossAmount: newGross, // 🟢 Update Gross
+          totalAmount: newGross - (currentItem.discountAmount || 0),
         };
         return updatedItems;
       } else {
+        // 🟢 FIX: Added 'grossAmount' and 'discountType'
         const newItem: SalesReturnItem = {
           tempId: `added-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           productId: product.product_id,
@@ -224,6 +229,8 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
           unit: unitLabel,
           quantity: 1,
           unitPrice: selectedPrice,
+          grossAmount: selectedPrice, // 🟢 Added (1 * price)
+          discountType: null, // 🟢 Added (default to null)
           discountAmount: 0,
           totalAmount: selectedPrice,
           returnType: "Good Order",
@@ -280,12 +287,11 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
   );
 
   return (
-    // 🟢 FIX: Added z-[200] to ensure it sits above the edit modal (usually z-50)
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         className={cn(
           "flex flex-col p-0 overflow-hidden bg-slate-50 border-0 shadow-2xl [&>button]:hidden",
-          "h-[90vh] w-[95vw] !max-w-[1400px] z-[200]", // 🟢 Force width and Z-Index
+          "h-[90vh] w-[95vw] max-w-[1400px]! z-200",
         )}
       >
         {/* --- HEADER --- */}
@@ -503,7 +509,7 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
 
               {/* Scanner */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-transparent opacity-0 group-focus-within:opacity-20 rounded-md transition-opacity pointer-events-none" />
+                <div className="absolute inset-0 bg-linear-to-r from-blue-100 to-transparent opacity-0 group-focus-within:opacity-20 rounded-md transition-opacity pointer-events-none" />
                 <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 group-focus-within:text-blue-600 transition-colors" />
                 <Input
                   autoFocus
@@ -651,7 +657,7 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
           {/* RIGHT PANEL: SELECTED SUMMARY (SIDEBAR) */}
           <div className="w-[380px] bg-white border-l border-gray-200 flex flex-col h-full shadow-2xl z-30">
             {/* Sidebar Header */}
-            <div className="p-5 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/50">
+            <div className="p-5 border-b border-gray-100 bg-linear-to-b from-white to-gray-50/50">
               <div className="flex justify-between items-end mb-1">
                 <h3 className="font-bold text-gray-800 flex items-center gap-2">
                   <ShoppingCart className="h-5 w-5 text-blue-600" />

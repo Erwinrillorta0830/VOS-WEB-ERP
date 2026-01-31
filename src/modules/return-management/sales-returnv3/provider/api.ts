@@ -20,7 +20,6 @@ import {
 
 const API_BASE = "/api/items";
 
-// ... [Keep existing helper functions: getHeaders, parseBoolean, formatDateForAPI, cleanId] ...
 const getHeaders = () => {
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (typeof window !== "undefined") {
@@ -59,15 +58,11 @@ const cleanId = (id: any) => {
   return isNaN(num) ? id : num;
 };
 
-// 🟢 HELPER: Normalize code (strips spaces) to ensure "MAIN - 123" matches "MAIN-123"
 const normalizeCode = (code: string) => {
   return code ? code.replace(/\s+/g, "").toUpperCase() : "";
 };
 
 export const SalesReturnProvider = {
-  // ... [Keep getReturns, getSalesmenList, getCustomersList, getFormSalesmen, getFormCustomers, getFormBranches] ...
-
-  // Re-pasting getReturns for context, but you can leave it as is if unchanged
   async getReturns(
     page: number = 1,
     limit: number = 10,
@@ -75,17 +70,37 @@ export const SalesReturnProvider = {
     filters: { salesman?: string; customer?: string; status?: string } = {},
   ): Promise<{ data: SalesReturn[]; total: number }> {
     try {
-      // 🟢 UPDATE: Changed 'created_date' to 'created_at' (Correct DB Column) & added 'price_type'
       const allowedFields =
         "return_id,return_number,invoice_no,customer_code,salesman_id,total_amount,status,return_date,remarks,order_id,isThirdParty,created_at,price_type";
 
       let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_id`;
 
+      // 🟢 REVISED SEARCH LOGIC
       if (search) {
-        const term = encodeURIComponent(search);
-        url += `&filter[_or][0][return_number][_contains]=${term}`;
-        url += `&filter[_or][1][invoice_no][_contains]=${term}`;
-        url += `&filter[_or][2][customer_code][_contains]=${term}`;
+        const cleanSearch = search.trim();
+        const term = encodeURIComponent(cleanSearch);
+        const upperSearch = cleanSearch.toUpperCase();
+
+        // 1. Specificity Check: If user types "SR-", only search Return Number
+        if (upperSearch.startsWith("SR")) {
+          url += `&filter[return_number][_contains]=${term}`;
+        }
+        // 2. Specificity Check: If user types "INV", only search Invoice No
+        else if (upperSearch.startsWith("INV")) {
+          url += `&filter[invoice_no][_contains]=${term}`;
+        }
+        // 3. General Search (Numbers or Names)
+        else {
+          // If it's purely a number (like "201"), users usually mean the ID/Return No.
+          // We search Return No and Invoice No, but maybe exclude Customer Code to reduce noise?
+          // For now, we stick to the standard 3, but you can comment out customer_code if it causes too much noise.
+          url += `&filter[_or][0][return_number][_contains]=${term}`;
+          url += `&filter[_or][1][invoice_no][_contains]=${term}`;
+          url += `&filter[_or][2][customer_code][_contains]=${term}`;
+
+          // Optional: Search Customer Name if your backend supports deeper filtering,
+          // but keeping it simple for now.
+        }
       }
       if (filters.salesman && filters.salesman !== "All")
         url += `&filter[salesman_id][_eq]=${filters.salesman}`;
@@ -116,7 +131,6 @@ export const SalesReturnProvider = {
           remarks: item.remarks,
           orderNo: item.order_id || "",
           isThirdParty: parseBoolean(item.isThirdParty),
-          // 🟢 NEW: Mapping for Price Type and Received Date (created_at)
           priceType: item.price_type || "-",
           createdAt: item.created_at
             ? new Date(item.created_at).toLocaleDateString()
@@ -183,7 +197,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  // ... [Keep form data fetchers] ...
   async getFormSalesmen(): Promise<SalesmanOption[]> {
     try {
       const fields = "id,salesman_name,salesman_code,price_type,branch_code";
@@ -242,15 +255,9 @@ export const SalesReturnProvider = {
     }
   },
 
-  // 🟢 REVISED: Using correct primary key 'invoice_id'
   async getInvoiceReturnList(customerCode?: string): Promise<InvoiceOption[]> {
-    // 1. Prepare the Normalized Customer Code
     const targetCode = customerCode ? normalizeCode(customerCode) : "";
-
-    // 2. Base URL - Request 'invoice_id' instead of 'id'
     const baseUrl = `${API_BASE}/sales_invoice?limit=-1&fields=invoice_id,invoice_no,customer_code`;
-
-    // 3. Construct URL with Filter
     const queryUrl = targetCode
       ? `${baseUrl}&filter[customer_code][_contains]=${encodeURIComponent(targetCode)}`
       : baseUrl;
@@ -266,12 +273,10 @@ export const SalesReturnProvider = {
       const result = await response.json();
       const rawData = result.data || [];
 
-      // 4. Map Results (Map invoice_id -> id)
       const uniqueInvoices = new Map();
       rawData.forEach((item: any) => {
         if (item.invoice_no && !uniqueInvoices.has(item.invoice_no)) {
           uniqueInvoices.set(item.invoice_no, {
-            // 🟢 CRITICAL FIX: Map invoice_id to id
             id: item.invoice_id,
             invoice_no: item.invoice_no.toString(),
             customerCode: item.customer_code || "",
@@ -285,7 +290,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  // ... [Rest of the file remains the same: submitReturn, updateReturn, updateStatus, lookups...]
   async submitReturn(payload: any): Promise<any> {
     try {
       const totalGross = payload.items.reduce(
@@ -308,7 +312,7 @@ export const SalesReturnProvider = {
         return_number: generatedReturnNo,
         gross_amount: totalGross,
         discount_amount: totalDiscount,
-        created_by: 205, // Replace with dynamic ID if needed
+        created_by: 205,
         invoice_no: payload.invoiceNo || "",
         customer_code: payload.customer || payload.customerCode,
         salesman_id: cleanId(payload.salesmanId),
@@ -735,7 +739,9 @@ export const SalesReturnProvider = {
         transactionStatus: data.status || "Closed",
         isPosted: parseBoolean(data.isPosted),
         isReceived: parseBoolean(data.isReceived),
-        appliedTo: data.order_id || "-",
+        // 🟢 FIX: Disconnected 'appliedTo' from 'order_id' to prevent data conflict.
+        // Falls back to '-' since no specific DB column exists for this yet.
+        appliedTo: "-",
       };
     } catch (error) {
       return null;

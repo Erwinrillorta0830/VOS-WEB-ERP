@@ -1,6 +1,6 @@
 // src/app/sales-return-v3/page.tsx
 import React from "react";
-import { SalesReturnModule } from "../../../../modules/return-management/sales-returnv3/SalesReturnModule";
+import SalesReturnModule from "../../../../modules/return-management/sales-returnv3/SalesReturnModule";
 
 export const metadata = {
   title: "Sales Return V3",

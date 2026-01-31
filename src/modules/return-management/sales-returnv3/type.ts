@@ -5,20 +5,21 @@ export type ReturnType = "Good Order" | "Bad Order" | "Expired" | string;
 export type ReturnStatus = "Pending" | "Approved" | "Rejected" | "Received";
 
 export interface SalesReturnItem {
-  id?: number | string; // 🟢 NEW: Stores the row ID (useful for editing/deleting specific rows)
-  productId?: number; // 🟢 NEW: Fixes your TS Error. Stores the actual Product ID.
+  id?: number | string; // Use string for temp IDs, number for DB IDs
+  tempId?: string; // For frontend-only tracking
+  productId: number;
+  product_id?: number; // DB compatibility
   code: string;
-  description?: string;
-  unit?: string;
+  description: string;
+  unit: string;
   quantity: number;
   unitPrice: number;
+  grossAmount: number;
+  discountType: string | number | null;
+  discountAmount: number;
   totalAmount: number;
   reason?: string;
-  returnType?: ReturnType;
-  tempId?: string;
-  grossAmount?: number;
-  discountType?: string | number; // Stores the Line Discount ID
-  discountAmount?: number;
+  returnType?: string;
 }
 
 export interface SalesReturn {
@@ -26,7 +27,9 @@ export interface SalesReturn {
   returnNo: string;
   invoiceNo: string;
   customerCode: string;
+  customerName?: string; // Existing
   salesmanId: number;
+  salesmanName?: string; // 🟢 NEW: Add this field
   returnDate: string;
   totalAmount: number;
   status: string;
@@ -34,6 +37,7 @@ export interface SalesReturn {
   orderNo?: string;
   isThirdParty?: boolean;
   priceType?: string;
+  createdDate?: string;
   createdAt?: string;
 }
 
