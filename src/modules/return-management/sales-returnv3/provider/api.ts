@@ -75,32 +75,11 @@ export const SalesReturnProvider = {
 
       let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_id`;
 
-      // 🟢 REVISED SEARCH LOGIC
       if (search) {
-        const cleanSearch = search.trim();
-        const term = encodeURIComponent(cleanSearch);
-        const upperSearch = cleanSearch.toUpperCase();
-
-        // 1. Specificity Check: If user types "SR-", only search Return Number
-        if (upperSearch.startsWith("SR")) {
-          url += `&filter[return_number][_contains]=${term}`;
-        }
-        // 2. Specificity Check: If user types "INV", only search Invoice No
-        else if (upperSearch.startsWith("INV")) {
-          url += `&filter[invoice_no][_contains]=${term}`;
-        }
-        // 3. General Search (Numbers or Names)
-        else {
-          // If it's purely a number (like "201"), users usually mean the ID/Return No.
-          // We search Return No and Invoice No, but maybe exclude Customer Code to reduce noise?
-          // For now, we stick to the standard 3, but you can comment out customer_code if it causes too much noise.
-          url += `&filter[_or][0][return_number][_contains]=${term}`;
-          url += `&filter[_or][1][invoice_no][_contains]=${term}`;
-          url += `&filter[_or][2][customer_code][_contains]=${term}`;
-
-          // Optional: Search Customer Name if your backend supports deeper filtering,
-          // but keeping it simple for now.
-        }
+        const term = encodeURIComponent(search);
+        url += `&filter[_or][0][return_number][_contains]=${term}`;
+        url += `&filter[_or][1][invoice_no][_contains]=${term}`;
+        url += `&filter[_or][2][customer_code][_contains]=${term}`;
       }
       if (filters.salesman && filters.salesman !== "All")
         url += `&filter[salesman_id][_eq]=${filters.salesman}`;
@@ -312,7 +291,7 @@ export const SalesReturnProvider = {
         return_number: generatedReturnNo,
         gross_amount: totalGross,
         discount_amount: totalDiscount,
-        created_by: 205,
+        created_by: 205, // Replace with dynamic ID if needed
         invoice_no: payload.invoiceNo || "",
         customer_code: payload.customer || payload.customerCode,
         salesman_id: cleanId(payload.salesmanId),
@@ -386,6 +365,7 @@ export const SalesReturnProvider = {
     remarks: string;
     invoiceNo?: string;
     orderNo?: string;
+    appliedInvoiceId?: number;
     isThirdParty?: boolean;
   }): Promise<any> {
     try {
@@ -400,13 +380,15 @@ export const SalesReturnProvider = {
       );
       const totalNet = totalGross - totalDiscount;
 
+      // 1. Update Main Record (sales_return)
+      // 🟢 Save Manual Invoice No and Order No here
       const headerPayload = {
         remarks: payload.remarks ?? "",
         gross_amount: totalGross,
         discount_amount: totalDiscount,
         total_amount: totalNet,
-        invoice_no: payload.invoiceNo ?? "",
-        order_id: payload.orderNo ?? "",
+        invoice_no: payload.invoiceNo ?? "", // Saves Manual Input
+        order_id: payload.orderNo ?? "", // Saves Manual Input
         isThirdParty: payload.isThirdParty ? 1 : 0,
       };
 
@@ -426,6 +408,44 @@ export const SalesReturnProvider = {
         ...headerPayload,
         total_amount: totalNet,
       };
+
+      // 🟢 2. Handle Junction Table (sales_invoice_sales_return)
+      if (payload.appliedInvoiceId) {
+        // A. Check if link exists for this return ID
+        const checkLinkUrl = `${API_BASE}/sales_invoice_sales_return?filter[return_no][_eq]=${payload.returnId}`;
+        const checkRes = await fetch(checkLinkUrl, { headers: getHeaders() });
+
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const existingLinks = checkData.data || [];
+
+          if (existingLinks.length > 0) {
+            // UPDATE existing link
+            const linkId = existingLinks[0].id;
+            await fetch(`${API_BASE}/sales_invoice_sales_return/${linkId}`, {
+              method: "PATCH",
+              headers: getHeaders(),
+              // 🟢 FIX: Include linked_by (using hardcoded 205 or current user ID)
+              body: JSON.stringify({
+                invoice_no: payload.appliedInvoiceId,
+                linked_by: 205, // Required field
+              }),
+            });
+          } else {
+            // CREATE new link
+            await fetch(`${API_BASE}/sales_invoice_sales_return`, {
+              method: "POST",
+              headers: getHeaders(),
+              // 🟢 FIX: Include linked_by
+              body: JSON.stringify({
+                return_no: payload.returnId, // Sales Return ID
+                invoice_no: payload.appliedInvoiceId, // Sales Invoice ID
+                linked_by: 205, // Required field
+              }),
+            });
+          }
+        }
+      }
 
       const returnTypes = await SalesReturnProvider.getSalesReturnTypes();
       const currentItems = await SalesReturnProvider.getProductsSummary(
@@ -730,6 +750,22 @@ export const SalesReturnProvider = {
       if (!response.ok) return null;
       const result = await response.json();
       const data = result.data;
+
+      // 🟢 CRITICAL: Fetch Linked Invoice from junction table
+      let appliedToText = "-";
+      const linkUrl = `${API_BASE}/sales_invoice_sales_return?filter[return_no][_eq]=${returnId}&fields=invoice_no.invoice_no`;
+      const linkRes = await fetch(linkUrl, { headers: getHeaders() });
+      if (linkRes.ok) {
+        const linkData = await linkRes.json();
+        if (linkData.data && linkData.data.length > 0) {
+          // Directus fetches relational data. 'invoice_no' here is the object from the related sales_invoice table.
+          const linkedRec = linkData.data[0];
+          if (linkedRec.invoice_no && linkedRec.invoice_no.invoice_no) {
+            appliedToText = linkedRec.invoice_no.invoice_no;
+          }
+        }
+      }
+
       return {
         returnId: data.return_id,
         isApplied: data.isApplied === 1,
@@ -739,9 +775,7 @@ export const SalesReturnProvider = {
         transactionStatus: data.status || "Closed",
         isPosted: parseBoolean(data.isPosted),
         isReceived: parseBoolean(data.isReceived),
-        // 🟢 FIX: Disconnected 'appliedTo' from 'order_id' to prevent data conflict.
-        // Falls back to '-' since no specific DB column exists for this yet.
-        appliedTo: "-",
+        appliedTo: appliedToText, // 🟢 Set from junction Fetch
       };
     } catch (error) {
       return null;

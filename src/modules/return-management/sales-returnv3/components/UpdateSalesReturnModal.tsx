@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { createRoot } from "react-dom/client";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Loader2,
@@ -45,7 +44,6 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-// Module Imports
 import { SalesReturnProvider } from "../provider/api";
 import {
   SalesReturn,
@@ -57,6 +55,7 @@ import {
 } from "../type";
 import { ProductLookupModal } from "./ProductLookupModal";
 import { SalesReturnPrintSlip } from "./SalesReturnPrintSlip";
+import { createRoot } from "react-dom/client";
 
 interface Props {
   returnId: number;
@@ -97,7 +96,9 @@ export function UpdateSalesReturnModal({
     useState<SalesReturnStatusCard | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Filter Options State
+  // 🟢 NEW: Stores the ID for the junction table link
+  const [appliedInvoiceId, setAppliedInvoiceId] = useState<number | null>(null);
+
   const [discountOptions, setDiscountOptions] = useState<API_LineDiscount[]>(
     [],
   );
@@ -107,25 +108,22 @@ export function UpdateSalesReturnModal({
   const [salesmenOptions, setSalesmenOptions] = useState<any[]>([]);
   const [customerOptions, setCustomerOptions] = useState<any[]>([]);
 
-  // Dialog & Modal States
   const [isProductLookupOpen, setIsProductLookupOpen] = useState(false);
   const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
   const [isUpdateSuccessOpen, setIsUpdateSuccessOpen] = useState(false);
   const [isReceiveConfirmOpen, setIsReceiveConfirmOpen] = useState(false);
   const [isInvoiceLookupOpen, setIsInvoiceLookupOpen] = useState(false);
 
-  // Operation States
   const [isUpdating, setIsUpdating] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Invoice Lookup
   const [invoiceOptions, setInvoiceOptions] = useState<InvoiceOption[]>([]);
   const [invoiceSearch, setInvoiceSearch] = useState("");
 
-  // Edit Logic
   const isEditable =
     headerData.status === "Pending" || headerData.status === "Received";
+  const canEditMetadata = isEditable;
 
   // --- INITIAL LOAD ---
   useEffect(() => {
@@ -188,7 +186,7 @@ export function UpdateSalesReturnModal({
     code ||
     "-";
 
-  // --- HANDLERS ---
+  // --- HANDLERS: EDIT TABLE ---
   const handleDetailChange = (index: number, field: string, value: any) => {
     setDetails((prev) => {
       const newDetails = [...prev];
@@ -256,6 +254,7 @@ export function UpdateSalesReturnModal({
     setIsProductLookupOpen(false);
   };
 
+  // --- HANDLERS: UPDATE ---
   const handleUpdateClick = () => {
     setValidationError(null);
     if (!headerData.orderNo || !headerData.orderNo.toString().trim()) {
@@ -282,8 +281,11 @@ export function UpdateSalesReturnModal({
         returnNo: headerData.returnNo,
         items: details,
         remarks: headerData.remarks || "",
+        // 🟢 Manual Fields (sales_return table)
         invoiceNo: headerData.invoiceNo,
         orderNo: headerData.orderNo,
+        // 🟢 Linked ID (sales_invoice_sales_return table)
+        appliedInvoiceId: appliedInvoiceId ?? undefined,
         isThirdParty: headerData.isThirdParty,
       };
 
@@ -298,21 +300,18 @@ export function UpdateSalesReturnModal({
     }
   };
 
+  // --- HANDLERS: RECEIVE ---
   const handleConfirmReceive = async () => {
     try {
       setIsReceiving(true);
       await SalesReturnProvider.updateStatus(headerData.id, "Received");
-
-      // Update local state immediately
       setHeaderData({ ...headerData, status: "Received" });
       setStatusCardData((prev) =>
         prev
           ? { ...prev, isReceived: true, transactionStatus: "Received" }
           : null,
       );
-
       setIsReceiveConfirmOpen(false);
-      // 🟢 REVISION: Trigger Success Modal to notify user and eventually refresh list
       setIsUpdateSuccessOpen(true);
     } catch (error) {
       console.error("Receive failed", error);
@@ -419,7 +418,7 @@ export function UpdateSalesReturnModal({
         {validationError && (
           <div className="mx-8 mt-6 mb-0 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex items-center justify-between rounded-r shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
+              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
               <span className="text-sm font-medium">{validationError}</span>
             </div>
             <button
@@ -433,8 +432,9 @@ export function UpdateSalesReturnModal({
 
         {/* SCROLLABLE BODY */}
         <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50">
-          {/* METADATA */}
+          {/* TOP GRID (METADATA) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 rounded-xl border border-blue-100 shadow-sm">
+            {/* Column 1: Salesman */}
             <div className="space-y-4">
               <ReadOnlyField
                 label="Salesman"
@@ -449,6 +449,7 @@ export function UpdateSalesReturnModal({
                 value={getSalesmanBranch(headerData.salesmanId)}
               />
             </div>
+            {/* Column 2: Customer */}
             <div className="space-y-4">
               <ReadOnlyField
                 label="Customer"
@@ -460,6 +461,7 @@ export function UpdateSalesReturnModal({
               />
               <ReadOnlyField label="Price Type" value={headerData.priceType} />
             </div>
+            {/* Column 3: Dates & Checkbox */}
             <div className="flex flex-col space-y-4 h-full">
               <ReadOnlyField
                 label="Return Date"
@@ -491,7 +493,7 @@ export function UpdateSalesReturnModal({
             </div>
           </div>
 
-          {/* PRODUCT TABLE */}
+          {/* PRODUCT TABLE SECTION */}
           <div className="space-y-4">
             <div className="flex justify-between items-end">
               <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -520,7 +522,7 @@ export function UpdateSalesReturnModal({
                       <TableHead className="text-white font-semibold h-11 min-w-[200px] uppercase text-xs">
                         Description
                       </TableHead>
-                      <TableHead className="text-white font-semibold h-11 w-20 uppercase text-xs">
+                      <TableHead className="text-white font-semibold h-11 w-[80px] uppercase text-xs">
                         Unit
                       </TableHead>
                       <TableHead className="text-white font-semibold h-11 text-center min-w-[100px] uppercase text-xs">
@@ -544,7 +546,7 @@ export function UpdateSalesReturnModal({
                       <TableHead className="text-white font-semibold h-11 min-w-[150px] uppercase text-xs">
                         Reason
                       </TableHead>
-                      <TableHead className="text-white font-semibold h-11 w-40 uppercase text-xs">
+                      <TableHead className="text-white font-semibold h-11 w-[160px] uppercase text-xs">
                         Return Type
                       </TableHead>
                       {isEditable && (
@@ -577,6 +579,7 @@ export function UpdateSalesReturnModal({
                           key={item.id || i}
                           className="border-b border-slate-100 hover:bg-slate-50"
                         >
+                          {/* ... (Cells) ... */}
                           <TableCell className="text-xs text-slate-700 font-bold align-middle">
                             {item.code}
                           </TableCell>
@@ -770,7 +773,7 @@ export function UpdateSalesReturnModal({
             </div>
           </div>
 
-          {/* BOTTOM FORM */}
+          {/* BOTTOM FORM GRID */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4">
             <div className="md:col-span-2 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -778,7 +781,8 @@ export function UpdateSalesReturnModal({
                   <Label className="text-xs uppercase font-bold text-slate-500">
                     Order No.
                   </Label>
-                  {isEditable ? (
+                  {/* 🟢 MANUAL INPUT: Order No */}
+                  {canEditMetadata ? (
                     <Input
                       value={headerData.orderNo || ""}
                       onChange={(e) =>
@@ -799,7 +803,8 @@ export function UpdateSalesReturnModal({
                   <Label className="text-xs uppercase font-bold text-slate-500">
                     Invoice No.
                   </Label>
-                  {isEditable ? (
+                  {/* 🟢 MANUAL INPUT: Invoice No */}
+                  {canEditMetadata ? (
                     <Input
                       value={headerData.invoiceNo || ""}
                       onChange={(e) =>
@@ -822,10 +827,12 @@ export function UpdateSalesReturnModal({
                   Remarks
                 </Label>
                 <Textarea
-                  readOnly={!isEditable}
+                  readOnly={!canEditMetadata}
                   className={cn(
                     "min-h-[100px] border-slate-300 rounded-md focus:border-blue-500",
-                    !isEditable ? "bg-slate-50 border-slate-200" : "bg-white",
+                    !canEditMetadata
+                      ? "bg-slate-50 border-slate-200"
+                      : "bg-white",
                   )}
                   value={headerData.remarks || ""}
                   onChange={(e) =>
@@ -835,6 +842,7 @@ export function UpdateSalesReturnModal({
               </div>
             </div>
 
+            {/* FINANCIAL SUMMARY */}
             <div className="space-y-5">
               <div className="bg-white p-6 rounded-xl border border-blue-100 shadow-sm space-y-3 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-blue-600"></div>
@@ -874,19 +882,20 @@ export function UpdateSalesReturnModal({
                 </div>
 
                 <div className="h-px bg-slate-100 my-3"></div>
+                {/* 🟢 LINKED INVOICE SELECTION */}
                 <div className="grid grid-cols-2 gap-y-2 text-sm">
                   <div className="flex justify-between items-center col-span-2">
                     <span className="text-slate-500 font-medium">
                       Applied to
                     </span>
-                    {isEditable && headerData.orderNo ? (
+                    {canEditMetadata ? (
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 px-2"
                         onClick={() => setIsInvoiceLookupOpen(true)}
                       >
-                        {headerData.invoiceNo || "Select Invoice"}{" "}
+                        {statusCardData?.appliedTo || "Select Invoice"}{" "}
                         <LinkIcon className="ml-1 h-3 w-3" />
                       </Button>
                     ) : (
@@ -919,7 +928,7 @@ export function UpdateSalesReturnModal({
           <Button
             className="bg-blue-600 hover:bg-blue-700 text-white min-w-40"
             onClick={handleUpdateClick}
-            disabled={!isEditable}
+            disabled={!canEditMetadata}
           >
             Update Sales Return
           </Button>
@@ -968,10 +977,13 @@ export function UpdateSalesReturnModal({
                     key={inv.id}
                     className="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors"
                     onClick={() => {
-                      setHeaderData({
-                        ...headerData,
-                        invoiceNo: inv.invoice_no,
-                      });
+                      // 🟢 REVISION: Only update Applied To logic
+                      setStatusCardData((prev) => ({
+                        ...prev!,
+                        appliedTo: inv.invoice_no,
+                      }));
+                      // Stores the Invoice ID for the junction table
+                      setAppliedInvoiceId(Number(inv.id));
                       setIsInvoiceLookupOpen(false);
                     }}
                   >
