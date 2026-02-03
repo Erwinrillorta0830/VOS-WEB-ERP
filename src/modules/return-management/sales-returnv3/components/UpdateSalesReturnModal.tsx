@@ -18,8 +18,8 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogTitle,
   DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,7 +96,7 @@ export function UpdateSalesReturnModal({
     useState<SalesReturnStatusCard | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 🟢 NEW: Stores the ID for the junction table link
+  // 🟢 Track the ID for the junction table link
   const [appliedInvoiceId, setAppliedInvoiceId] = useState<number | null>(null);
 
   const [discountOptions, setDiscountOptions] = useState<API_LineDiscount[]>(
@@ -121,9 +121,14 @@ export function UpdateSalesReturnModal({
   const [invoiceOptions, setInvoiceOptions] = useState<InvoiceOption[]>([]);
   const [invoiceSearch, setInvoiceSearch] = useState("");
 
-  const isEditable =
-    headerData.status === "Pending" || headerData.status === "Received";
-  const canEditMetadata = isEditable;
+  // 🟢 REVISED: Edit Permissions Logic
+  const isPending = headerData.status === "Pending";
+  const isReceived = headerData.status === "Received";
+
+  // Rule 1: Everything is editable if Pending
+  // Rule 2: Only Remarks and Applied To are editable if Received
+  const canEditAll = isPending;
+  const canEditLimited = isPending || isReceived;
 
   // --- INITIAL LOAD ---
   useEffect(() => {
@@ -265,7 +270,6 @@ export function UpdateSalesReturnModal({
     const hasIncompleteItems = details.some(
       (item) => !item.returnType || item.returnType === "",
     );
-
     if (hasIncompleteItems) {
       setValidationError("Please select a 'Return Type' for all items.");
       return;
@@ -281,10 +285,8 @@ export function UpdateSalesReturnModal({
         returnNo: headerData.returnNo,
         items: details,
         remarks: headerData.remarks || "",
-        // 🟢 Manual Fields (sales_return table)
         invoiceNo: headerData.invoiceNo,
         orderNo: headerData.orderNo,
-        // 🟢 Linked ID (sales_invoice_sales_return table)
         appliedInvoiceId: appliedInvoiceId ?? undefined,
         isThirdParty: headerData.isThirdParty,
       };
@@ -300,7 +302,6 @@ export function UpdateSalesReturnModal({
     }
   };
 
-  // --- HANDLERS: RECEIVE ---
   const handleConfirmReceive = async () => {
     try {
       setIsReceiving(true);
@@ -348,7 +349,6 @@ export function UpdateSalesReturnModal({
     printWindow.document.write(
       "<html><head><title>Print Preview</title></head><body><div id='print-root'></div></body></html>",
     );
-
     document
       .querySelectorAll('link[rel="stylesheet"], style')
       .forEach((node) => {
@@ -361,10 +361,8 @@ export function UpdateSalesReturnModal({
       .hidden { display: block !important; }
     `;
     printWindow.document.head.appendChild(styleOverride);
-
     const root = createRoot(printWindow.document.getElementById("print-root")!);
     root.render(<SalesReturnPrintSlip data={printData} />);
-
     printWindow.setTimeout(() => {
       printWindow.print();
     }, 1000);
@@ -394,7 +392,7 @@ export function UpdateSalesReturnModal({
         <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
           <div>
             <DialogTitle className="text-2xl font-bold text-slate-800">
-              {isEditable ? "Edit Sales Return" : "Return Details"}
+              {isPending ? "Edit Sales Return" : "Return Details"}
             </DialogTitle>
             <div className="flex items-center gap-2 mt-1">
               <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-bold uppercase tracking-wider">
@@ -414,11 +412,10 @@ export function UpdateSalesReturnModal({
           </button>
         </div>
 
-        {/* VALIDATION ERROR BANNER */}
         {validationError && (
-          <div className="mx-8 mt-6 mb-0 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex items-center justify-between rounded-r shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="mx-8 mt-6 mb-0 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex items-center justify-between rounded-r shadow-sm">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
+              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
               <span className="text-sm font-medium">{validationError}</span>
             </div>
             <button
@@ -432,9 +429,8 @@ export function UpdateSalesReturnModal({
 
         {/* SCROLLABLE BODY */}
         <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/50">
-          {/* TOP GRID (METADATA) */}
+          {/* METADATA */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 rounded-xl border border-blue-100 shadow-sm">
-            {/* Column 1: Salesman */}
             <div className="space-y-4">
               <ReadOnlyField
                 label="Salesman"
@@ -449,7 +445,6 @@ export function UpdateSalesReturnModal({
                 value={getSalesmanBranch(headerData.salesmanId)}
               />
             </div>
-            {/* Column 2: Customer */}
             <div className="space-y-4">
               <ReadOnlyField
                 label="Customer"
@@ -461,7 +456,6 @@ export function UpdateSalesReturnModal({
               />
               <ReadOnlyField label="Price Type" value={headerData.priceType} />
             </div>
-            {/* Column 3: Dates & Checkbox */}
             <div className="flex flex-col space-y-4 h-full">
               <ReadOnlyField
                 label="Return Date"
@@ -472,10 +466,11 @@ export function UpdateSalesReturnModal({
                 value={headerData.createdAt}
               />
               <div className="flex items-center space-x-2 pt-2 mt-auto">
+                {/* 🟢 REVISED: Disabled if not Pending */}
                 <Checkbox
                   id="isThirdParty"
                   checked={headerData.isThirdParty || false}
-                  disabled={!isEditable}
+                  disabled={!canEditAll}
                   onCheckedChange={(checked) =>
                     setHeaderData({
                       ...headerData,
@@ -493,14 +488,15 @@ export function UpdateSalesReturnModal({
             </div>
           </div>
 
-          {/* PRODUCT TABLE SECTION */}
+          {/* PRODUCT TABLE */}
           <div className="space-y-4">
             <div className="flex justify-between items-end">
               <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <span className="h-5 w-1 bg-blue-600 rounded-full"></span>
                 Products Summary
               </h3>
-              {isEditable && (
+              {/* 🟢 REVISED: Add Button hidden if not Pending */}
+              {canEditAll && (
                 <Button
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shadow-md shadow-blue-200"
@@ -522,7 +518,7 @@ export function UpdateSalesReturnModal({
                       <TableHead className="text-white font-semibold h-11 min-w-[200px] uppercase text-xs">
                         Description
                       </TableHead>
-                      <TableHead className="text-white font-semibold h-11 w-20 uppercase text-xs">
+                      <TableHead className="text-white font-semibold h-11 w-[80px] uppercase text-xs">
                         Unit
                       </TableHead>
                       <TableHead className="text-white font-semibold h-11 text-center min-w-[100px] uppercase text-xs">
@@ -546,10 +542,11 @@ export function UpdateSalesReturnModal({
                       <TableHead className="text-white font-semibold h-11 min-w-[150px] uppercase text-xs">
                         Reason
                       </TableHead>
-                      <TableHead className="text-white font-semibold h-11 w-40 uppercase text-xs">
+                      <TableHead className="text-white font-semibold h-11 w-[160px] uppercase text-xs">
                         Return Type
                       </TableHead>
-                      {isEditable && (
+                      {/* 🟢 REVISED: Delete Column hidden if not Pending */}
+                      {canEditAll && (
                         <TableHead className="text-white font-semibold h-11 w-[50px]"></TableHead>
                       )}
                     </TableRow>
@@ -557,17 +554,14 @@ export function UpdateSalesReturnModal({
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={isEditable ? 12 : 11}
-                          className="h-32 text-center"
-                        >
+                        <TableCell colSpan={12} className="h-32 text-center">
                           <Loader2 className="animate-spin text-blue-500 mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : details.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={isEditable ? 12 : 11}
+                          colSpan={12}
                           className="h-24 text-center text-slate-500 text-sm"
                         >
                           No products found.
@@ -579,7 +573,7 @@ export function UpdateSalesReturnModal({
                           key={item.id || i}
                           className="border-b border-slate-100 hover:bg-slate-50"
                         >
-                          {/* ... (Cells) ... */}
+                          {/* 🟢 REVISED: All inputs disabled if not Pending (canEditAll) */}
                           <TableCell className="text-xs text-slate-700 font-bold align-middle">
                             {item.code}
                           </TableCell>
@@ -600,7 +594,7 @@ export function UpdateSalesReturnModal({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center align-middle p-2">
-                            {isEditable ? (
+                            {canEditAll ? (
                               <Input
                                 type="number"
                                 className="h-9 w-full text-center text-sm border-slate-300 px-2"
@@ -620,7 +614,7 @@ export function UpdateSalesReturnModal({
                             )}
                           </TableCell>
                           <TableCell className="text-right align-middle p-2">
-                            {isEditable ? (
+                            {canEditAll ? (
                               <Input
                                 type="number"
                                 className="h-9 w-full text-right text-sm border-slate-300 px-2"
@@ -645,7 +639,7 @@ export function UpdateSalesReturnModal({
                             ).toLocaleString()}
                           </TableCell>
                           <TableCell className="align-middle p-2">
-                            {isEditable ? (
+                            {canEditAll ? (
                               <Select
                                 value={
                                   item.discountType?.toString() || "No Discount"
@@ -691,7 +685,7 @@ export function UpdateSalesReturnModal({
                             {(Number(item.totalAmount) || 0).toLocaleString()}
                           </TableCell>
                           <TableCell className="align-middle p-2">
-                            {isEditable ? (
+                            {canEditAll ? (
                               <Input
                                 className="h-9 w-full text-sm border-slate-300"
                                 placeholder="Enter reason..."
@@ -711,7 +705,7 @@ export function UpdateSalesReturnModal({
                             )}
                           </TableCell>
                           <TableCell className="align-middle p-2">
-                            {isEditable ? (
+                            {canEditAll ? (
                               <Select
                                 value={item.returnType as string}
                                 onValueChange={(val) =>
@@ -752,7 +746,7 @@ export function UpdateSalesReturnModal({
                               </Badge>
                             )}
                           </TableCell>
-                          {isEditable && (
+                          {canEditAll && (
                             <TableCell className="text-center align-middle">
                               <Button
                                 variant="ghost"
@@ -781,8 +775,8 @@ export function UpdateSalesReturnModal({
                   <Label className="text-xs uppercase font-bold text-slate-500">
                     Order No.
                   </Label>
-                  {/* 🟢 MANUAL INPUT: Order No */}
-                  {canEditMetadata ? (
+                  {/* 🟢 REVISED: Disabled if not Pending */}
+                  {canEditAll ? (
                     <Input
                       value={headerData.orderNo || ""}
                       onChange={(e) =>
@@ -803,8 +797,8 @@ export function UpdateSalesReturnModal({
                   <Label className="text-xs uppercase font-bold text-slate-500">
                     Invoice No.
                   </Label>
-                  {/* 🟢 MANUAL INPUT: Invoice No */}
-                  {canEditMetadata ? (
+                  {/* 🟢 REVISED: Disabled if not Pending */}
+                  {canEditAll ? (
                     <Input
                       value={headerData.invoiceNo || ""}
                       onChange={(e) =>
@@ -826,11 +820,12 @@ export function UpdateSalesReturnModal({
                 <Label className="text-xs uppercase font-bold text-slate-500">
                   Remarks
                 </Label>
+                {/* 🟢 REVISED: Editable if Pending or Received (canEditLimited) */}
                 <Textarea
-                  readOnly={!canEditMetadata}
+                  readOnly={!canEditLimited}
                   className={cn(
                     "min-h-[100px] border-slate-300 rounded-md focus:border-blue-500",
-                    !canEditMetadata
+                    !canEditLimited
                       ? "bg-slate-50 border-slate-200"
                       : "bg-white",
                   )}
@@ -882,13 +877,13 @@ export function UpdateSalesReturnModal({
                 </div>
 
                 <div className="h-px bg-slate-100 my-3"></div>
-                {/* 🟢 LINKED INVOICE SELECTION */}
                 <div className="grid grid-cols-2 gap-y-2 text-sm">
                   <div className="flex justify-between items-center col-span-2">
                     <span className="text-slate-500 font-medium">
                       Applied to
                     </span>
-                    {canEditMetadata ? (
+                    {/* 🟢 REVISED: Editable if Pending or Received (canEditLimited) */}
+                    {canEditLimited ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -921,14 +916,14 @@ export function UpdateSalesReturnModal({
           <Button
             className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[100px]"
             onClick={() => setIsReceiveConfirmOpen(true)}
-            disabled={!isEditable || headerData.status === "Received"}
+            disabled={!isPending}
           >
             Receive
           </Button>
           <Button
             className="bg-blue-600 hover:bg-blue-700 text-white min-w-40"
             onClick={handleUpdateClick}
-            disabled={!canEditMetadata}
+            disabled={!canEditLimited}
           >
             Update Sales Return
           </Button>
@@ -936,7 +931,6 @@ export function UpdateSalesReturnModal({
       </DialogContent>
 
       {/* --- NESTED MODALS --- */}
-      {/* 1. PRODUCT LOOKUP */}
       {isProductLookupOpen && (
         <ProductLookupModal
           isOpen={isProductLookupOpen}
@@ -945,7 +939,7 @@ export function UpdateSalesReturnModal({
         />
       )}
 
-      {/* 2. INVOICE LOOKUP */}
+      {/* 2. INVOICE LOOKUP - 🟢 REVISED: Shows Amount */}
       <Dialog open={isInvoiceLookupOpen} onOpenChange={setIsInvoiceLookupOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -975,27 +969,36 @@ export function UpdateSalesReturnModal({
                 filteredInvoices.map((inv) => (
                   <div
                     key={inv.id}
-                    className="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors"
+                    className="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors justify-between"
                     onClick={() => {
-                      // 🟢 REVISION: Only update Applied To logic
                       setStatusCardData((prev) => ({
                         ...prev!,
                         appliedTo: inv.invoice_no,
                       }));
-                      // Stores the Invoice ID for the junction table
                       setAppliedInvoiceId(Number(inv.id));
                       setIsInvoiceLookupOpen(false);
                     }}
                   >
-                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                      <FileText className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-slate-800">
-                        {inv.invoice_no}
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                        <FileText className="h-4 w-4" />
                       </div>
-                      <div className="text-xs text-slate-500">ID: {inv.id}</div>
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">
+                          {inv.invoice_no}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          ID: {inv.id}
+                        </div>
+                      </div>
                     </div>
+                    {/* 🟢 REVISED: Display Amount on Right Side */}
+                    <span className="text-xs text-slate-500 font-mono">
+                      ₱
+                      {Number(inv.amount || 0).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
                   </div>
                 ))
               )}
@@ -1004,7 +1007,7 @@ export function UpdateSalesReturnModal({
         </DialogContent>
       </Dialog>
 
-      {/* 3. CONFIRM UPDATE DIALOG */}
+      {/* CONFIRM DIALOGS (Update, Success, Receive) remain same structure */}
       <Dialog open={isUpdateConfirmOpen} onOpenChange={setIsUpdateConfirmOpen}>
         <DialogContent className="max-w-[400px] p-6 bg-white rounded-xl shadow-2xl border-0">
           <div className="flex flex-col items-center text-center gap-4">
@@ -1044,7 +1047,6 @@ export function UpdateSalesReturnModal({
         </DialogContent>
       </Dialog>
 
-      {/* 4. SUCCESS UPDATE DIALOG */}
       <Dialog
         open={isUpdateSuccessOpen}
         onOpenChange={(open) => {
@@ -1080,7 +1082,6 @@ export function UpdateSalesReturnModal({
         </DialogContent>
       </Dialog>
 
-      {/* 5. CONFIRM RECEIVE DIALOG */}
       <Dialog
         open={isReceiveConfirmOpen}
         onOpenChange={setIsReceiveConfirmOpen}

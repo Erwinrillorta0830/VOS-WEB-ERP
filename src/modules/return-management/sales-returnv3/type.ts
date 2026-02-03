@@ -169,4 +169,5 @@ export interface InvoiceOption {
   id: number | string; // The ID from the API (or the invoice number itself if used as ID)
   invoice_no: string; // The actual text to show
   customerCode: string;
+  amount?: number; // 🟢 Add this line
 }

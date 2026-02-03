@@ -63,6 +63,7 @@ const normalizeCode = (code: string) => {
 };
 
 export const SalesReturnProvider = {
+  // --- 1. MAIN LIST & FILTERING ---
   async getReturns(
     page: number = 1,
     limit: number = 10,
@@ -95,27 +96,43 @@ export const SalesReturnProvider = {
       if (!response.ok) return { data: [], total: 0 };
 
       const result = await response.json();
-      const mappedData: SalesReturn[] = (result.data || []).map(
-        (item: any) => ({
-          id: item.return_id,
-          returnNo: item.return_number,
-          invoiceNo: item.invoice_no,
-          customerCode: item.customer_code,
-          salesmanId: item.salesman_id,
-          returnDate: item.return_date
-            ? new Date(item.return_date).toLocaleDateString()
-            : "N/A",
-          totalAmount: parseFloat(item.total_amount) || 0,
-          status: item.status || "Pending",
-          remarks: item.remarks,
-          orderNo: item.order_id || "",
-          isThirdParty: parseBoolean(item.isThirdParty),
-          priceType: item.price_type || "-",
-          createdAt: item.created_at
-            ? new Date(item.created_at).toLocaleDateString()
-            : "-",
-        }),
-      );
+      let mappedData: SalesReturn[] = (result.data || []).map((item: any) => ({
+        id: item.return_id,
+        returnNo: item.return_number,
+        invoiceNo: item.invoice_no,
+        customerCode: item.customer_code,
+        salesmanId: item.salesman_id,
+        returnDate: item.return_date
+          ? new Date(item.return_date).toLocaleDateString()
+          : "N/A",
+        totalAmount: parseFloat(item.total_amount) || 0,
+        status: item.status || "Pending",
+        remarks: item.remarks,
+        orderNo: item.order_id || "",
+        isThirdParty: parseBoolean(item.isThirdParty),
+        priceType: item.price_type || "-",
+        createdAt: item.created_at
+          ? new Date(item.created_at).toLocaleDateString()
+          : "-",
+      }));
+
+      // Client-Side Strict Filter
+      if (search) {
+        const lowerSearch = search.toLowerCase().trim();
+        mappedData = mappedData.filter((item) => {
+          const matchReturn = item.returnNo
+            ?.toLowerCase()
+            .includes(lowerSearch);
+          const matchInvoice = item.invoiceNo
+            ?.toLowerCase()
+            .includes(lowerSearch);
+          const matchCustomer = item.customerCode
+            ?.toLowerCase()
+            .includes(lowerSearch);
+          return matchReturn || matchInvoice || matchCustomer;
+        });
+      }
+
       return { data: mappedData, total: result.meta?.filter_count || 0 };
     } catch (error) {
       console.error("Provider Error (getReturns):", error);
@@ -123,6 +140,7 @@ export const SalesReturnProvider = {
     }
   },
 
+  // --- 2. DROPDOWN HELPERS (Filters) ---
   async getSalesmenList(): Promise<
     { value: string; label: string; code: string; branch: string }[]
   > {
@@ -160,9 +178,8 @@ export const SalesReturnProvider = {
 
   async getCustomersList(): Promise<{ value: string; label: string }[]> {
     try {
-      const fields = "id,customer_code,customer_name";
       const response = await fetch(
-        `${API_BASE}/customer?limit=-1&fields=${fields}`,
+        `${API_BASE}/customer?limit=-1&fields=id,customer_code,customer_name`,
         { headers: getHeaders() },
       );
       if (!response.ok) return [];
@@ -176,11 +193,11 @@ export const SalesReturnProvider = {
     }
   },
 
+  // --- 3. FORM HELPERS (Create/Edit) ---
   async getFormSalesmen(): Promise<SalesmanOption[]> {
     try {
-      const fields = "id,salesman_name,salesman_code,price_type,branch_code";
       const response = await fetch(
-        `${API_BASE}/salesman?limit=-1&fields=${fields}`,
+        `${API_BASE}/salesman?limit=-1&fields=id,salesman_name,salesman_code,price_type,branch_code`,
         { headers: getHeaders() },
       );
       if (!response.ok) throw new Error(`Status: ${response.status}`);
@@ -199,9 +216,8 @@ export const SalesReturnProvider = {
 
   async getFormCustomers(): Promise<CustomerOption[]> {
     try {
-      const fields = "id,store_name,customer_name,customer_code";
       const response = await fetch(
-        `${API_BASE}/customer?limit=-1&fields=${fields}`,
+        `${API_BASE}/customer?limit=-1&fields=id,store_name,customer_name,customer_code`,
         { headers: getHeaders() },
       );
       if (!response.ok) throw new Error(`Status: ${response.status}`);
@@ -218,9 +234,8 @@ export const SalesReturnProvider = {
 
   async getFormBranches(): Promise<BranchOption[]> {
     try {
-      const fields = "id,branch_name";
       const response = await fetch(
-        `${API_BASE}/branches?limit=-1&fields=${fields}`,
+        `${API_BASE}/branches?limit=-1&fields=id,branch_name`,
         { headers: getHeaders() },
       );
       if (!response.ok) throw new Error(`Status: ${response.status}`);
@@ -236,7 +251,8 @@ export const SalesReturnProvider = {
 
   async getInvoiceReturnList(customerCode?: string): Promise<InvoiceOption[]> {
     const targetCode = customerCode ? normalizeCode(customerCode) : "";
-    const baseUrl = `${API_BASE}/sales_invoice?limit=-1&fields=invoice_id,invoice_no,customer_code`;
+    const baseUrl = `${API_BASE}/sales_invoice?limit=-1&fields=invoice_id,invoice_no,customer_code,isPosted,total_amount&filter[isPosted][_null]=true`;
+
     const queryUrl = targetCode
       ? `${baseUrl}&filter[customer_code][_contains]=${encodeURIComponent(targetCode)}`
       : baseUrl;
@@ -259,6 +275,8 @@ export const SalesReturnProvider = {
             id: item.invoice_id,
             invoice_no: item.invoice_no.toString(),
             customerCode: item.customer_code || "",
+            isPosted: item.isPosted,
+            amount: item.total_amount ? parseFloat(item.total_amount) : 0,
           });
         }
       });
@@ -269,269 +287,7 @@ export const SalesReturnProvider = {
     }
   },
 
-  async submitReturn(payload: any): Promise<any> {
-    try {
-      const totalGross = payload.items.reduce(
-        (sum: number, item: any) =>
-          sum + Number(item.quantity) * Number(item.unitPrice),
-        0,
-      );
-      const totalDiscount = payload.items.reduce(
-        (sum: number, item: any) => sum + Number(item.discountAmount || 0),
-        0,
-      );
-      const formattedDate = formatDateForAPI(payload.returnDate);
-      const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
-      const shortTimestamp = Math.floor(Date.now() / 1000)
-        .toString()
-        .slice(-4);
-      const generatedReturnNo = `SR-${shortTimestamp}-${uniqueSuffix}`;
-
-      const headerPayload = {
-        return_number: generatedReturnNo,
-        gross_amount: totalGross,
-        discount_amount: totalDiscount,
-        created_by: 205, // Replace with dynamic ID if needed
-        invoice_no: payload.invoiceNo || "",
-        customer_code: payload.customer || payload.customerCode,
-        salesman_id: cleanId(payload.salesmanId),
-        total_amount: payload.totalAmount,
-        status: "Pending",
-        return_date: formattedDate,
-        price_type: payload.priceType || "A",
-        remarks: payload.remarks || "Created via Web App",
-        order_id: payload.orderNo || "",
-        isThirdParty: payload.isThirdParty ? 1 : 0,
-      };
-
-      const headerResponse = await fetch(`${API_BASE}/sales_return`, {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify(headerPayload),
-      });
-
-      if (!headerResponse.ok) throw new Error(await headerResponse.text());
-      const headerResult = await headerResponse.json();
-      const finalReturnNo =
-        headerResult.data?.return_number || generatedReturnNo;
-
-      const returnTypes = await SalesReturnProvider.getSalesReturnTypes();
-
-      const detailPromises = payload.items.map(async (item: any) => {
-        const matchedType = returnTypes.find(
-          (t) => t.type_name === item.returnType,
-        );
-        const typeId = matchedType
-          ? matchedType.type_id
-          : returnTypes[0]?.type_id || 1;
-
-        const detailPayload = {
-          return_no: finalReturnNo,
-          product_id: Number(item.productId || item.product_id || item.id),
-          quantity: Number(item.quantity),
-          unit_price: Number(item.unitPrice),
-          gross_amount: Number(item.quantity) * Number(item.unitPrice),
-          discount_amount: Number(item.discountAmount || 0),
-          total_amount:
-            Number(item.quantity) * Number(item.unitPrice) -
-            Number(item.discountAmount || 0),
-          sales_return_type_id: typeId,
-          discount_type:
-            item.discountType && item.discountType !== ""
-              ? Number(item.discountType)
-              : null,
-          reason: item.reason || null,
-        };
-
-        const res = await fetch(`${API_BASE}/sales_return_details`, {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify(detailPayload),
-        });
-        return { ok: res.ok };
-      });
-      await Promise.all(detailPromises);
-
-      return headerResult;
-    } catch (error: any) {
-      throw error;
-    }
-  },
-
-  async updateReturn(payload: {
-    returnId: number;
-    returnNo: string;
-    items: any[];
-    remarks: string;
-    invoiceNo?: string;
-    orderNo?: string;
-    appliedInvoiceId?: number;
-    isThirdParty?: boolean;
-  }): Promise<any> {
-    try {
-      const totalGross = payload.items.reduce(
-        (sum: number, item: any) =>
-          sum + Number(item.quantity) * Number(item.unitPrice),
-        0,
-      );
-      const totalDiscount = payload.items.reduce(
-        (sum: number, item: any) => sum + Number(item.discountAmount || 0),
-        0,
-      );
-      const totalNet = totalGross - totalDiscount;
-
-      // 1. Update Main Record (sales_return)
-      // 🟢 Save Manual Invoice No and Order No here
-      const headerPayload = {
-        remarks: payload.remarks ?? "",
-        gross_amount: totalGross,
-        discount_amount: totalDiscount,
-        total_amount: totalNet,
-        invoice_no: payload.invoiceNo ?? "", // Saves Manual Input
-        order_id: payload.orderNo ?? "", // Saves Manual Input
-        isThirdParty: payload.isThirdParty ? 1 : 0,
-      };
-
-      const headerResponse = await fetch(
-        `${API_BASE}/sales_return/${payload.returnId}`,
-        {
-          method: "PATCH",
-          headers: getHeaders(),
-          body: JSON.stringify(headerPayload),
-        },
-      );
-
-      if (!headerResponse.ok) throw new Error(await headerResponse.text());
-
-      const serverResult = await headerResponse.json();
-      const updatedHeader = serverResult.data || {
-        ...headerPayload,
-        total_amount: totalNet,
-      };
-
-      // 🟢 2. Handle Junction Table (sales_invoice_sales_return)
-      if (payload.appliedInvoiceId) {
-        // A. Check if link exists for this return ID
-        const checkLinkUrl = `${API_BASE}/sales_invoice_sales_return?filter[return_no][_eq]=${payload.returnId}`;
-        const checkRes = await fetch(checkLinkUrl, { headers: getHeaders() });
-
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          const existingLinks = checkData.data || [];
-
-          if (existingLinks.length > 0) {
-            // UPDATE existing link
-            const linkId = existingLinks[0].id;
-            await fetch(`${API_BASE}/sales_invoice_sales_return/${linkId}`, {
-              method: "PATCH",
-              headers: getHeaders(),
-              // 🟢 FIX: Include linked_by (using hardcoded 205 or current user ID)
-              body: JSON.stringify({
-                invoice_no: payload.appliedInvoiceId,
-                linked_by: 205, // Required field
-              }),
-            });
-          } else {
-            // CREATE new link
-            await fetch(`${API_BASE}/sales_invoice_sales_return`, {
-              method: "POST",
-              headers: getHeaders(),
-              // 🟢 FIX: Include linked_by
-              body: JSON.stringify({
-                return_no: payload.returnId, // Sales Return ID
-                invoice_no: payload.appliedInvoiceId, // Sales Invoice ID
-                linked_by: 205, // Required field
-              }),
-            });
-          }
-        }
-      }
-
-      const returnTypes = await SalesReturnProvider.getSalesReturnTypes();
-      const currentItems = await SalesReturnProvider.getProductsSummary(
-        payload.returnId,
-        payload.returnNo,
-      );
-      const payloadIds = payload.items
-        .filter((item: any) => typeof item.id === "number")
-        .map((item: any) => item.id);
-
-      const itemsToDelete = currentItems.filter(
-        (dbItem) => !payloadIds.includes(dbItem.id),
-      );
-      for (const item of itemsToDelete) {
-        if (item.id)
-          await fetch(`${API_BASE}/sales_return_details/${item.id}`, {
-            method: "DELETE",
-            headers: getHeaders(),
-          });
-      }
-
-      for (const item of payload.items) {
-        const matchedType = returnTypes.find(
-          (t) => t.type_name === item.returnType,
-        );
-        const typeId = matchedType
-          ? matchedType.type_id
-          : returnTypes[0]?.type_id || 1;
-
-        const detailPayload = {
-          quantity: Number(item.quantity),
-          unit_price: Number(item.unitPrice),
-          gross_amount: Number(item.quantity) * Number(item.unitPrice),
-          discount_amount: Number(item.discountAmount || 0),
-          total_amount:
-            Number(item.quantity) * Number(item.unitPrice) -
-            Number(item.discountAmount || 0),
-          sales_return_type_id: typeId,
-          discount_type:
-            item.discountType &&
-            item.discountType !== "No Discount" &&
-            item.discountType !== ""
-              ? Number(item.discountType)
-              : null,
-          reason: item.reason || null,
-        };
-
-        if (typeof item.id === "string" && item.id.startsWith("added-")) {
-          await fetch(`${API_BASE}/sales_return_details`, {
-            method: "POST",
-            headers: getHeaders(),
-            body: JSON.stringify({
-              ...detailPayload,
-              return_no: payload.returnNo,
-              product_id: Number(item.productId || item.product_id),
-            }),
-          });
-        } else {
-          await fetch(`${API_BASE}/sales_return_details/${item.id}`, {
-            method: "PATCH",
-            headers: getHeaders(),
-            body: JSON.stringify(detailPayload),
-          });
-        }
-      }
-      return updatedHeader;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async updateStatus(id: number | string, status: string): Promise<any> {
-    try {
-      const payload = { status: status };
-      const response = await fetch(`${API_BASE}/sales_return/${id}`, {
-        method: "PATCH",
-        headers: getHeaders(),
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(await response.text());
-      return await response.json();
-    } catch (error) {
-      throw error;
-    }
-  },
-
+  // --- 4. PRODUCT LOOKUP HELPERS (The Missing Part) ---
   async getBrands(): Promise<Brand[]> {
     try {
       const response = await fetch(`${API_BASE}/brand?limit=-1`, {
@@ -651,36 +407,266 @@ export const SalesReturnProvider = {
     }
   },
 
+  // --- 5. CRUD OPERATIONS ---
+  async submitReturn(payload: any): Promise<any> {
+    try {
+      const totalGross = payload.items.reduce(
+        (sum: number, item: any) =>
+          sum + Number(item.quantity) * Number(item.unitPrice),
+        0,
+      );
+      const totalDiscount = payload.items.reduce(
+        (sum: number, item: any) => sum + Number(item.discountAmount || 0),
+        0,
+      );
+      const formattedDate = formatDateForAPI(payload.returnDate);
+      const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
+      const shortTimestamp = Math.floor(Date.now() / 1000)
+        .toString()
+        .slice(-4);
+      const generatedReturnNo = `SR-${shortTimestamp}-${uniqueSuffix}`;
+
+      const headerPayload = {
+        return_number: generatedReturnNo,
+        gross_amount: totalGross,
+        discount_amount: totalDiscount,
+        created_by: 205,
+        invoice_no: payload.invoiceNo || "",
+        customer_code: payload.customer || payload.customerCode,
+        salesman_id: cleanId(payload.salesmanId),
+        total_amount: payload.totalAmount,
+        status: "Pending",
+        return_date: formattedDate,
+        price_type: payload.priceType || "A",
+        remarks: payload.remarks || "Created via Web App",
+        order_id: payload.orderNo || "",
+        isThirdParty: payload.isThirdParty ? 1 : 0,
+      };
+
+      const headerResponse = await fetch(`${API_BASE}/sales_return`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(headerPayload),
+      });
+      if (!headerResponse.ok) throw new Error(await headerResponse.text());
+      const headerResult = await headerResponse.json();
+      const finalReturnNo =
+        headerResult.data?.return_number || generatedReturnNo;
+      const returnTypes = await SalesReturnProvider.getSalesReturnTypes();
+
+      const detailPromises = payload.items.map(async (item: any) => {
+        const matchedType = returnTypes.find(
+          (t: API_SalesReturnType) => t.type_name === item.returnType,
+        );
+        const typeId = matchedType
+          ? matchedType.type_id
+          : returnTypes[0]?.type_id || 1;
+        const detailPayload = {
+          return_no: finalReturnNo,
+          product_id: Number(item.productId || item.product_id || item.id),
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unitPrice),
+          gross_amount: Number(item.quantity) * Number(item.unitPrice),
+          discount_amount: Number(item.discountAmount || 0),
+          total_amount:
+            Number(item.quantity) * Number(item.unitPrice) -
+            Number(item.discountAmount || 0),
+          sales_return_type_id: typeId,
+          discount_type:
+            item.discountType && item.discountType !== ""
+              ? Number(item.discountType)
+              : null,
+          reason: item.reason || null,
+        };
+        const res = await fetch(`${API_BASE}/sales_return_details`, {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify(detailPayload),
+        });
+        return { ok: res.ok };
+      });
+      await Promise.all(detailPromises);
+      return headerResult;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  async updateReturn(payload: {
+    returnId: number;
+    returnNo: string;
+    items: any[];
+    remarks: string;
+    invoiceNo?: string;
+    orderNo?: string;
+    appliedInvoiceId?: number;
+    isThirdParty?: boolean;
+  }): Promise<any> {
+    try {
+      const totalGross = payload.items.reduce(
+        (sum: number, item: any) =>
+          sum + Number(item.quantity) * Number(item.unitPrice),
+        0,
+      );
+      const totalDiscount = payload.items.reduce(
+        (sum: number, item: any) => sum + Number(item.discountAmount || 0),
+        0,
+      );
+      const totalNet = totalGross - totalDiscount;
+
+      const headerPayload = {
+        remarks: payload.remarks ?? "",
+        gross_amount: totalGross,
+        discount_amount: totalDiscount,
+        total_amount: totalNet,
+        invoice_no: payload.invoiceNo ?? "",
+        order_id: payload.orderNo ?? "",
+        isThirdParty: payload.isThirdParty ? 1 : 0,
+      };
+
+      const headerResponse = await fetch(
+        `${API_BASE}/sales_return/${payload.returnId}`,
+        {
+          method: "PATCH",
+          headers: getHeaders(),
+          body: JSON.stringify(headerPayload),
+        },
+      );
+
+      if (!headerResponse.ok) throw new Error(await headerResponse.text());
+      const serverResult = await headerResponse.json();
+      const updatedHeader = serverResult.data;
+
+      // Handle Junction Table
+      if (payload.appliedInvoiceId) {
+        const checkLinkUrl = `${API_BASE}/sales_invoice_sales_return?filter[return_no][_eq]=${payload.returnId}`;
+        const checkRes = await fetch(checkLinkUrl, { headers: getHeaders() });
+
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const existingLinks = checkData.data || [];
+
+          if (existingLinks.length > 0) {
+            const linkId = existingLinks[0].id;
+            await fetch(`${API_BASE}/sales_invoice_sales_return/${linkId}`, {
+              method: "PATCH",
+              headers: getHeaders(),
+              body: JSON.stringify({
+                invoice_no: payload.appliedInvoiceId,
+                linked_by: 205,
+              }),
+            });
+          } else {
+            await fetch(`${API_BASE}/sales_invoice_sales_return`, {
+              method: "POST",
+              headers: getHeaders(),
+              body: JSON.stringify({
+                return_no: payload.returnId,
+                invoice_no: payload.appliedInvoiceId,
+                linked_by: 205,
+              }),
+            });
+          }
+        }
+      }
+
+      const returnTypes = await SalesReturnProvider.getSalesReturnTypes();
+      const currentItems = await SalesReturnProvider.getProductsSummary(
+        payload.returnId,
+        payload.returnNo,
+      );
+      const payloadIds = payload.items
+        .filter((item: any) => typeof item.id === "number")
+        .map((item: any) => item.id);
+
+      const itemsToDelete = currentItems.filter(
+        (dbItem) => !payloadIds.includes(dbItem.id),
+      );
+      for (const item of itemsToDelete) {
+        if (item.id)
+          await fetch(`${API_BASE}/sales_return_details/${item.id}`, {
+            method: "DELETE",
+            headers: getHeaders(),
+          });
+      }
+
+      for (const item of payload.items) {
+        const matchedType = returnTypes.find(
+          (t: API_SalesReturnType) => t.type_name === item.returnType,
+        );
+        const typeId = matchedType
+          ? matchedType.type_id
+          : returnTypes[0]?.type_id || 1;
+        const detailPayload = {
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unitPrice),
+          gross_amount: Number(item.quantity) * Number(item.unitPrice),
+          discount_amount: Number(item.discountAmount || 0),
+          total_amount:
+            Number(item.quantity) * Number(item.unitPrice) -
+            Number(item.discountAmount || 0),
+          sales_return_type_id: typeId,
+          discount_type:
+            item.discountType &&
+            item.discountType !== "No Discount" &&
+            item.discountType !== ""
+              ? Number(item.discountType)
+              : null,
+          reason: item.reason || null,
+        };
+
+        if (typeof item.id === "string" && item.id.startsWith("added-")) {
+          await fetch(`${API_BASE}/sales_return_details`, {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({
+              ...detailPayload,
+              return_no: payload.returnNo,
+              product_id: Number(item.productId || item.product_id),
+            }),
+          });
+        } else {
+          await fetch(`${API_BASE}/sales_return_details/${item.id}`, {
+            method: "PATCH",
+            headers: getHeaders(),
+            body: JSON.stringify(detailPayload),
+          });
+        }
+      }
+      return updatedHeader;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  async updateStatus(id: number | string, status: string): Promise<any> {
+    try {
+      const payload = { status: status };
+      const response = await fetch(`${API_BASE}/sales_return/${id}`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  },
+
   async getProductsSummary(
     id: string | number,
     returnString?: string,
   ): Promise<SalesReturnItem[]> {
     try {
       if (!returnString) return [];
-
       const filters = [];
       let orIndex = 0;
       filters.push(
         `filter[_or][${orIndex}][return_no][_eq]=${encodeURIComponent(returnString)}`,
       );
-      orIndex++;
-      if (returnString.length > 15) {
-        const cut15 = returnString.substring(0, 15);
-        filters.push(
-          `filter[_or][${orIndex}][return_no][_eq]=${encodeURIComponent(cut15)}`,
-        );
-        orIndex++;
-      }
-      if (returnString.length > 12) {
-        const cut12 = returnString.substring(0, 12);
-        filters.push(
-          `filter[_or][${orIndex}][return_no][_eq]=${encodeURIComponent(cut12)}`,
-        );
-        orIndex++;
-      }
 
-      const filterQuery = filters.join("&");
-      const searchUrl = `${API_BASE}/sales_return_details?${filterQuery}&fields=*,product_id.*&limit=-1`;
+      const searchUrl = `${API_BASE}/sales_return_details?filter[return_no][_eq]=${encodeURIComponent(returnString)}&fields=*,product_id.*&limit=-1`;
 
       const [detailsRes, units, lineDiscounts, returnTypes] = await Promise.all(
         [
@@ -702,14 +688,14 @@ export const SalesReturnProvider = {
                 product_code: "N/A",
                 product_name: `Unknown (ID: ${detail.product_id})`,
               };
-
         const unitId =
           typeof product.unit_of_measurement === "object"
             ? product.unit_of_measurement?.unit_id
             : product.unit_of_measurement;
-        const unit = units.find((u) => u.unit_id === unitId);
+        const unit = units.find((u: Unit) => u.unit_id === unitId);
         const returnTypeObj = returnTypes.find(
-          (rt) => rt.type_id == detail.sales_return_type_id,
+          (rt: API_SalesReturnType) =>
+            rt.type_id == detail.sales_return_type_id,
         );
 
         return {
@@ -734,7 +720,7 @@ export const SalesReturnProvider = {
           returnType: returnTypeObj ? returnTypeObj.type_name : "Good Order",
         };
       });
-    } catch (error) {
+    } catch {
       return [];
     }
   },
@@ -751,14 +737,13 @@ export const SalesReturnProvider = {
       const result = await response.json();
       const data = result.data;
 
-      // 🟢 CRITICAL: Fetch Linked Invoice from junction table
+      // Fetch Linked Invoice
       let appliedToText = "-";
       const linkUrl = `${API_BASE}/sales_invoice_sales_return?filter[return_no][_eq]=${returnId}&fields=invoice_no.invoice_no`;
       const linkRes = await fetch(linkUrl, { headers: getHeaders() });
       if (linkRes.ok) {
         const linkData = await linkRes.json();
         if (linkData.data && linkData.data.length > 0) {
-          // Directus fetches relational data. 'invoice_no' here is the object from the related sales_invoice table.
           const linkedRec = linkData.data[0];
           if (linkedRec.invoice_no && linkedRec.invoice_no.invoice_no) {
             appliedToText = linkedRec.invoice_no.invoice_no;
@@ -775,7 +760,7 @@ export const SalesReturnProvider = {
         transactionStatus: data.status || "Closed",
         isPosted: parseBoolean(data.isPosted),
         isReceived: parseBoolean(data.isReceived),
-        appliedTo: appliedToText, // 🟢 Set from junction Fetch
+        appliedTo: appliedToText,
       };
     } catch (error) {
       return null;
