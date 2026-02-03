@@ -1,4 +1,4 @@
-// types.ts
+// type.ts
 
 export interface API_Unit {
   unit_id: number;
@@ -21,14 +21,14 @@ export interface API_Product {
   stock?: number;
 }
 
-// [UPDATED] Added uom_id so we can save it to the database
 export interface Product {
   id: string;
   code: string;
   name: string;
   price: number;
   unit: string;
-  uom_id: number; // <--- Critical for rts_items table
+  uom_id: number;
+  stock?: number; // [NEW] Added stock property for dynamic inventory
 }
 
 export interface CartItem extends Product {
@@ -70,19 +70,48 @@ export interface LineDiscount {
   percentage: string;
 }
 
-// [NEW] Matches your rts_items database table exactly
-export interface ReturnItemDB {
-  id?: number;
-  rts_id?: number;
+// [NEW] Matches v_running_inventory view
+export interface InventoryRecord {
+  id: string;
   product_id: number;
-  uom_id: number;
+  branch_id: number;
+  supplier_id: number;
+  running_inventory: string | number;
+}
+
+// [NEW] API Response for rts_items (includes joined fields)
+export interface API_RTS_Item {
+  id: number;
+  rts_id: number;
+  product_id:
+    | {
+        product_id: number;
+        product_name: string;
+        product_code: string;
+        description: string;
+      }
+    | number;
+  uom_id: { unit_id: number; unit_shortcut: string } | number;
+  quantity: string;
+  gross_unit_price: string;
+  gross_amount: string;
+  discount_rate: string;
+  discount_amount: string;
+  net_amount: string;
+  item_remarks: string | null;
+}
+
+// [NEW] Cleaned UI Interface for the View Modal
+export interface RTSItem {
+  id: number;
+  code: string;
+  name: string;
+  unit: string;
   quantity: number;
-  gross_unit_price: number;
-  gross_amount: number;
-  discount_rate: number;
-  discount_amount: number;
-  net_amount: number;
-  item_remarks?: string;
+  price: number;
+  discountRate: number;
+  discountAmount: number;
+  total: number;
 }
 
 export interface API_ReturnToSupplier {

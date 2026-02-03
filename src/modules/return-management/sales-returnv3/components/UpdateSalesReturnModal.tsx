@@ -418,7 +418,7 @@ export function UpdateSalesReturnModal({
         {validationError && (
           <div className="mx-8 mt-6 mb-0 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex items-center justify-between rounded-r shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+              <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
               <span className="text-sm font-medium">{validationError}</span>
             </div>
             <button
@@ -522,7 +522,7 @@ export function UpdateSalesReturnModal({
                       <TableHead className="text-white font-semibold h-11 min-w-[200px] uppercase text-xs">
                         Description
                       </TableHead>
-                      <TableHead className="text-white font-semibold h-11 w-[80px] uppercase text-xs">
+                      <TableHead className="text-white font-semibold h-11 w-20 uppercase text-xs">
                         Unit
                       </TableHead>
                       <TableHead className="text-white font-semibold h-11 text-center min-w-[100px] uppercase text-xs">
@@ -546,7 +546,7 @@ export function UpdateSalesReturnModal({
                       <TableHead className="text-white font-semibold h-11 min-w-[150px] uppercase text-xs">
                         Reason
                       </TableHead>
-                      <TableHead className="text-white font-semibold h-11 w-[160px] uppercase text-xs">
+                      <TableHead className="text-white font-semibold h-11 w-40 uppercase text-xs">
                         Return Type
                       </TableHead>
                       {isEditable && (
