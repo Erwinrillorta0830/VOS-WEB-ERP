@@ -129,23 +129,23 @@ export const SalesReturnTable = ({
           <TableHeader>
             <TableRow className="bg-slate-50 dark:bg-slate-900 dark:border-slate-800">
               <HeaderCell>Return No</HeaderCell>
-              {/* 🟢 ADDED: Date Header */}
               <HeaderCell>Date</HeaderCell>
-              <HeaderCell>Salesman</HeaderCell>{" "}
+              <HeaderCell>Salesman</HeaderCell>
               <HeaderCell>Customer</HeaderCell>
-              <HeaderCell>Supplier</HeaderCell> <HeaderCell>Brand</HeaderCell>{" "}
+              <HeaderCell>Supplier</HeaderCell>
+              <HeaderCell>Brand</HeaderCell>
               <HeaderCell>Category</HeaderCell>
-              <HeaderCell>Product Name</HeaderCell>{" "}
-              <HeaderCell>Return Type</HeaderCell>{" "}
+              <HeaderCell>Product Name</HeaderCell>
+              <HeaderCell>Return Type</HeaderCell>
               <HeaderCell>Reason</HeaderCell>
-              <HeaderCell className="text-center">Unit</HeaderCell>{" "}
+              <HeaderCell className="text-center">Unit</HeaderCell>
               <HeaderCell className="text-right">Quantity</HeaderCell>
-              <HeaderCell className="text-right">Unit Price</HeaderCell>{" "}
+              <HeaderCell className="text-right">Unit Price</HeaderCell>
               <HeaderCell className="text-right">Gross Amount</HeaderCell>
-              <HeaderCell>Discount Type</HeaderCell>{" "}
+              <HeaderCell>Discount Type</HeaderCell>
               <HeaderCell className="text-right">Discount Amt</HeaderCell>
-              <HeaderCell className="text-right">Net Amount</HeaderCell>{" "}
-              <HeaderCell>Applied To</HeaderCell>{" "}
+              <HeaderCell className="text-right">Net Amount</HeaderCell>
+              <HeaderCell>Applied To</HeaderCell>
               <HeaderCell className="text-center">Status</HeaderCell>
             </TableRow>
           </TableHeader>
@@ -178,7 +178,6 @@ export const SalesReturnTable = ({
                     <DataCell className="text-blue-600 dark:text-blue-400 font-medium">
                       {r.returnNumber}
                     </DataCell>
-                    {/* 🟢 ADDED: Date Data */}
                     <DataCell className="text-slate-600 dark:text-slate-400">
                       {formatDate(r.returnDate)}
                     </DataCell>

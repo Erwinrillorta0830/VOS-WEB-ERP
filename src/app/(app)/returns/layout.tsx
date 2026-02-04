@@ -22,19 +22,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default function ReturnsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    // FIX: Added suppressHydrationWarning to ignore browser extension attributes
-    <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background text-foreground`}
-      >
-        <AppShell>{children}</AppShell>
-      </body>
-    </html>
+    // Just return the children wrapped in your shell or a Fragment.
+    // The main <html> and <body> are provided by src/app/layout.tsx
+    <AppShell>{children}</AppShell>
   );
 }

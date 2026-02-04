@@ -1,11 +1,13 @@
+"use client";
 import React, { forwardRef } from "react";
 import { format } from "date-fns";
-import { SalesReturnItem } from "../type"; // Adjust path to where your types are
+import { SalesReturnItem } from "../type";
 
-// Define the shape of data specifically for the Print Slip
+// Extended interface to support the specific fields in the image
 interface PrintData {
   returnNo: string;
   returnDate: string;
+  createdAt?: string; // For "Received Date"
   status: string;
   remarks: string;
   salesmanName: string;
@@ -13,6 +15,7 @@ interface PrintData {
   customerName: string;
   customerCode: string;
   branchName: string;
+  priceType?: string; // Added to match image
   items: SalesReturnItem[];
   totalAmount: number;
 }
@@ -21,148 +24,178 @@ interface SalesReturnPrintSlipProps {
   data: PrintData | null;
 }
 
-export const SalesReturnPrintSlip = forwardRef<HTMLDivElement, SalesReturnPrintSlipProps>(
-  ({ data }, ref) => {
-    if (!data) return null;
+export const SalesReturnPrintSlip = forwardRef<
+  HTMLDivElement,
+  SalesReturnPrintSlipProps
+>(({ data }, ref) => {
+  if (!data) return null;
 
-    // 1. Get Real-Time Date for the "Printed At" timestamp
-    const printTimestamp = format(new Date(), "M/d/yy, h:mm a");
+  // 1. Group items by Return Type (e.g., "Bad Order", "Good Order")
+  const groupedItems = data.items.reduce(
+    (acc, item) => {
+      const type = item.returnType || "Others";
+      if (!acc[type]) acc[type] = [];
+      acc[type].push(item);
+      return acc;
+    },
+    {} as Record<string, SalesReturnItem[]>,
+  );
 
-    // Calculate totals based on items
-    const calculatedGross = data.items.reduce((acc, item) => acc + (item.grossAmount || (item.quantity * item.unitPrice)), 0);
-    const calculatedDiscount = data.items.reduce((acc, item) => acc + (item.discountAmount || 0), 0);
-
-    return (
-      <div ref={ref} className="p-8 bg-white text-black font-sans text-sm hidden print:block">
-        {/* CSS specific for the Print Window */}
-        <style type="text/css" media="print">
-          {`
-            @page { size: A4; margin: 15mm; }
+  return (
+    <div
+      ref={ref}
+      className="p-10 bg-white text-black font-sans text-sm hidden print:block"
+    >
+      <style type="text/css" media="print">
+        {`
+            @page { size: A4; margin: 10mm; }
             body { -webkit-print-color-adjust: exact; }
             .print-hidden { display: none !important; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { padding: 6px 4px; }
           `}
-        </style>
+      </style>
 
-        {/* --- TOP META HEADER (Time & Doc Ref) --- */}
-        <div className="flex justify-between items-end mb-4 text-[10px] text-gray-900 font-medium font-sans">
-            <span>{printTimestamp}</span>
-            <span>Return Slip - {data.returnNo}</span>
+      {/* --- HEADER SECTION --- */}
+      <div className="flex flex-col items-center mb-6">
+        <h1 className="text-xl font-bold uppercase tracking-wider mb-2">
+          SALES RETURN SLIP {data.returnNo}
+        </h1>
+      </div>
+
+      <div className="flex justify-between items-start mb-4 border-b-2 border-black pb-4">
+        {/* Company Info (Left) */}
+        <div>
+          <h2 className="font-bold text-lg">
+            Men2 Marketing & Distribution Enterprise Corporation
+          </h2>
+          <p className="text-xs text-gray-700">
+            Gonzales, Bonuan Boquig, Dagupan City, Pangasinan • Phone:
+            09125846321
+          </p>
         </div>
 
-        {/* MAIN HEADER */}
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold uppercase tracking-wide">VOS ERP INVENTORY</h1>
-          <p className="text-gray-600 mt-1">Sales Return Slip</p>
-        </div>
-
-        <hr className="border-black mb-6" />
-
-        {/* METADATA GRID */}
-        <div className="grid grid-cols-2 gap-x-12 gap-y-2 mb-6 text-sm">
-          {/* Left Column */}
-          <div className="grid grid-cols-[110px_1fr] gap-1 items-baseline">
-            <span className="font-bold">Return No:</span>
-            <span>{data.returnNo}</span>
-
-            <span className="font-bold">Date:</span>
-            <span>{data.returnDate}</span>
-
-            <span className="font-bold">Status:</span>
-            <span>{data.status}</span>
-
-            <span className="font-bold">Salesman:</span>
-            <span className="uppercase">{data.salesmanName}</span>
-
-            <span className="font-bold">Salesman Code:</span>
-            <span className="uppercase">{data.salesmanCode}</span>
+        {/* Dates (Right) */}
+        <div className="text-right text-xs">
+          <div className="grid grid-cols-[80px_1fr] gap-2">
+            <span className="font-semibold text-gray-600">Return Date:</span>
+            <span className="font-bold">{data.returnDate}</span>
           </div>
-
-          {/* Right Column */}
-          <div className="grid grid-cols-[110px_1fr] gap-1 items-baseline">
-            <span className="font-bold">Customer:</span>
-            <span className="uppercase">{data.customerName}</span>
-
-            <span className="font-bold">Customer Code:</span>
-            <span className="uppercase">{data.customerCode}</span>
-
-            <span className="font-bold">Branch:</span>
-            <span className="uppercase">{data.branchName}</span>
-          </div>
-        </div>
-
-        {/* REMARKS */}
-        <div className="mb-6">
-          <span className="font-bold mr-2">Remarks:</span>
-          <span>{data.remarks || "No remarks provided."}</span>
-        </div>
-
-        {/* TABLE - Fixed Layout */}
-        <div className="w-full mb-6">
-          <table className="w-full text-xs border-collapse table-fixed">
-            <thead>
-              <tr className="border-b border-gray-300 text-gray-500 text-left">
-                <th className="py-2 font-semibold w-[8%]">Code</th>
-                <th className="py-2 font-semibold w-[32%]">Description</th>
-                <th className="py-2 font-semibold w-[5%]">Unit</th>
-                <th className="py-2 font-semibold w-[5%] text-center">Qty</th>
-                <th className="py-2 font-semibold w-[10%] text-right">Unit Price</th>
-                <th className="py-2 font-semibold w-[10%] text-right">Gross</th>
-                <th className="py-2 font-semibold w-[8%] text-right">Discount</th>
-                <th className="py-2 font-semibold w-[8%] text-right">Total</th>
-                <th className="py-2 font-semibold w-[8%] pl-2">Reason</th>
-                <th className="py-2 font-semibold w-[6%]">Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((item, index) => (
-                <tr key={index} className="border-b border-gray-100">
-                  <td className="py-3 align-top">{item.code || "N/A"}</td>
-                  <td className="py-3 align-top pr-2">{item.description}</td>
-                  <td className="py-3 align-top">{item.unit || "Pcs"}</td>
-                  <td className="py-3 align-top text-center">{item.quantity}</td>
-                  <td className="py-3 align-top text-right">₱{Number(item.unitPrice).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td className="py-3 align-top text-right">₱{Number(item.grossAmount || (item.quantity * item.unitPrice)).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td className="py-3 align-top text-right">₱{Number(item.discountAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td className="py-3 align-top text-right font-bold">₱{Number(item.totalAmount).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td className="py-3 align-top pl-2">{item.reason}</td>
-                  <td className="py-3 align-top">{item.returnType}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* TOTALS */}
-        <div className="flex justify-end mb-12">
-          <div className="w-64">
-            <div className="flex justify-between py-1">
-              <span className="font-semibold">Gross Amount:</span>
-              <span className="font-bold">₱{calculatedGross.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-black pb-2">
-              <span className="font-semibold">Discount Amount:</span>
-              <span className="font-bold">₱{calculatedDiscount.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-            <div className="flex justify-between py-2 text-lg">
-              <span className="font-bold">Net Amount:</span>
-              <span className="font-bold">₱{Number(data.totalAmount).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-            </div>
-            <hr className="border-black border-2" />
-          </div>
-        </div>
-
-        {/* FOOTER SIGNATURES */}
-        <div className="grid grid-cols-2 gap-24 mt-20">
-          <div className="text-center">
-            <div className="border-t border-black pt-2 font-semibold">Prepared By</div>
-          </div>
-          <div className="text-center">
-            <div className="border-t border-black pt-2 font-semibold">Received By</div>
+          <div className="grid grid-cols-[80px_1fr] gap-2">
+            <span className="font-semibold text-gray-600">Received Date:</span>
+            <span className="font-bold">
+              {data.createdAt || data.returnDate}
+            </span>
           </div>
         </div>
       </div>
-    );
-  }
-);
+
+      {/* --- METADATA --- */}
+      <div className="mb-6 text-sm">
+        <div className="grid grid-cols-[120px_1fr] gap-1">
+          <span className="font-bold">Customer:</span>
+          <span className="uppercase">{data.customerName}</span>
+        </div>
+        <div className="grid grid-cols-[120px_1fr] gap-1">
+          <span className="font-bold">Salesman:</span>
+          <span className="uppercase">{data.salesmanName}</span>
+        </div>
+        <div className="grid grid-cols-[120px_1fr] gap-1">
+          <span className="font-bold">Price Type:</span>
+          <span className="uppercase">{data.priceType || "A"}</span>
+        </div>
+        <div className="grid grid-cols-[120px_1fr] gap-1">
+          <span className="font-bold">Salesman Code:</span>
+          <span className="uppercase">{data.salesmanCode}</span>
+        </div>
+      </div>
+
+      {/* --- DYNAMIC TABLES BY RETURN TYPE --- */}
+      {Object.entries(groupedItems).map(([type, items]) => {
+        const subtotal = items.reduce(
+          (sum, i) => sum + Number(i.totalAmount || 0),
+          0,
+        );
+
+        return (
+          <div key={type} className="mb-6">
+            {/* Section Header */}
+            <h3 className="font-bold text-base border-b border-black mb-1">
+              {type}
+            </h3>
+
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-black text-left">
+                  <th className="font-bold w-[40%]">Product Name</th>
+                  <th className="font-bold w-[10%]">Unit</th>
+                  <th className="font-bold w-[10%] text-center">Quantity</th>
+                  <th className="font-bold w-[15%] text-right">Unit Price</th>
+                  <th className="font-bold w-[20%] text-right">Total Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => (
+                  <tr key={idx}>
+                    <td className="align-top">{item.description}</td>
+                    <td className="align-top">{item.unit || "Pieces"}</td>
+                    <td className="align-top text-center">{item.quantity}</td>
+                    <td className="align-top text-right">
+                      {Number(item.unitPrice).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td className="align-top text-right">
+                      {Number(item.totalAmount).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4} className="text-right font-bold pt-2">
+                    Subtotal:
+                  </td>
+                  <td className="text-right font-bold pt-2">
+                    {subtotal.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                    })}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+      })}
+
+      <hr className="border-black mb-4" />
+
+      {/* --- FOOTER --- */}
+      <div className="flex justify-between items-end">
+        {/* Remarks (Left) */}
+        <div className="w-2/3">
+          <span className="font-bold block mb-1">Remarks:</span>
+          <div className="text-sm border-b border-gray-300 pb-1 inline-block min-w-[300px]">
+            {data.remarks || "-"}
+          </div>
+        </div>
+
+        {/* Grand Total (Right) */}
+        <div className="text-right">
+          <div className="text-xl font-bold flex gap-4">
+            <span>Grand Total:</span>
+            <span>
+              {Number(data.totalAmount).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+              })}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 SalesReturnPrintSlip.displayName = "SalesReturnPrintSlip";
