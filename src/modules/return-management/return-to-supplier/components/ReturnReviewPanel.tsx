@@ -73,7 +73,7 @@ export function ReturnReviewPanel({
               <TableHead className="text-xs font-bold text-slate-500 uppercase">
                 Product Name
               </TableHead>
-              <TableHead className="w-20 text-xs font-bold text-slate-500 uppercase text-center">
+              <TableHead className="w-[80px] text-xs font-bold text-slate-500 uppercase text-center">
                 Unit
               </TableHead>
               <TableHead className="w-[100px] text-xs font-bold text-slate-500 uppercase text-center">
@@ -82,8 +82,11 @@ export function ReturnReviewPanel({
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
                 Unit Price
               </TableHead>
-              <TableHead className="w-[140px] text-xs font-bold text-slate-500 uppercase text-center">
-                Discount
+              <TableHead className="w-[160px] text-xs font-bold text-slate-500 uppercase text-center">
+                Discount Type
+              </TableHead>
+              <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
+                Discount Amt
               </TableHead>
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
                 Total
@@ -99,7 +102,7 @@ export function ReturnReviewPanel({
             {items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={readOnly ? 7 : 8}
+                  colSpan={readOnly ? 8 : 9}
                   className="h-32 text-center text-slate-400"
                 >
                   No items selected.
@@ -107,10 +110,13 @@ export function ReturnReviewPanel({
               </TableRow>
             ) : (
               items.map((item) => {
+                const unitPrice = item.customPrice || item.price;
+
+                // Discount Amount per unit
+                const discountPerUnit = unitPrice * (item.discount / 100);
+
                 const rowTotal =
-                  (item.customPrice || item.price) *
-                  item.quantity *
-                  (1 - item.discount / 100);
+                  unitPrice * item.quantity * (1 - item.discount / 100);
 
                 return (
                   <TableRow
@@ -149,44 +155,25 @@ export function ReturnReviewPanel({
                         />
                       )}
                     </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {readOnly ? (
-                        <div>
-                          ₱{" "}
-                          {(item.customPrice || item.price).toLocaleString(
-                            undefined,
-                            {
-                              minimumFractionDigits: 2,
-                            },
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-end gap-1">
-                          <span className="text-xs text-slate-400">₱</span>
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={item.customPrice ?? item.price}
-                            onChange={(e) =>
-                              onUpdateItem(
-                                item.id,
-                                "customPrice",
-                                parseFloat(e.target.value) || 0,
-                              )
-                            }
-                            className="h-8 w-24 text-right bg-white"
-                          />
-                        </div>
-                      )}
+
+                    {/* Unit Price (Read-Only) */}
+                    <TableCell className="text-right text-sm font-medium text-slate-600">
+                      <div>
+                        ₱{" "}
+                        {unitPrice.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                        })}
+                      </div>
                     </TableCell>
+
+                    {/* Discount Type Selector (Removed the extra input) */}
                     <TableCell>
                       {readOnly ? (
                         <div className="text-center text-sm">
                           {item.discount > 0 ? `${item.discount}%` : "-"}
                         </div>
                       ) : (
-                        <div className="flex gap-1 justify-center items-center">
+                        <div className="flex justify-center">
                           <Select
                             value={
                               lineDiscounts
@@ -197,7 +184,7 @@ export function ReturnReviewPanel({
                             }
                             onValueChange={(val) => {
                               if (val === "custom") {
-                                // Custom logic if needed
+                                // Logic for custom selection if needed
                               } else {
                                 const selected = lineDiscounts.find(
                                   (d) => d.id.toString() === val,
@@ -211,7 +198,7 @@ export function ReturnReviewPanel({
                               }
                             }}
                           >
-                            <SelectTrigger className="h-8 w-[110px] text-xs truncate bg-white">
+                            <SelectTrigger className="h-8 w-full text-xs truncate bg-white">
                               <SelectValue placeholder="-" />
                             </SelectTrigger>
                             <SelectContent>
@@ -224,31 +211,32 @@ export function ReturnReviewPanel({
                               ))}
                             </SelectContent>
                           </Select>
-                          <div className="relative w-12 shrink-0">
-                            <Input
-                              className="h-8 pr-3 text-right bg-white"
-                              value={item.discount}
-                              onChange={(e) =>
-                                onUpdateItem(
-                                  item.id,
-                                  "discount",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                            />
-                            <span className="absolute right-1 top-2 text-[10px] text-slate-400">
-                              %
-                            </span>
-                          </div>
                         </div>
                       )}
                     </TableCell>
+
+                    {/* Discount Amount (Read-Only) */}
+                    <TableCell className="text-right text-sm text-amber-600 font-medium">
+                      {discountPerUnit > 0 ? (
+                        <span>
+                          ₱{" "}
+                          {discountPerUnit.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
+                    </TableCell>
+
                     <TableCell className="text-right font-bold text-slate-900 text-sm">
                       ₱{" "}
                       {rowTotal.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                       })}
                     </TableCell>
+
                     {!readOnly && (
                       <TableCell className="text-center pr-4">
                         <Button
@@ -271,21 +259,21 @@ export function ReturnReviewPanel({
 
       {/* 2. REMARKS & SUMMARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Remarks Column (Takes up 2/3 space) */}
+        {/* Remarks Column */}
         <div className="lg:col-span-2 space-y-3">
           <Label className="flex items-center gap-2 font-bold text-slate-700 text-sm">
             Transaction Remarks
           </Label>
           <Textarea
             placeholder="Enter detailed reasons for this return (Optional)..."
-            className="min-h-40 resize-none bg-white border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
+            className="min-h-[160px] resize-none bg-white border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
             value={remarks}
             onChange={(e) => !readOnly && setRemarks(e.target.value)}
             readOnly={readOnly}
           />
         </div>
 
-        {/* Summary Card (Takes up 1/3 space) */}
+        {/* Summary Card */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm h-full flex flex-col">
             <h4 className="font-bold text-xs uppercase text-slate-800 mb-6 flex items-center gap-2 tracking-wider border-b border-slate-100 pb-3">
