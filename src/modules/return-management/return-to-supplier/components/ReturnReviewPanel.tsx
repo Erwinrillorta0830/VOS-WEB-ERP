@@ -1,21 +1,9 @@
-// src/modules/return-to-supplier/components/ReturnReviewPanel.tsx
-
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { FileText, Calculator } from "lucide-react";
+import React from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -24,6 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { CartItem, LineDiscount } from "../type";
 
 interface ReturnReviewPanelProps {
@@ -38,219 +35,198 @@ interface ReturnReviewPanelProps {
 
 export function ReturnReviewPanel({
   items,
-  lineDiscounts = [],
+  lineDiscounts,
   onUpdateItem,
-  onRemoveItem, // Kept in props for API consistency but not used in Table
+  onRemoveItem,
   remarks,
   setRemarks,
   readOnly = false,
 }: ReturnReviewPanelProps) {
-  const [localRemarks, setLocalRemarks] = useState(remarks);
-
-  useEffect(() => {
-    setLocalRemarks(remarks);
-  }, [remarks]);
-
-  const totalItems = items.length;
-  const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0);
-  const grossAmount = items.reduce(
-    (acc, item) => acc + (item.customPrice ?? item.price) * item.quantity,
+  const totalAmount = items.reduce(
+    (sum, item) =>
+      sum +
+      (item.customPrice || item.price) *
+        item.quantity *
+        (1 - item.discount / 100),
     0,
   );
-  const totalDiscount = items.reduce((acc, item) => {
-    const price = item.customPrice ?? item.price;
-    return acc + price * item.quantity * (item.discount / 100);
-  }, 0);
-  const netAmount = grossAmount - totalDiscount;
+
+  const totalQuantity = items.reduce((acc, i) => acc + i.quantity, 0);
+  const totalDiscountAmount = items.reduce(
+    (sum, item) =>
+      sum +
+      (item.customPrice || item.price) * item.quantity * (item.discount / 100),
+    0,
+  );
+  const grossAmount = totalAmount + totalDiscountAmount;
 
   return (
-    <div className="flex flex-col gap-6 h-full animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
-      {/* TABLE SECTION */}
-      <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden flex flex-col">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-slate-50 border-b border-slate-200">
-              <TableRow className="hover:bg-slate-50 h-11">
-                <TableHead className="w-[100px] text-xs font-bold text-slate-900 pl-4">
-                  Code
+    <div className="space-y-8">
+      {/* 1. TABLE SECTION */}
+      <div className="rounded-md border border-slate-200 overflow-hidden bg-white shadow-sm">
+        <Table>
+          <TableHeader className="bg-slate-50 border-b border-slate-200">
+            <TableRow>
+              <TableHead className="w-[100px] text-xs font-bold text-slate-500 uppercase pl-4">
+                Code
+              </TableHead>
+              <TableHead className="text-xs font-bold text-slate-500 uppercase">
+                Product Name
+              </TableHead>
+              <TableHead className="w-20 text-xs font-bold text-slate-500 uppercase text-center">
+                Unit
+              </TableHead>
+              <TableHead className="w-[100px] text-xs font-bold text-slate-500 uppercase text-center">
+                Quantity
+              </TableHead>
+              <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
+                Unit Price
+              </TableHead>
+              <TableHead className="w-[140px] text-xs font-bold text-slate-500 uppercase text-center">
+                Discount
+              </TableHead>
+              <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
+                Total
+              </TableHead>
+              {!readOnly && (
+                <TableHead className="w-[60px] text-xs font-bold text-slate-500 uppercase text-center pr-4">
+                  Action
                 </TableHead>
-                <TableHead className="text-xs font-bold text-slate-900 min-w-[200px]">
-                  Product Name
-                </TableHead>
-                <TableHead className="w-20 text-xs font-bold text-slate-900">
-                  Unit
-                </TableHead>
-                <TableHead className="w-[100px] text-xs font-bold text-slate-900 text-center">
-                  Quantity
-                </TableHead>
-                {/* [REV-4] Fixed Alignment to Right for Currency */}
-                <TableHead className="w-[120px] text-xs font-bold text-slate-900 text-right">
-                  Unit Price
-                </TableHead>
-                <TableHead className="w-40 text-xs font-bold text-slate-900 text-right">
-                  Discount
-                </TableHead>
-                {/* [REV-4] Fixed Alignment to Right for Currency */}
-                <TableHead className="w-[120px] text-xs font-bold text-slate-900 text-right pr-4">
-                  Total
-                </TableHead>
-                {/* [REV-4] Removed Action Column as requested */}
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={readOnly ? 7 : 8}
+                  className="h-32 text-center text-slate-400"
+                >
+                  No items selected.
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => {
-                const price = item.customPrice ?? item.price;
-                const lineTotal =
-                  price * item.quantity * (1 - item.discount / 100);
-                const currentDiscountCode =
-                  lineDiscounts.find(
-                    (ld) => parseFloat(ld.percentage) === item.discount,
-                  )?.line_discount || "custom";
+            ) : (
+              items.map((item) => {
+                const rowTotal =
+                  (item.customPrice || item.price) *
+                  item.quantity *
+                  (1 - item.discount / 100);
 
                 return (
                   <TableRow
                     key={item.id}
-                    className="hover:bg-blue-50/30 group transition-colors border-slate-100"
+                    className="hover:bg-slate-50 border-b border-slate-100 last:border-0"
                   >
-                    <TableCell className="text-xs font-semibold text-slate-500 pl-4 py-3 font-mono bg-slate-50/30">
+                    <TableCell className="text-xs text-slate-500 font-mono pl-4">
                       {item.code}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-900 font-bold leading-tight py-3">
+                    <TableCell className="font-medium text-slate-700 text-sm">
                       {item.name}
                     </TableCell>
-                    <TableCell className="py-3">
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100 uppercase">
+                    <TableCell className="text-center">
+                      <span className="inline-flex items-center justify-center px-2 py-1 rounded bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wide">
                         {item.unit}
                       </span>
                     </TableCell>
-                    <TableCell className="py-3">
-                      <div className="flex justify-center">
-                        {readOnly ? (
-                          <span className="font-bold text-slate-900 text-sm">
-                            {item.quantity}
-                          </span>
-                        ) : (
-                          <Input
-                            type="number"
-                            min={0} // Changed to 0 so user can "remove" by setting 0 if action col is gone
-                            className="h-9 w-20 text-sm text-right bg-white border-slate-200 font-bold text-slate-900 rounded-lg"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              onUpdateItem(
-                                item.id,
-                                "quantity",
-                                parseInt(e.target.value) || 0,
-                              )
-                            }
-                          />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-3 text-right">
-                      <div className="relative w-full flex justify-end">
-                        {readOnly ? (
-                          <div className="h-9 flex items-center text-sm font-medium text-slate-700">
-                            <span className="text-xs text-slate-400 mr-1">
-                              ₱
-                            </span>
-                            {item.customPrice?.toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </div>
-                        ) : (
-                          <div className="relative w-28">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">
-                              ₱
-                            </span>
-                            <Input
-                              type="number"
-                              min={0}
-                              className="h-9 pl-6 text-sm bg-white border-slate-200 font-medium text-slate-700 rounded-lg text-right"
-                              value={item.customPrice ?? item.price}
-                              onChange={(e) =>
-                                onUpdateItem(
-                                  item.id,
-                                  "customPrice",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-3">
+                    <TableCell>
                       {readOnly ? (
-                        <div className="text-right text-sm">
-                          {item.discount > 0 ? (
-                            <span className="text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded border border-orange-100">
-                              {item.discount}%
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
+                        <div className="text-center text-sm font-bold">
+                          {item.quantity}
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) =>
+                            onUpdateItem(
+                              item.id,
+                              "quantity",
+                              Math.max(1, parseFloat(e.target.value) || 0),
+                            )
+                          }
+                          className="h-8 text-center bg-white"
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right text-sm">
+                      {readOnly ? (
+                        <div>
+                          ₱{" "}
+                          {(item.customPrice || item.price).toLocaleString(
+                            undefined,
+                            {
+                              minimumFractionDigits: 2,
+                            },
                           )}
                         </div>
                       ) : (
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-xs text-slate-400">₱</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={item.customPrice ?? item.price}
+                            onChange={(e) =>
+                              onUpdateItem(
+                                item.id,
+                                "customPrice",
+                                parseFloat(e.target.value) || 0,
+                              )
+                            }
+                            className="h-8 w-24 text-right bg-white"
+                          />
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {readOnly ? (
+                        <div className="text-center text-sm">
+                          {item.discount > 0 ? `${item.discount}%` : "-"}
+                        </div>
+                      ) : (
+                        <div className="flex gap-1 justify-center items-center">
                           <Select
-                            value={currentDiscountCode}
+                            value={
+                              lineDiscounts
+                                .find(
+                                  (d) => Number(d.percentage) === item.discount,
+                                )
+                                ?.id.toString() || "custom"
+                            }
                             onValueChange={(val) => {
-                              if (val === "custom") return;
-                              if (val === "none") {
-                                onUpdateItem(item.id, "discount", 0);
-                                return;
-                              }
-                              const selected = lineDiscounts.find(
-                                (ld) => ld.line_discount === val,
-                              );
-                              if (selected)
-                                onUpdateItem(
-                                  item.id,
-                                  "discount",
-                                  parseFloat(selected.percentage),
+                              if (val === "custom") {
+                                // Custom logic if needed
+                              } else {
+                                const selected = lineDiscounts.find(
+                                  (d) => d.id.toString() === val,
                                 );
+                                if (selected)
+                                  onUpdateItem(
+                                    item.id,
+                                    "discount",
+                                    Number(selected.percentage),
+                                  );
+                              }
                             }}
                           >
-                            <SelectTrigger className="h-9 w-[70px] text-xs px-2 bg-slate-50 border-slate-200">
+                            <SelectTrigger className="h-8 w-[110px] text-xs truncate bg-white">
                               <SelectValue placeholder="-" />
                             </SelectTrigger>
-                            <SelectContent
-                              position="popper"
-                              className="max-h-[200px] w-[180px]"
-                            >
-                              <SelectItem value="none" className="text-xs">
-                                None
-                              </SelectItem>
-                              {lineDiscounts.map((ld) => (
-                                <SelectItem
-                                  key={ld.id}
-                                  value={ld.line_discount}
-                                  className="text-xs"
-                                >
-                                  <span className="font-bold">
-                                    {ld.line_discount}
-                                  </span>
-                                  <span className="text-slate-500 ml-1">
-                                    ({parseFloat(ld.percentage)}%)
-                                  </span>
+                            <SelectContent>
+                              <SelectItem value="custom">Custom</SelectItem>
+                              {lineDiscounts.map((d) => (
+                                <SelectItem key={d.id} value={d.id.toString()}>
+                                  {d.line_discount} (
+                                  {parseFloat(d.percentage.toString())}%)
                                 </SelectItem>
                               ))}
-                              <SelectItem value="custom" className="hidden">
-                                Custom
-                              </SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="relative flex-1 max-w-20">
+                          <div className="relative w-12 shrink-0">
                             <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              className={`h-9 w-full text-sm text-center bg-white border-slate-200 font-medium text-slate-700 ${
-                                item.discount > 0
-                                  ? "text-orange-600 font-bold border-orange-200 bg-orange-50"
-                                  : ""
-                              }`}
+                              className="h-8 pr-3 text-right bg-white"
                               value={item.discount}
                               onChange={(e) =>
                                 onUpdateItem(
@@ -260,106 +236,107 @@ export function ReturnReviewPanel({
                                 )
                               }
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">
+                            <span className="absolute right-1 top-2 text-[10px] text-slate-400">
                               %
                             </span>
                           </div>
                         </div>
                       )}
                     </TableCell>
-                    {/* [REV-4] Fixed Alignment to Right and Padding */}
-                    <TableCell className="text-sm font-bold text-slate-900 text-right tabular-nums pr-4 py-3">
-                      {lineTotal.toLocaleString(undefined, {
+                    <TableCell className="text-right font-bold text-slate-900 text-sm">
+                      ₱{" "}
+                      {rowTotal.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
                       })}
                     </TableCell>
-                    {/* [REV-4] Removed Action Cell */}
+                    {!readOnly && (
+                      <TableCell className="text-center pr-4">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onRemoveItem(item.id)}
+                          className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+              })
+            )}
+          </TableBody>
+        </Table>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 flex flex-col gap-2">
-          <Label className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <FileText className="h-4 w-4 text-blue-500" /> Transaction Remarks
+      {/* 2. REMARKS & SUMMARY SECTION */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Remarks Column (Takes up 2/3 space) */}
+        <div className="lg:col-span-2 space-y-3">
+          <Label className="flex items-center gap-2 font-bold text-slate-700 text-sm">
+            Transaction Remarks
           </Label>
-          <div className="relative flex-1">
-            {readOnly ? (
-              <div className="w-full h-full min-h-[120px] p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 text-sm font-medium">
-                {remarks || "No remarks provided."}
-              </div>
-            ) : (
-              <Textarea
-                placeholder="Enter detailed reasons for this return (Optional)..."
-                className="resize-none w-full h-full min-h-[120px] text-sm p-4 rounded-xl shadow-sm transition-all bg-white border-slate-200 focus:border-blue-500 font-medium"
-                value={localRemarks}
-                onChange={(e) => setLocalRemarks(e.target.value)}
-                onBlur={() => setRemarks(localRemarks)}
-              />
-            )}
-          </div>
+          <Textarea
+            placeholder="Enter detailed reasons for this return (Optional)..."
+            className="min-h-40 resize-none bg-white border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
+            value={remarks}
+            onChange={(e) => !readOnly && setRemarks(e.target.value)}
+            readOnly={readOnly}
+          />
         </div>
 
-        <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 shadow-sm h-full flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-blue-500 to-blue-600" />
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4 flex items-center gap-2">
-              <Calculator className="h-4 w-4 text-slate-400" /> Return Summary
+        {/* Summary Card (Takes up 1/3 space) */}
+        <div className="lg:col-span-1">
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm h-full flex flex-col">
+            <h4 className="font-bold text-xs uppercase text-slate-800 mb-6 flex items-center gap-2 tracking-wider border-b border-slate-100 pb-3">
+              Return Summary
             </h4>
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 font-medium">
-                  Total Line Items
+            <div className="space-y-4 text-sm flex-1">
+              <div className="flex justify-between text-slate-600">
+                <span>Total Line Items</span>
+                <span className="font-medium text-slate-900">
+                  {items.length}
                 </span>
-                <span className="font-bold text-slate-900">{totalItems}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 font-medium">
-                  Total Quantity
-                </span>
-                <span className="font-bold text-slate-900">
+              <div className="flex justify-between text-slate-600">
+                <span>Total Quantity</span>
+                <span className="font-medium text-slate-900">
                   {totalQuantity} units
                 </span>
               </div>
-              <Separator className="bg-slate-100 my-2" />
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 font-medium">Gross Amount</span>
-                <span className="font-semibold tabular-nums text-slate-700">
+              <div className="border-t border-dashed border-slate-200 my-4"></div>
+              <div className="flex justify-between text-slate-600">
+                <span>Gross Amount</span>
+                <span className="font-medium text-slate-900">
                   ₱{" "}
                   {grossAmount.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                   })}
                 </span>
               </div>
-              {totalDiscount > 0 && (
-                <div className="flex justify-between text-sm text-orange-600 bg-orange-50 px-2 py-1 rounded-md border border-orange-100">
-                  <span className="font-medium">Total Discount</span>
-                  <span className="font-bold tabular-nums">
-                    - ₱{" "}
-                    {totalDiscount.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              )}
+              <div className="flex justify-between text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                <span>Total Discount</span>
+                <span className="font-medium">
+                  - ₱{" "}
+                  {totalDiscountAmount.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="mt-6 pt-4 border-t border-slate-100">
-            <div className="flex justify-between items-end">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Net Amount
-              </span>
-              <span className="text-2xl font-extrabold text-blue-600 tabular-nums tracking-tight leading-none">
-                ₱{" "}
-                {netAmount.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
+
+            <div className="border-t border-slate-200 mt-6 pt-4">
+              <div className="flex justify-between items-end">
+                <span className="font-bold text-slate-500 uppercase text-xs mb-1">
+                  Net Amount
+                </span>
+                <span className="font-extrabold text-3xl text-blue-600 leading-none">
+                  ₱{" "}
+                  {totalAmount.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
             </div>
           </div>
         </div>

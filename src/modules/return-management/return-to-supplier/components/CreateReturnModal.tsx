@@ -85,41 +85,53 @@ export function CreateReturnModal({
     );
   }, [refs.branches, branchSearch]);
 
-  // ✅ DISPLAY LOGIC: Group Flat Items into Product Families (Parent + Children)
+  // ✅ DISPLAY LOGIC: Group Flat Items + Apply Supplier Discounts
   const groupedProducts = useMemo(() => {
     const invArray = Array.from(inventory.values());
 
-    // 1. Enrich Data (Attach Price/Discount)
+    // 1. Create Lookup Maps for Performance (O(1) Access)
+    const productPriceMap = new Map();
+    refs.products.forEach((p) => productPriceMap.set(String(p.id), p));
+
+    const connectionMap = new Map();
+    refs.connections.forEach((c) =>
+      // Key: "ProductID-SupplierID" for precise lookup
+      connectionMap.set(`${c.product_id}-${c.supplier_id}`, c),
+    );
+
+    const discountMap = new Map();
+    refs.discounts.forEach((d) => discountMap.set(String(d.id), d));
+
+    // 2. Enrich Data (Attach Price & Calculate Discount)
     const enrichedItems = invArray
       .map((item: any) => {
-        const priceRef = refs.products.find(
-          (p) => String(p.id) === String(item.product_id),
-        );
+        // Price Lookup
+        const priceRef = productPriceMap.get(String(item.product_id));
 
-        const connection = refs.connections.find(
-          (c) =>
-            String(c.product_id) === String(item.product_id) &&
-            String(c.supplier_id) === String(item.supplier_id),
+        // Discount Lookup: Specific to this Product AND the selected Supplier
+        const connection = connectionMap.get(
+          `${item.product_id}-${selection.supplierId}`,
         );
 
         let discountLabel = undefined;
         let computedDiscount = 0;
 
         if (connection?.discount_type) {
-          const discountObj = refs.discounts.find(
-            (d) => String(d.id) === String(connection.discount_type),
-          );
+          // Try to find the discount definition in line_discount table
+          const discountObj = discountMap.get(String(connection.discount_type));
+
           if (discountObj) {
+            // Case A: Linked Discount (e.g., ID pointing to "L1 - 5%")
             computedDiscount = parseFloat(discountObj.percentage);
             discountLabel = discountObj.line_discount;
-          } else if (typeof connection.discount_type === "string") {
-            discountLabel = connection.discount_type;
+          } else {
+            // Case B: Direct Value/Code (fallback)
+            discountLabel = String(connection.discount_type);
           }
         }
 
         return {
           id: String(item.product_id),
-          // We use master_id provided by API for grouping
           masterId: String(item.master_id),
           code: item.product_code || "N/A",
           name: item.name,
@@ -128,46 +140,46 @@ export function CreateReturnModal({
           stock: item.running_inventory,
           price: priceRef ? priceRef.price : 0,
           uom_id: 0,
-          discountType: discountLabel,
-          supplierDiscount: computedDiscount,
+          // ✅ Data for UI & Calculation
+          discountType: discountLabel, // Shows in Badge (e.g. "L1")
+          supplierDiscount: computedDiscount, // Used for auto-applying %
         };
       })
-      // Strict Filter: Only show items with available stock
       .filter((p) => Number(p.stock ?? 0) > 0);
 
-    // 2. Group by MASTER ID (Parent Relationship)
+    // 3. Group by MASTER ID (Parent Relationship)
     const groups: Record<string, any> = {};
 
     enrichedItems.forEach((item) => {
-      // ✅ Key is now the Master ID (guaranteed unique integer from DB)
       const groupKey = item.masterId;
 
       if (!groups[groupKey]) {
         groups[groupKey] = {
           masterId: groupKey,
-          masterCode: item.code, // For display
-          masterName: item.name, // Will be updated
+          masterCode: item.code,
+          masterName: item.name,
           variants: [],
         };
       }
       groups[groupKey].variants.push(item);
     });
 
-    // 3. Finalize Groups (Sort variants, Pick best name)
+    // 4. Finalize Groups (Sort variants)
     return Object.values(groups).map((group) => {
-      // Sort: Smallest unit first (usually represents the base product)
       group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
-
       if (group.variants.length > 0) {
         group.masterName = group.variants[0].name;
       }
-
-      // Sort display: Largest unit first (Box -> Pack -> Piece)
       group.variants.sort((a: any, b: any) => b.unitCount - a.unitCount);
-
       return group;
     });
-  }, [inventory, refs.products, refs.connections, refs.discounts]);
+  }, [
+    inventory,
+    refs.products,
+    refs.connections,
+    refs.discounts,
+    selection.supplierId,
+  ]);
 
   useEffect(() => {
     if (selection.supplierId && selection.branchId) {
@@ -188,6 +200,7 @@ export function CreateReturnModal({
           ...p,
           quantity: qty,
           onHand: p.stock,
+          // ✅ Apply the fetched Supplier Discount automatically
           discount: p.supplierDiscount || 0,
           customPrice: p.price,
         },
@@ -294,7 +307,6 @@ export function CreateReturnModal({
             />
           ) : (
             <div className="space-y-8">
-              {/* ... (Rest of Input is Unchanged) ... */}
               {step === "input" ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                   {/* Supplier Select */}

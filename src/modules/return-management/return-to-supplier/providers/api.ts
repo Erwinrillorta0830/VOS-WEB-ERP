@@ -28,7 +28,6 @@ const getHeaders = () => {
   return headers;
 };
 
-// ... (Keep getSpringToken and fetchSpring helper functions) ...
 const getSpringToken = async (): Promise<string | null> => {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(
@@ -70,11 +69,22 @@ const fetchSpring = async (endpoint: string) => {
   return res.ok ? await res.json() : null;
 };
 
+// GLOBAL CACHE
+const GLOBAL_CACHE: {
+  products: Map<string, any>;
+  units: Map<string, string>;
+  isLoaded: boolean;
+} = {
+  products: new Map(),
+  units: new Map(),
+  isLoaded: false,
+};
+
 export const ReturnToSupplierProvider = {
   // 1. GET REFERENCES
   async getReferences() {
     try {
-      const [suppliers, branches, products, discounts, connections] =
+      const [suppliers, branches, products, units, discounts, connections] =
         await Promise.all([
           fetch(`${DIRECTUS_BASE}/suppliers?limit=-1`, {
             headers: getHeaders(),
@@ -82,11 +92,14 @@ export const ReturnToSupplierProvider = {
           fetch(`${DIRECTUS_BASE}/branches?limit=-1`, {
             headers: getHeaders(),
           }).then((r) => r.json()),
-          // ✅ FETCH 'description' to fix duplicate naming issues
+          // ✅ REFACTOR: Fetches 'cost_per_unit' as the primary price source
           fetch(
-            `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_code,description,priceA,price_per_unit,cost_per_unit`,
+            `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count,cost_per_unit`,
             { headers: getHeaders() },
           ).then((r) => r.json()),
+          fetch(`${DIRECTUS_BASE}/units?limit=-1`, {
+            headers: getHeaders(),
+          }).then((r) => r.json()),
           fetch(`${DIRECTUS_BASE}/line_discount?limit=-1`, {
             headers: getHeaders(),
           }).then((r) => r.json()),
@@ -96,14 +109,38 @@ export const ReturnToSupplierProvider = {
           ).then((r) => r.json()),
         ]);
 
-      // Map products just for Price Lookup
+      // Populate Cache
+      GLOBAL_CACHE.products.clear();
+      GLOBAL_CACHE.units.clear();
+
+      (products.data || []).forEach((p: any) => {
+        GLOBAL_CACHE.products.set(String(p.product_id), {
+          id: String(p.product_id),
+          parent_id: p.parent_id,
+          uom_id: p.unit_of_measurement,
+          uom_count: Number(p.unit_of_measurement_count || 1),
+          name: p.product_name,
+          description: p.description,
+          code: p.product_code,
+          // ✅ REFACTOR: Strictly use cost_per_unit
+          price: Number(p.cost_per_unit ?? 0),
+        });
+      });
+
+      (units.data || []).forEach((u: any) => {
+        GLOBAL_CACHE.units.set(String(u.unit_id), u.unit_name);
+      });
+
+      GLOBAL_CACHE.isLoaded = true;
+
       const priceList: Product[] = (products.data || []).map((p: any) => ({
         id: p.product_id.toString(),
         code: p.product_code || "N/A",
-        name: p.description || "Ref", // Fallback, real name comes from Inventory
-        price: Number(p.price_per_unit ?? p.cost_per_unit ?? p.priceA ?? 0),
+        name: p.description || "Ref",
+        // ✅ REFACTOR: Strictly use cost_per_unit
+        price: Number(p.cost_per_unit ?? 0),
         unit: "",
-        uom_id: 0,
+        uom_id: p.unit_of_measurement || 0,
         unitCount: 1,
       }));
 
@@ -126,15 +163,15 @@ export const ReturnToSupplierProvider = {
     }
   },
 
-  // 2. GET INVENTORY (Spring View) -> WATERFALL CALCULATION
+  // 2. GET INVENTORY (Spring View)
   async getInventory(
     branchId: number,
     supplierId: number,
   ): Promise<InventoryRecord[]> {
     try {
-      // A. Fetch Base Inventory
       const data = await fetchSpring("/api/view-running-inventory/all");
       const list = Array.isArray(data) ? data : data?.data || [];
+
       const relevantItems = list.filter(
         (i: any) =>
           (i.branchId || i.branch_id) == branchId &&
@@ -143,69 +180,37 @@ export const ReturnToSupplierProvider = {
 
       if (relevantItems.length === 0) return [];
 
-      // B. Fetch Product Relations & Units
-      const [productsRes, unitsRes] = await Promise.all([
-        fetch(
-          `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count`,
-          { headers: getHeaders() },
-        ).then((r) => r.json()),
-        fetch(`${DIRECTUS_BASE}/units?limit=-1`, {
-          headers: getHeaders(),
-        }).then((r) => r.json()),
-      ]);
-
-      const productMap = new Map<string, any>();
-      (productsRes.data || []).forEach((p: any) => {
-        productMap.set(String(p.product_id), {
-          parent_id: p.parent_id,
-          uom_id: p.unit_of_measurement,
-          uom_count: Number(p.unit_of_measurement_count || 1),
-          name: p.product_name,
-          description: p.description, // ✅ Capture Description
-          code: p.product_code,
-        });
-      });
-
-      const unitMap = new Map<string, string>();
-      (unitsRes.data || []).forEach((u: any) => {
-        unitMap.set(String(u.unit_id), u.unit_name);
-      });
-
-      // --- 1. AGGREGATE & NORMALIZE TO BASE PIECES ---
-      // We first convert everything to "Pieces" and group by Master Family
-
-      const masterPoolMap = new Map<string, number>(); // MasterID -> Total Pieces
-      const familyMap = new Map<string, any[]>(); // MasterID -> List of Variants
+      const masterPoolMap = new Map<string, number>();
+      const familyMap = new Map<string, any[]>();
       const uniqueVariantMap = new Map<string, any>();
 
       relevantItems.forEach((item: any) => {
         const pId = String(item.productId || item.product_id);
-        const pInfo = productMap.get(pId);
+        const pInfo = GLOBAL_CACHE.products.get(pId);
 
-        // --- NAME LOGIC: Priority = Description > Product Name ---
         const displayName =
           pInfo?.description ||
           pInfo?.name ||
           item.productName ||
           item.product_name;
 
-        // Determine Master ID (Parent or Self)
         let masterId = pId;
         if (pInfo && pInfo.parent_id && pInfo.parent_id !== 0) {
           masterId = String(pInfo.parent_id);
         }
 
-        // Determine Unit Count
         const unitCount = pInfo ? pInfo.uom_count : Number(item.unitCount || 1);
         const safeUnitCount = unitCount > 0 ? unitCount : 1;
 
-        // Unique Key for aggregation
         const variantKey = `${pId}`;
 
         if (!uniqueVariantMap.has(variantKey)) {
           const uomId = pInfo ? String(pInfo.uom_id) : "0";
           const unitName =
-            unitMap.get(uomId) || item.unitName || item.unit_name || "Units";
+            GLOBAL_CACHE.units.get(uomId) ||
+            item.unitName ||
+            item.unit_name ||
+            "Units";
 
           const variantObj = {
             id: `${item.branchId || item.branch_id}-${pId}`,
@@ -215,21 +220,20 @@ export const ReturnToSupplierProvider = {
             supplier_id: item.supplierId || item.supplier_id,
             product_code:
               pInfo?.code || item.product_code || item.productCode || "N/A",
-            name: displayName, // ✅ Uses Description
+            name: displayName,
             unit_name: unitName,
+            uom_id: Number(uomId),
             unit_count: safeUnitCount,
-            running_inventory: 0, // Placeholder
+            running_inventory: 0,
             raw_pieces_contributed: 0,
           };
           uniqueVariantMap.set(variantKey, variantObj);
 
-          // Add to family grouping
           const list = familyMap.get(masterId) || [];
           list.push(variantObj);
           familyMap.set(masterId, list);
         }
 
-        // Add Inventory contribution to the pool
         const rawQty = Number(
           item.runningInventory || item.running_inventory || 0,
         );
@@ -239,28 +243,17 @@ export const ReturnToSupplierProvider = {
         masterPoolMap.set(masterId, currentPool + pieces);
       });
 
-      // --- 2. WATERFALL CALCULATION (The Consumption Model) ---
       const finalInventory: InventoryRecord[] = [];
 
       familyMap.forEach((variants, masterId) => {
-        // SORT: Largest Unit Count first (Descending)
-        // This ensures we fill Boxes before we count remaining Pieces
         variants.sort((a, b) => b.unit_count - a.unit_count);
 
         let remainingPool = masterPoolMap.get(masterId) || 0;
 
         variants.forEach((variant) => {
-          // Calculate how many of this unit we can make from the CURRENT pool
           const possibleCount = Math.floor(remainingPool / variant.unit_count);
-
-          // Assign the calculated stock
           variant.running_inventory = possibleCount;
-
-          // ✅ CONSUME THE POOL (Waterfall)
-          // Update the pool to be the REMAINDER
-          // 941 % 16 = 13 remaining
           remainingPool = remainingPool % variant.unit_count;
-
           finalInventory.push(variant);
         });
       });
@@ -272,7 +265,7 @@ export const ReturnToSupplierProvider = {
     }
   },
 
-  // ... (getTransactions, getTransactionDetails - UNCHANGED)
+  // ... (Rest of functions UNCHANGED) ...
   async getTransactions(
     search = "",
     status = "All",
@@ -389,8 +382,6 @@ export const ReturnToSupplierProvider = {
       return [];
     }
   },
-
-  // 5. CREATE
   async createTransaction(dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;
@@ -420,7 +411,6 @@ export const ReturnToSupplierProvider = {
 
       const totalNet = rts_items.reduce((s, i) => s + i.net_amount, 0);
 
-      // ✅ FIX: Removed total_gross_amount to fix Permission Error
       await fetch(`${DIRECTUS_BASE}/return_to_supplier/${parent.id}`, {
         method: "PATCH",
         headers: getHeaders(),
@@ -431,8 +421,6 @@ export const ReturnToSupplierProvider = {
       return false;
     }
   },
-
-  // 6. UPDATE
   async updateTransaction(id: string, dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;

@@ -1,5 +1,3 @@
-// src/modules/return-to-supplier/components/ReturnDetailsModal.tsx
-
 "use client";
 
 import React, { useRef, useEffect, useState, useMemo } from "react";
@@ -44,6 +42,7 @@ export function ReturnDetailsModal({
   );
   const [currentBranchId, setCurrentBranchId] = useState<number | null>(null);
 
+  // 1. Initialize Data (Parse Supplier/Branch & Fetch Details)
   useEffect(() => {
     if (isOpen && data) {
       const isPending = data.status === "Pending";
@@ -59,10 +58,6 @@ export function ReturnDetailsModal({
 
       if (supplierObj) setCurrentSupplierId(supplierObj.id);
       if (branchObj) setCurrentBranchId(branchObj.id);
-
-      if (supplierObj && branchObj) {
-        loadInventory(branchObj.id, supplierObj.id);
-      }
 
       const fetchDetails = async () => {
         setLoading(true);
@@ -80,7 +75,7 @@ export function ReturnDetailsModal({
               unit: i.unit,
               uom_id: i.uomId,
               quantity: i.quantity / validUnitCount,
-              onHand: 999, // Will be updated by inventory map if available
+              onHand: 0, // Placeholder, will be updated by sync effect below
               discount: i.discountRate,
               customPrice: i.price,
               unitCount: validUnitCount,
@@ -101,74 +96,103 @@ export function ReturnDetailsModal({
     }
   }, [isOpen, data, refs.suppliers, refs.branches]);
 
-  // ✅ LOGIC UPDATE: Syncing calculations with CreateReturnModal logic
+  // 2. Trigger Inventory Load
+  useEffect(() => {
+    if (isOpen && currentSupplierId && currentBranchId) {
+      loadInventory(currentBranchId, currentSupplierId);
+    }
+  }, [isOpen, currentSupplierId, currentBranchId]);
+
+  // 3. Sync Items with Inventory (Updates Unit Name, Stock, and UOM ID)
+  useEffect(() => {
+    if (inventory.size > 0 && items.length > 0) {
+      setItems((prevItems) => {
+        let hasChanges = false;
+        const nextItems = prevItems.map((item) => {
+          // Cast to any to safely access uom_id if needed from API response
+          const invRecord = inventory.get(Number(item.id)) as any;
+
+          if (invRecord) {
+            const realStock = Number(invRecord.running_inventory || 0);
+            const newUomId = invRecord.uom_id || item.uom_id;
+
+            const needsUpdate =
+              item.unit !== invRecord.unit_name ||
+              item.onHand !== realStock ||
+              item.unitCount !== invRecord.unit_count ||
+              item.uom_id !== newUomId;
+
+            if (needsUpdate) {
+              hasChanges = true;
+              return {
+                ...item,
+                unit: invRecord.unit_name || item.unit,
+                unitCount: invRecord.unit_count || item.unitCount,
+                uom_id: newUomId,
+                onHand: realStock,
+              };
+            }
+          }
+          return item;
+        });
+        return hasChanges ? nextItems : prevItems;
+      });
+    }
+  }, [inventory, items.length]);
+
+  // 4. Available Products for Picker
   const availableProducts = useMemo(() => {
     if (!currentSupplierId) return [];
 
-    const validIds = refs.connections
-      .filter((c) => c.supplier_id === currentSupplierId)
-      .map((c) => String(c.product_id));
+    const invArray = Array.from(inventory.values());
 
-    const supplierProducts = refs.products.filter((p) =>
-      validIds.includes(p.id),
+    // Create lookup maps for performance
+    const productPriceMap = new Map();
+    refs.products.forEach((p) => productPriceMap.set(String(p.id), p));
+
+    const connectionMap = new Map();
+    refs.connections.forEach((c) =>
+      connectionMap.set(`${c.product_id}-${c.supplier_id}`, c),
     );
 
-    return (
-      supplierProducts
-        .map((p) => {
-          // [REV] 1. Get Inventory Record (Object)
-          const invRecord = inventory.get(Number(p.id));
+    const discountMap = new Map();
+    refs.discounts.forEach((d) => discountMap.set(String(d.id), d));
 
-          // [REV] 2. Get Raw Stock
-          const totalRawStock = invRecord
-            ? Number(invRecord.running_inventory)
-            : 0;
+    return invArray
+      .map((item: any) => {
+        const priceRef = productPriceMap.get(String(item.product_id));
+        const connection = connectionMap.get(
+          `${item.product_id}-${currentSupplierId}`,
+        );
 
-          // [REV] 3. Determine Unit Count & Name (Use Inventory View data if available)
-          const activeUnitCount =
-            invRecord?.unit_count && invRecord.unit_count > 0
-              ? invRecord.unit_count
-              : p.unitCount > 0
-                ? p.unitCount
-                : 1;
+        let discountLabel = undefined;
+        let computedDiscount = 0;
 
-          const activeUnitName = invRecord?.unit_name || p.unit;
-
-          // [REV] 4. Calculate Stock: (Total / UnitCount)
-          const uomStock = Math.floor(totalRawStock / activeUnitCount);
-
-          // Get Discount Logic (Same as before)
-          const connection = refs.connections.find(
-            (c) =>
-              String(c.product_id) === p.id &&
-              c.supplier_id === currentSupplierId,
-          );
-
-          let computedDiscount = 0;
-          let discountLabel = "";
-
-          if (connection?.discount_type) {
-            const discountObj = refs.discounts.find(
-              (d) => d.id === connection.discount_type,
-            );
-            if (discountObj) {
-              computedDiscount = parseFloat(discountObj.percentage);
-              discountLabel = discountObj.line_discount;
-            }
+        if (connection?.discount_type) {
+          const discountObj = discountMap.get(String(connection.discount_type));
+          if (discountObj) {
+            computedDiscount = parseFloat(discountObj.percentage);
+            discountLabel = discountObj.line_discount;
+          } else if (typeof connection.discount_type === "string") {
+            discountLabel = connection.discount_type;
           }
+        }
 
-          return {
-            ...p,
-            stock: uomStock,
-            unit: activeUnitName, // Override with view data
-            unitCount: activeUnitCount, // Override with view data
-            supplierDiscount: computedDiscount,
-            discountType: discountLabel,
-          };
-        })
-        // Show products that have stock OR are already in the edit cart (to prevent disappearing items)
-        .filter((p) => (p.stock ?? 0) > 0 || items.some((i) => i.id === p.id))
-    );
+        return {
+          id: String(item.product_id),
+          masterId: String(item.master_id),
+          code: item.product_code || "N/A",
+          name: item.name,
+          unit: item.unit_name,
+          unitCount: item.unit_count,
+          stock: Number(item.running_inventory || 0),
+          price: priceRef ? priceRef.price : 0,
+          uom_id: item.uom_id || priceRef?.uom_id || 0,
+          discountType: discountLabel,
+          supplierDiscount: computedDiscount,
+        };
+      })
+      .filter((p) => p.stock > 0 || items.some((i) => i.id === p.id));
   }, [
     refs.products,
     refs.connections,
@@ -246,6 +270,7 @@ export function ReturnDetailsModal({
     <>
       <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-[1200px]! w-[90vw]! h-[90vh] bg-white p-0 gap-0 flex flex-col overflow-hidden shadow-2xl sm:rounded-xl border border-slate-200 [&>button]:hidden">
+          {/* Header */}
           <div className="flex flex-row items-center justify-between px-8 py-6 bg-white shrink-0 border-b border-slate-100">
             <div>
               <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -273,99 +298,107 @@ export function ReturnDetailsModal({
               </Button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-50">
-            {/* Header Info */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-6">
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Supplier
-                    </Label>
-                    <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
-                      {data.supplier}
+
+          {/* Body Content - Updated Structure for Spacing */}
+          <div className="rounded-xl p-6 h-full flex-1 overflow-y-auto custom-scrollbar bg-white">
+            <div className="bg-slate-50 rounded-xl p-6 h-full">
+              {/* Header Info */}
+              <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-8">
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Supplier
+                      </Label>
+                      <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
+                        {data.supplier}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Branch
+                      </Label>
+                      <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
+                        {data.branch}
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Branch
-                    </Label>
-                    <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
-                      {data.branch}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Return Date
+                      </Label>
+                      <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
+                        {new Date(data.returnDate).toLocaleDateString()}
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Return Date
-                    </Label>
-                    <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
-                      {new Date(data.returnDate).toLocaleDateString()}
+                    <div className="space-y-2">
+                      <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Document Ref No.
+                      </Label>
+                      <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
+                        {data.returnNo}
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Document Ref No.
-                    </Label>
-                    <div className="flex items-center px-3 h-10 rounded-md border border-slate-200 bg-slate-50 text-sm font-medium text-slate-900 shadow-sm">
-                      {data.returnNo}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Status
-                    </Label>
-                    <div
-                      className={`flex items-center px-3 h-10 rounded-md border text-sm font-bold shadow-sm ${
-                        data.status === "Posted"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                          : "bg-amber-50 text-amber-700 border-amber-100"
-                      }`}
-                    >
-                      {data.status}
+                    <div className="space-y-2">
+                      <Label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        Status
+                      </Label>
+                      <div
+                        className={`flex items-center px-3 h-10 rounded-md border text-sm font-bold shadow-sm ${
+                          data.status === "Posted"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                            : "bg-amber-50 text-amber-700 border-amber-100"
+                        }`}
+                      >
+                        {data.status}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Products */}
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-base font-bold text-slate-800">
-                Products to Return
-              </h3>
-              {isEditable && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowPicker(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <Plus className="w-4 h-4 mr-1" /> Add Products
-                </Button>
-              )}
-            </div>
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-              <ReturnReviewPanel
-                items={items}
-                lineDiscounts={refs.discounts}
-                onUpdateItem={(id, field, val) =>
-                  setItems((prev) =>
-                    prev.map((i) => (i.id === id ? { ...i, [field]: val } : i)),
-                  )
-                }
-                onRemoveItem={(id) =>
-                  setItems((prev) => prev.filter((i) => i.id !== id))
-                }
-                remarks={remarks}
-                setRemarks={setRemarks}
-                readOnly={!isEditable}
-              />
+              {/* Products to Return */}
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-base font-bold text-slate-800">
+                  Products to Return
+                </h3>
+                {isEditable && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowPicker(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add Products
+                  </Button>
+                )}
+              </div>
+
+              {/* Review Panel */}
+              <div>
+                <ReturnReviewPanel
+                  items={items}
+                  lineDiscounts={refs.discounts}
+                  onUpdateItem={(id, field, val) =>
+                    setItems((prev) =>
+                      prev.map((i) =>
+                        i.id === id ? { ...i, [field]: val } : i,
+                      ),
+                    )
+                  }
+                  onRemoveItem={(id) =>
+                    setItems((prev) => prev.filter((i) => i.id !== id))
+                  }
+                  remarks={remarks}
+                  setRemarks={setRemarks}
+                  readOnly={!isEditable}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="px-6 py-4 border-t bg-white flex justify-end gap-2 shrink-0">
+          {/* Footer Actions */}
+          <div className="px-8 py-4 border-t bg-white flex justify-end gap-2 shrink-0">
             <Button variant="outline" onClick={onClose}>
               {isEditable ? "Cancel" : "Close"}
             </Button>
@@ -399,6 +432,7 @@ export function ReturnDetailsModal({
             )}
           </div>
         </DialogContent>
+
         <div
           style={{
             position: "absolute",
