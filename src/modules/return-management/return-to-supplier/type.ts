@@ -1,4 +1,4 @@
-// type.ts
+// src/modules/return-to-supplier/type.ts
 
 export interface API_Unit {
   unit_id: number;
@@ -15,8 +15,9 @@ export interface API_Product {
   description: string;
   price_per_unit: number | null;
   priceA: number | null;
-  standard_price?: number;
+  cost_per_unit?: number;
   unit_of_measurement: number | null;
+  unit_of_measurement_count?: number;
   isActive: number;
   stock?: number;
 }
@@ -28,7 +29,11 @@ export interface Product {
   price: number;
   unit: string;
   uom_id: number;
-  stock?: number; // [NEW] Added stock property for dynamic inventory
+  unitCount: number;
+  stock?: number;
+  rawStock?: number;
+  discountType?: string;
+  supplierDiscount?: number;
 }
 
 export interface CartItem extends Product {
@@ -59,27 +64,23 @@ export interface ProductSupplier {
   discount_type?: number;
 }
 
-export interface DiscountType {
-  id: number;
-  discount_type: string;
-}
-
 export interface LineDiscount {
   id: number;
   line_discount: string;
   percentage: string;
 }
 
-// [NEW] Matches v_running_inventory view
+// [REV] Updated InventoryRecord to include unit info from the view
 export interface InventoryRecord {
   id: string;
   product_id: number;
   branch_id: number;
   supplier_id: number;
   running_inventory: string | number;
+  unit_name?: string;
+  unit_count?: number;
 }
 
-// [NEW] API Response for rts_items (includes joined fields)
 export interface API_RTS_Item {
   id: number;
   rts_id: number;
@@ -89,6 +90,7 @@ export interface API_RTS_Item {
         product_name: string;
         product_code: string;
         description: string;
+        unit_of_measurement_count?: number;
       }
     | number;
   uom_id: { unit_id: number; unit_shortcut: string } | number;
@@ -101,9 +103,10 @@ export interface API_RTS_Item {
   item_remarks: string | null;
 }
 
-// [NEW] Cleaned UI Interface for the View Modal
 export interface RTSItem {
   id: number;
+  productId: number;
+  uomId: number;
   code: string;
   name: string;
   unit: string;
@@ -111,6 +114,17 @@ export interface RTSItem {
   price: number;
   discountRate: number;
   discountAmount: number;
+  total: number;
+  unitCount: number;
+}
+
+export interface ReturnItem {
+  code: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  price: number;
+  discount: number;
   total: number;
 }
 
@@ -135,4 +149,25 @@ export interface ReturnToSupplier {
   totalAmount: number;
   status: "Pending" | "Posted";
   remarks: string;
+}
+
+export interface CreateReturnItemDTO {
+  product_id: number;
+  uom_id: number;
+  quantity: number;
+  gross_unit_price: number;
+  gross_amount: number;
+  discount_rate: number;
+  discount_amount: number;
+  net_amount: number;
+  item_remarks: string;
+}
+
+export interface CreateReturnDTO {
+  supplier_id: number;
+  branch_id: number;
+  transaction_date: string;
+  remarks: string;
+  is_posted: number;
+  rts_items: CreateReturnItemDTO[];
 }

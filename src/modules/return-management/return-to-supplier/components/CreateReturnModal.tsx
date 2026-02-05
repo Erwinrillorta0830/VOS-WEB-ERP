@@ -1,19 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
-import {
-  Plus,
-  X,
-  Package,
-  Check,
-  AlertTriangle,
-  Loader2,
-  ArrowRight,
-  ArrowLeft,
-  Building2,
-  Store,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,533 +10,509 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-
 import {
-  Product,
-  CartItem,
-  Supplier,
-  Branch,
-  ProductSupplier,
-  LineDiscount,
-} from "../type";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Plus,
+  X,
+  Package,
+  ArrowRight,
+  ArrowLeft,
+  Loader2,
+  Check,
+  ChevronsUpDown,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useReturnCreationData } from "../hooks/useReturnCreationData";
 import { ReturnToSupplierProvider } from "../providers/api";
 import { ProductPicker } from "./ProductPicker";
 import { ReturnReviewPanel } from "./ReturnReviewPanel";
+import { CartItem } from "../type";
+import { calculateLineItem } from "../utils/calculations";
 
-interface Props {
+export function CreateReturnModal({
+  isOpen,
+  onClose,
+  onReturnCreated,
+}: {
   isOpen: boolean;
   onClose: () => void;
   onReturnCreated: () => void;
-}
+}) {
+  const {
+    refs,
+    inventory,
+    loadInventory,
+    loading: isLoadingInventory,
+  } = useReturnCreationData(isOpen);
 
-type ModalStep = "input" | "review";
+  const [step, setStep] = useState<"input" | "review">("input");
+  const [selection, setSelection] = useState({
+    supplierId: "",
+    branchId: "",
+    remarks: "",
+  });
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [openSupplier, setOpenSupplier] = useState(false);
+  const [openBranch, setOpenBranch] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [branchSearch, setBranchSearch] = useState("");
 
-export function CreateReturnModal({ isOpen, onClose, onReturnCreated }: Props) {
-  // --- DATA STATE ---
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [productConnections, setProductConnections] = useState<
-    ProductSupplier[]
-  >([]);
-  const [lineDiscounts, setLineDiscounts] = useState<LineDiscount[]>([]);
-  const [isLoadingData, setIsLoadingData] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const filteredSuppliers = useMemo(() => {
+    if (!supplierSearch) return refs.suppliers;
+    return refs.suppliers.filter((s) =>
+      s.supplier_name.toLowerCase().includes(supplierSearch.toLowerCase()),
+    );
+  }, [refs.suppliers, supplierSearch]);
 
-  // Inventory Map
-  const [inventoryMap, setInventoryMap] = useState<Map<number, number>>(
-    new Map(),
-  );
+  const filteredBranches = useMemo(() => {
+    if (!branchSearch) return refs.branches;
+    return refs.branches.filter((b) =>
+      b.branch_name.toLowerCase().includes(branchSearch.toLowerCase()),
+    );
+  }, [refs.branches, branchSearch]);
 
-  // --- WORKFLOW STATE ---
-  const [step, setStep] = useState<ModalStep>("input");
-
-  // --- FORM STATE ---
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
-  const [supplierQuery, setSupplierQuery] = useState("");
-  const [supplierOpen, setSupplierOpen] = useState(false);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
-  const [branchQuery, setBranchQuery] = useState("");
-  const [branchOpen, setBranchOpen] = useState(false);
-  const [remarks, setRemarks] = useState("");
-
-  // --- VIEW STATE ---
-  const [showProductPicker, setShowProductPicker] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [addedProducts, setAddedProducts] = useState<CartItem[]>([]);
-
-  const isSelectionComplete = selectedSupplierId && selectedBranchId;
-  const supplierRef = useRef<HTMLDivElement>(null);
-  const branchRef = useRef<HTMLDivElement>(null);
-
-  // --- FILTERED PRODUCTS LOGIC ---
-  const filteredProducts = useMemo(() => {
-    if (!selectedSupplierId) return [];
-
-    const validProductIds = productConnections
-      .filter((conn) => conn.supplier_id === Number(selectedSupplierId))
-      .map((conn) => String(conn.product_id));
+  // ✅ DISPLAY LOGIC: Merge Calculated Inventory (from API) with Pricing
+  const availableProducts = useMemo(() => {
+    const invArray = Array.from(inventory.values());
 
     return (
-      products
-        .filter((p) => validProductIds.includes(p.id))
-        .map((p) => {
-          const stockCount = inventoryMap.get(Number(p.id)) || 0;
+      invArray
+        // Casting to any to ensure property access for 'product_code' and 'name'
+        .map((item: any) => {
+          const priceRef = refs.products.find(
+            (p) => String(p.id) === String(item.product_id),
+          );
+
+          const connection = refs.connections.find(
+            (c) =>
+              String(c.product_id) === String(item.product_id) &&
+              String(c.supplier_id) === String(item.supplier_id),
+          );
+
+          let discountLabel = undefined;
+          let computedDiscount = 0;
+
+          if (connection?.discount_type) {
+            const discountObj = refs.discounts.find(
+              (d) => String(d.id) === String(connection.discount_type),
+            );
+            if (discountObj) {
+              computedDiscount = parseFloat(discountObj.percentage);
+              discountLabel = discountObj.line_discount;
+            } else if (typeof connection.discount_type === "string") {
+              discountLabel = connection.discount_type;
+            }
+          }
+
           return {
-            ...p,
-            stock: stockCount,
+            id: String(item.product_id),
+            code: item.product_code || "N/A",
+            name: item.name, // Already handled in API (prioritizes Description)
+            unit: item.unit_name,
+            unitCount: item.unit_count,
+            stock: item.running_inventory, // Waterfall Remainder Stock
+            price: priceRef ? priceRef.price : 0,
+            uom_id: 0,
+            discountType: discountLabel,
+            supplierDiscount: computedDiscount,
           };
         })
-        // ✅ STRICT FILTER: Only show items with available stock
-        .filter((p) => (p.stock || 0) > 0)
+        // [FIX] Strict Filter: Only show items that have remainder stock available
+        .filter((p) => Number(p.stock ?? 0) > 0)
     );
-  }, [products, productConnections, selectedSupplierId, inventoryMap]);
+  }, [inventory, refs.products, refs.connections, refs.discounts]);
 
-  // --- FETCH DATA ---
   useEffect(() => {
-    if (isOpen) {
-      setStep("input");
-      const loadData = async () => {
-        setIsLoadingData(true);
-        try {
-          const [
-            suppliersData,
-            branchesData,
-            productsData,
-            connectionsData,
-            lineDiscountsData,
-          ] = await Promise.all([
-            ReturnToSupplierProvider.getSuppliers(),
-            ReturnToSupplierProvider.getBranches(),
-            ReturnToSupplierProvider.getProducts(),
-            ReturnToSupplierProvider.getProductSupplierConnections(),
-            ReturnToSupplierProvider.getLineDiscounts(),
-          ]);
-          setSuppliers(suppliersData);
-          setBranches(branchesData);
-          setProducts(productsData);
-          setProductConnections(connectionsData);
-          setLineDiscounts(lineDiscountsData);
-        } catch (error) {
-          console.error("Error loading data", error);
-        } finally {
-          setIsLoadingData(false);
-        }
-      };
-      loadData();
+    if (selection.supplierId && selection.branchId) {
+      loadInventory(Number(selection.branchId), Number(selection.supplierId));
     }
-  }, [isOpen]);
+  }, [selection.supplierId, selection.branchId]);
 
-  // --- FETCH INVENTORY ---
-  useEffect(() => {
-    if (!selectedBranchId || !selectedSupplierId) return;
-
-    const fetchInventory = async () => {
-      try {
-        const data = await ReturnToSupplierProvider.getBranchInventory(
-          Number(selectedBranchId),
-          Number(selectedSupplierId),
+  const addToCart = (p: any, qty = 1) => {
+    setCart((prev) => {
+      const exists = prev.find((i) => i.id === p.id);
+      if (exists)
+        return prev.map((i) =>
+          i.id === p.id ? { ...i, quantity: i.quantity + qty } : i,
         );
-
-        const map = new Map<number, number>();
-        data.forEach((item) => {
-          map.set(item.product_id, Number(item.running_inventory));
-        });
-
-        setInventoryMap(map);
-      } catch (error) {
-        console.error("Failed to load inventory", error);
-      }
-    };
-
-    fetchInventory();
-  }, [selectedBranchId, selectedSupplierId]);
-
-  // Close dropdowns
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        supplierRef.current &&
-        !supplierRef.current.contains(event.target as Node)
-      )
-        setSupplierOpen(false);
-      if (
-        branchRef.current &&
-        !branchRef.current.contains(event.target as Node)
-      )
-        setBranchOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleAddProduct = (product: Product, quantity: number = 1) => {
-    const existing = addedProducts.find((p) => p.id === product.id);
-    if (existing) {
-      updateItem(product.id, "quantity", existing.quantity + quantity);
-    } else {
-      setAddedProducts([
-        ...addedProducts,
+      return [
+        ...prev,
         {
-          ...product,
-          quantity: quantity,
-          onHand: product.stock || 0,
-          discount: 0,
-          customPrice: product.price,
+          ...p,
+          quantity: qty,
+          onHand: p.stock,
+          discount: p.supplierDiscount || 0,
+          customPrice: p.price,
         },
-      ]);
-    }
+      ];
+    });
   };
 
-  const updateItem = (id: string, field: keyof CartItem, value: number) => {
-    setAddedProducts((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, [field]: value } : item,
-      ),
+  const updateCart = (id: string, field: keyof CartItem, val: number) => {
+    setCart((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, [field]: val } : i)),
     );
-  };
-
-  const handleRemoveProduct = (productId: string) => {
-    setAddedProducts(addedProducts.filter((p) => p.id !== productId));
-  };
-
-  const handleClearAllRequest = () => setShowClearConfirm(true);
-
-  const confirmClearAll = () => {
-    setAddedProducts([]);
-    setShowClearConfirm(false);
   };
 
   const handleCloseFull = () => {
-    if (showClearConfirm) return;
-    setSelectedSupplierId("");
-    setSupplierQuery("");
-    setSelectedBranchId("");
-    setBranchQuery("");
-    setRemarks("");
-    setShowProductPicker(false);
-    setAddedProducts([]);
+    setSelection({ supplierId: "", branchId: "", remarks: "" });
+    setCart([]);
     setStep("input");
+    setShowPicker(false);
     onClose();
   };
 
-  const handleCreateReturn = async () => {
-    if (!selectedSupplierId || !selectedBranchId || addedProducts.length === 0)
-      return;
-    setIsSubmitting(true);
-
-    try {
-      const formattedItems = addedProducts.map((item) => {
-        const qty = item.quantity;
-        const grossPrice = item.customPrice || item.price;
-        const grossAmount = qty * grossPrice;
-        const discountRate = item.discount || 0;
-        const discountAmount = grossAmount * (discountRate / 100);
-        const netAmount = grossAmount - discountAmount;
-
-        return {
-          product_id: Number(item.id),
-          uom_id: item.uom_id,
-          quantity: qty,
-          gross_unit_price: grossPrice,
-          gross_amount: grossAmount,
-          discount_rate: discountRate,
-          discount_amount: discountAmount,
-          net_amount: netAmount,
-          item_remarks: "",
-        };
-      });
-
-      const payload = {
-        supplier_id: Number(selectedSupplierId),
-        branch_id: Number(selectedBranchId),
-        transaction_date: new Date().toISOString().split("T")[0],
-        status: "pending",
-        remarks: remarks,
-        is_posted: 0,
-        rts_items: formattedItems,
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    const rts_items = cart.map((item) => {
+      const { gross, discountAmount, net } = calculateLineItem(item);
+      return {
+        product_id: Number(item.id),
+        uom_id: item.uom_id || 1,
+        quantity: item.quantity * (item.unitCount || 1), // Converts back to base units for storage
+        gross_unit_price: item.customPrice || item.price,
+        gross_amount: gross,
+        discount_rate: item.discount,
+        discount_amount: discountAmount,
+        net_amount: net,
+        item_remarks: "",
       };
+    });
 
-      const success =
-        await ReturnToSupplierProvider.createReturnTransaction(payload);
+    const success = await ReturnToSupplierProvider.createTransaction({
+      supplier_id: Number(selection.supplierId),
+      branch_id: Number(selection.branchId),
+      transaction_date: new Date().toISOString().split("T")[0],
+      is_posted: 0,
+      remarks: selection.remarks,
+      rts_items,
+    });
 
-      if (success) {
-        if (typeof onReturnCreated === "function") onReturnCreated();
-        handleCloseFull();
-      } else {
-        alert("Failed to create return.");
-      }
-    } catch (error) {
-      console.error("Submission error:", error);
-    } finally {
-      setIsSubmitting(false);
+    if (success) {
+      onReturnCreated();
+      handleCloseFull();
+    } else {
+      alert("Failed to create return transaction.");
     }
+    setSubmitting(false);
   };
 
   const getModalWidth = () => {
-    if (showProductPicker) return "w-[98vw] !max-w-[90vw] h-[95vh]";
+    if (showPicker) return "w-[98vw] !max-w-[90vw] h-[95vh]";
     return "w-[95vw] !max-w-[1300px] h-[80vh]";
   };
 
   return (
-    <>
-      <Dialog open={isOpen} onOpenChange={(open) => !open && handleCloseFull()}>
-        <DialogContent
-          className={`p-0 overflow-hidden gap-0 ${getModalWidth()} bg-white border-none shadow-2xl [&>button]:hidden`}
-        >
-          {/* HEADER */}
-          <DialogHeader className="px-6 py-5 border-b flex flex-row items-center justify-between bg-white z-20 shrink-0">
-            <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              {showProductPicker ? (
-                <>
-                  <div className="bg-blue-100 p-2 rounded-lg">
-                    <Plus className="h-5 w-5 text-blue-600" />
-                  </div>
-                  Add Products
-                </>
-              ) : step === "input" ? (
-                "Create Return to Supplier"
-              ) : (
-                "Review Transaction"
-              )}
-            </DialogTitle>
-            <button
-              onClick={
-                showProductPicker
-                  ? () => setShowProductPicker(false)
-                  : handleCloseFull
-              }
-              className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md shadow-sm"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </DialogHeader>
-
-          {/* ✅ FIX: Removed 'overflow-y-auto' from this parent wrapper when picker is shown.
-             This forces ProductPicker to handle its own scrolling internally, preventing the footer 
-             from being pushed off-screen.
-          */}
-          <div
-            className={`${showProductPicker ? "overflow-hidden h-[calc(95vh-70px)]" : "overflow-y-auto p-8 max-h-[85vh] bg-slate-50/50"}`}
-          >
-            {showProductPicker ? (
-              <ProductPicker
-                isVisible={showProductPicker}
-                onClose={() => setShowProductPicker(false)}
-                products={filteredProducts}
-                addedProducts={addedProducts}
-                onAdd={handleAddProduct}
-                onRemove={handleRemoveProduct}
-                onUpdateQty={(id, qty) => updateItem(id, "quantity", qty)}
-                onClearAll={handleClearAllRequest}
-              />
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCloseFull()}>
+      <DialogContent
+        className={`p-0 overflow-hidden gap-0 ${getModalWidth()} bg-white border-none shadow-2xl [&>button]:hidden transition-all duration-300`}
+      >
+        <DialogHeader className="px-6 py-5 border-b flex flex-row items-center justify-between bg-white z-20 shrink-0">
+          <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            {showPicker ? (
+              <>
+                <div className="bg-blue-100 p-2 rounded-lg">
+                  <Plus className="h-5 w-5 text-blue-600" />
+                </div>
+                Add Products
+              </>
+            ) : step === "input" ? (
+              "Create Return"
             ) : (
-              <div className="space-y-8">
-                {step === "input" ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    {/* Supplier Input */}
-                    <div ref={supplierRef} className="space-y-2">
-                      <Label className="text-xs font-bold text-slate-700 uppercase">
-                        Supplier *
-                      </Label>
-                      <Input
-                        placeholder={
-                          isLoadingData ? "Loading..." : "Select supplier..."
-                        }
-                        value={supplierQuery}
-                        onChange={(e) => {
-                          setSupplierQuery(e.target.value);
-                          setSupplierOpen(true);
-                        }}
-                        onFocus={() => setSupplierOpen(true)}
-                      />
-                      {supplierOpen && (
-                        <div className="absolute z-50 w-[400px] mt-1 bg-white border rounded-lg shadow-xl max-h-48 overflow-auto">
-                          {suppliers
-                            .filter((s) =>
-                              s.supplier_name
-                                .toLowerCase()
-                                .includes(supplierQuery.toLowerCase()),
-                            )
-                            .map((s) => (
-                              <div
-                                key={s.id}
-                                className="p-2 hover:bg-slate-100 cursor-pointer text-sm"
-                                onClick={() => {
-                                  setSelectedSupplierId(String(s.id));
-                                  setSupplierQuery(s.supplier_name);
-                                  setSupplierOpen(false);
-                                  setAddedProducts([]);
-                                }}
-                              >
-                                {s.supplier_name}
-                              </div>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                    {/* Branch Input */}
-                    <div ref={branchRef} className="space-y-2">
-                      <Label className="text-xs font-bold text-slate-700 uppercase">
-                        Branch *
-                      </Label>
-                      <Input
-                        placeholder={
-                          isLoadingData ? "Loading..." : "Select branch..."
-                        }
-                        value={branchQuery}
-                        onChange={(e) => {
-                          setBranchQuery(e.target.value);
-                          setBranchOpen(true);
-                        }}
-                        onFocus={() => setBranchOpen(true)}
-                      />
-                      {branchOpen && (
-                        <div className="absolute z-50 w-[400px] mt-1 bg-white border rounded-lg shadow-xl max-h-48 overflow-auto">
-                          {branches
-                            .filter((b) =>
-                              b.branch_name
-                                .toLowerCase()
-                                .includes(branchQuery.toLowerCase()),
-                            )
-                            .map((b) => (
-                              <div
-                                key={b.id}
-                                className="p-2 hover:bg-slate-100 cursor-pointer text-sm"
-                                onClick={() => {
-                                  setSelectedBranchId(String(b.id));
-                                  setBranchQuery(b.branch_name);
-                                  setBranchOpen(false);
-                                }}
-                              >
-                                {b.branch_name}
-                              </div>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex gap-8">
-                    <div>
-                      <div className="text-xs text-slate-500 font-bold uppercase">
-                        Supplier
-                      </div>
-                      <div className="text-lg font-bold">{supplierQuery}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-slate-500 font-bold uppercase">
-                        Branch
-                      </div>
-                      <div className="text-lg font-bold">{branchQuery}</div>
-                    </div>
-                  </div>
-                )}
+              "Review Transaction"
+            )}
+          </DialogTitle>
+          <button
+            onClick={showPicker ? () => setShowPicker(false) : handleCloseFull}
+            className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md shadow-sm transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </DialogHeader>
 
-                {/* Cart / Review */}
-                {isSelectionComplete ? (
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <Label className="font-bold flex items-center gap-2">
-                        <Package className="h-4 w-4 text-blue-600" />{" "}
-                        {step === "input" ? "Products to Return" : "Summary"}
-                      </Label>
-                      {step === "input" && (
+        <div
+          className={`${showPicker ? "overflow-hidden h-[calc(95vh-70px)]" : "overflow-y-auto p-8 max-h-[85vh] bg-slate-50/50"}`}
+        >
+          {showPicker ? (
+            <ProductPicker
+              isVisible={true}
+              onClose={() => setShowPicker(false)}
+              products={availableProducts}
+              addedProducts={cart}
+              onAdd={addToCart}
+              onRemove={(id) => setCart((c) => c.filter((i) => i.id !== id))}
+              onUpdateQty={(id, q) => updateCart(id, "quantity", q)}
+              onClearAll={() => setCart([])}
+              isLoading={isLoadingInventory}
+            />
+          ) : (
+            <div className="space-y-8">
+              {step === "input" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  {/* Supplier Select */}
+                  <div className="space-y-2 flex flex-col">
+                    <Label className="text-xs font-bold text-slate-700 uppercase">
+                      Supplier *
+                    </Label>
+                    <Popover
+                      open={openSupplier}
+                      onOpenChange={setOpenSupplier}
+                      modal={true}
+                    >
+                      <PopoverTrigger asChild>
                         <Button
-                          onClick={() => setShowProductPicker(true)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white h-9 text-xs"
+                          variant="outline"
+                          role="combobox"
+                          className="w-full h-11 justify-between bg-slate-50 border-slate-200"
                         >
-                          <Plus className="mr-2 h-3 w-3" /> Add Products
+                          {selection.supplierId
+                            ? refs.suppliers.find(
+                                (s) => String(s.id) === selection.supplierId,
+                              )?.supplier_name
+                            : "Select Supplier..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
-                      )}
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            placeholder="Search supplier..."
+                            value={supplierSearch}
+                            onValueChange={setSupplierSearch}
+                          />
+                          <CommandList>
+                            <CommandGroup>
+                              {filteredSuppliers.map((s) => (
+                                <CommandItem
+                                  key={s.id}
+                                  value={String(s.id)}
+                                  onSelect={() => {
+                                    setSelection((prev) => ({
+                                      ...prev,
+                                      supplierId: String(s.id),
+                                    }));
+                                    setCart([]);
+                                    setOpenSupplier(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selection.supplierId === String(s.id)
+                                        ? "opacity-100"
+                                        : "opacity-0",
+                                    )}
+                                  />
+                                  {s.supplier_name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Branch Select */}
+                  <div className="space-y-2 flex flex-col">
+                    <Label className="text-xs font-bold text-slate-700 uppercase">
+                      Branch *
+                    </Label>
+                    <Popover
+                      open={openBranch}
+                      onOpenChange={setOpenBranch}
+                      modal={true}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full h-11 justify-between bg-slate-50 border-slate-200"
+                        >
+                          {selection.branchId
+                            ? refs.branches.find(
+                                (b) => String(b.id) === selection.branchId,
+                              )?.branch_name
+                            : "Select Branch..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px] p-0" align="start">
+                        <Command shouldFilter={false}>
+                          <CommandInput
+                            placeholder="Search branch..."
+                            value={branchSearch}
+                            onValueChange={setBranchSearch}
+                          />
+                          <CommandList>
+                            <CommandGroup>
+                              {filteredBranches.map((b) => (
+                                <CommandItem
+                                  key={b.id}
+                                  value={String(b.id)}
+                                  onSelect={() => {
+                                    setSelection((prev) => ({
+                                      ...prev,
+                                      branchId: String(b.id),
+                                    }));
+                                    setOpenBranch(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selection.branchId === String(b.id)
+                                        ? "opacity-100"
+                                        : "opacity-0",
+                                    )}
+                                  />
+                                  {b.branch_name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex gap-8">
+                  {/* Review Mode Summary */}
+                  <div>
+                    <div className="text-xs text-slate-500 font-bold uppercase">
+                      Supplier
                     </div>
-                    {addedProducts.length > 0 ? (
-                      <ReturnReviewPanel
-                        items={addedProducts}
-                        lineDiscounts={lineDiscounts}
-                        onUpdateItem={updateItem}
-                        onRemoveItem={handleRemoveProduct}
-                        remarks={remarks}
-                        setRemarks={setRemarks}
-                        readOnly={step === "review"}
-                      />
-                    ) : (
-                      <div className="border-2 border-dashed h-32 flex items-center justify-center text-slate-400 text-sm">
-                        No products added.
-                      </div>
+                    <div className="text-lg font-bold">
+                      {
+                        refs.suppliers.find(
+                          (s) => String(s.id) === selection.supplierId,
+                        )?.supplier_name
+                      }
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 font-bold uppercase">
+                      Branch
+                    </div>
+                    <div className="text-lg font-bold">
+                      {
+                        refs.branches.find(
+                          (b) => String(b.id) === selection.branchId,
+                        )?.branch_name
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Cart Section */}
+              {selection.supplierId && selection.branchId ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Label className="font-bold flex items-center gap-2">
+                      <Package className="h-4 w-4 text-blue-600" />{" "}
+                      {step === "input" ? "Items" : "Summary"}
+                    </Label>
+                    {step === "input" && (
+                      <Button
+                        onClick={() => setShowPicker(true)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white h-9 text-xs"
+                      >
+                        <Plus className="mr-2 h-3 w-3" /> Add
+                      </Button>
                     )}
                   </div>
-                ) : (
-                  <div className="border-2 border-dashed h-32 flex items-center justify-center text-slate-400 text-sm">
-                    Please select Supplier and Branch first.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* FOOTER */}
-          {!showProductPicker && (
-            <DialogFooter className="px-8 py-5 border-t bg-white shrink-0">
-              {step === "review" && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setStep("input")}
-                  className="mr-auto"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={handleCloseFull}
-                className="mr-2"
-              >
-                Cancel
-              </Button>
-              {step === "input" ? (
-                <Button
-                  disabled={!isSelectionComplete || addedProducts.length === 0}
-                  onClick={() => setStep("review")}
-                  className="bg-blue-600 text-white"
-                >
-                  Review <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleCreateReturn}
-                  className="bg-green-600 text-white hover:bg-green-700"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                  {cart.length > 0 ? (
+                    <ReturnReviewPanel
+                      items={cart}
+                      lineDiscounts={refs.discounts}
+                      onUpdateItem={updateCart}
+                      onRemoveItem={(id) =>
+                        setCart((c) => c.filter((i) => i.id !== id))
+                      }
+                      remarks={selection.remarks}
+                      setRemarks={(r) =>
+                        setSelection((s) => ({ ...s, remarks: r }))
+                      }
+                      readOnly={step === "review"}
+                    />
                   ) : (
-                    "Confirm & Submit"
+                    <div className="border-2 border-dashed h-32 flex items-center justify-center text-slate-400 text-sm">
+                      No items selected
+                    </div>
                   )}
-                </Button>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed h-32 flex items-center justify-center text-slate-400 text-sm">
+                  Please select Supplier and Branch first.
+                </div>
               )}
-            </DialogFooter>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
-      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Clear all items?</DialogTitle>
-          </DialogHeader>
-          <div className="flex justify-end gap-2 mt-4">
+        </div>
+
+        {/* Footer */}
+        {!showPicker && (
+          <DialogFooter className="px-8 py-5 border-t bg-white shrink-0">
+            {step === "review" && (
+              <Button
+                variant="ghost"
+                onClick={() => setStep("input")}
+                className="mr-auto"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              </Button>
+            )}
             <Button
               variant="outline"
-              onClick={() => setShowClearConfirm(false)}
+              onClick={handleCloseFull}
+              className="mr-2"
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmClearAll}>
-              Clear
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+            {step === "input" ? (
+              <Button
+                disabled={
+                  !selection.supplierId ||
+                  !selection.branchId ||
+                  cart.length === 0
+                }
+                onClick={() => setStep("review")}
+                className="bg-blue-600 text-white"
+              >
+                Review <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                {submitting ? (
+                  <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                ) : (
+                  "Confirm Return"
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

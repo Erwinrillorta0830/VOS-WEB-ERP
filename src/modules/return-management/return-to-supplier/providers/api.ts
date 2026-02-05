@@ -3,116 +3,24 @@ import {
   Supplier,
   Product,
   ProductSupplier,
-  DiscountType,
   LineDiscount,
-  API_Product,
-  API_ReturnToSupplier,
   ReturnToSupplier,
-  API_RTS_Item,
   RTSItem,
   InventoryRecord,
-  API_Unit,
+  CreateReturnDTO,
+  API_Product,
+  API_ReturnToSupplier,
 } from "../type";
 
-// --- CONFIGURATION ---
-const DIRECTUS_BASE = "/api/items";
-const SPRING_PROXY_BASE = "/api/proxy/spring";
-
-// --- CREDENTIALS ---
-const AUTH_CREDENTIALS = {
-  email: process.env.NEXT_PUBLIC_SPRING_BOOT_EMAIL,
-  hashPassword: process.env.NEXT_PUBLIC_SPRING_BOOT_PASSWORD,
-};
-
-// --- COOKIE HELPERS ---
-const getCookie = (name: string): string | null => {
-  if (typeof document === "undefined") return null;
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(";").shift() || null;
-  return null;
-};
-
-const setCookie = (name: string, value: string, hours: number) => {
-  if (typeof document === "undefined") return;
-  const date = new Date();
-  date.setTime(date.getTime() + hours * 60 * 60 * 1000);
-  document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
-};
-
-// --- AUTH LOGIC ---
-const getSpringToken = async (): Promise<string | null> => {
-  try {
-    let token = getCookie("springboot_token");
-    if (token) return token;
-
-    try {
-      const loginResponse = await fetch(`${SPRING_PROXY_BASE}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(AUTH_CREDENTIALS),
-      });
-
-      if (!loginResponse.ok) return null;
-
-      const data = await loginResponse.json();
-      token = data.token;
-
-      if (token) {
-        setCookie("springboot_token", token, 2);
-        return token;
-      }
-    } catch (networkError) {
-      console.error("Auth Network Error:", networkError);
-      return null;
-    }
-  } catch (error) {
-    console.error("Auth Error:", error);
-  }
-  return null;
-};
-
-// --- FETCH WRAPPER ---
-const fetchSpring = async (endpoint: string): Promise<any> => {
-  let token = await getSpringToken();
-  if (!token) return null;
-
-  const makeRequest = async (t: string) => {
-    return fetch(`${SPRING_PROXY_BASE}${endpoint}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${t}`,
-        "Content-Type": "application/json",
-      },
-    });
-  };
-
-  try {
-    let response = await makeRequest(token);
-
-    if (response.status === 401 || response.status === 403) {
-      setCookie("springboot_token", "", 0);
-      token = await getSpringToken();
-      if (token) {
-        response = await makeRequest(token);
-      }
-    }
-
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) {
-    return null;
-  }
-};
+const DIRECTUS_BASE = process.env.NEXT_PUBLIC_DIRECTUS_BASE_URL || "/api/items";
+const SPRING_PROXY_BASE =
+  process.env.NEXT_PUBLIC_SPRING_PROXY_BASE_URL || "/api/proxy/spring";
 
 const getHeaders = () => {
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (typeof window !== "undefined") {
     const token =
-      localStorage.getItem("token") ||
-      localStorage.getItem("access_token") ||
-      sessionStorage.getItem("token");
-
+      localStorage.getItem("token") || localStorage.getItem("access_token");
     if (token && token !== "undefined" && token !== "null") {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -120,351 +28,437 @@ const getHeaders = () => {
   return headers;
 };
 
+// ... (Keep getSpringToken and fetchSpring helper functions) ...
+const getSpringToken = async (): Promise<string | null> => {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(
+    new RegExp("(^| )springboot_token=([^;]+)"),
+  );
+  if (match) return match[2];
+  try {
+    const res = await fetch(`${SPRING_PROXY_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: process.env.NEXT_PUBLIC_SPRING_BOOT_EMAIL || "",
+        hashPassword: process.env.NEXT_PUBLIC_SPRING_BOOT_PASSWORD || "",
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    document.cookie = `springboot_token=${data.token};path=/;max-age=7200`;
+    return data.token;
+  } catch (e) {
+    console.error("Spring Auth Error", e);
+    return null;
+  }
+};
+
+const fetchSpring = async (endpoint: string) => {
+  let token = await getSpringToken();
+  if (!token) return null;
+  const res = await fetch(`${SPRING_PROXY_BASE}${endpoint}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (res.status === 401) {
+    document.cookie = "springboot_token=; Max-Age=0";
+    return null;
+  }
+  return res.ok ? await res.json() : null;
+};
+
 export const ReturnToSupplierProvider = {
-  // --- GET METHODS ---
-  async getSuppliers(): Promise<Supplier[]> {
+  // 1. GET REFERENCES
+  async getReferences() {
     try {
-      const response = await fetch(`${DIRECTUS_BASE}/suppliers?limit=-1`, {
-        method: "GET",
-        headers: getHeaders(),
-      });
-      if (!response.ok) return [];
-      const result = await response.json();
-      return (result.data || []).filter((item: any) => item.isActive === 1);
+      const [suppliers, branches, products, discounts, connections] =
+        await Promise.all([
+          fetch(`${DIRECTUS_BASE}/suppliers?limit=-1`, {
+            headers: getHeaders(),
+          }).then((r) => r.json()),
+          fetch(`${DIRECTUS_BASE}/branches?limit=-1`, {
+            headers: getHeaders(),
+          }).then((r) => r.json()),
+          // ✅ FETCH 'description' to fix duplicate naming issues
+          fetch(
+            `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_code,description,priceA,price_per_unit,cost_per_unit`,
+            { headers: getHeaders() },
+          ).then((r) => r.json()),
+          fetch(`${DIRECTUS_BASE}/line_discount?limit=-1`, {
+            headers: getHeaders(),
+          }).then((r) => r.json()),
+          fetch(
+            `${DIRECTUS_BASE}/product_per_supplier?limit=-1&fields=id,product_id,supplier_id,discount_type`,
+            { headers: getHeaders() },
+          ).then((r) => r.json()),
+        ]);
+
+      // Map products just for Price Lookup
+      const priceList: Product[] = (products.data || []).map((p: any) => ({
+        id: p.product_id.toString(),
+        code: p.product_code || "N/A",
+        name: p.description || "Ref", // Fallback, real name comes from Inventory
+        price: Number(p.price_per_unit ?? p.cost_per_unit ?? p.priceA ?? 0),
+        unit: "",
+        uom_id: 0,
+        unitCount: 1,
+      }));
+
+      return {
+        suppliers: (suppliers.data || []) as Supplier[],
+        branches: (branches.data || []) as Branch[],
+        products: priceList,
+        lineDiscounts: (discounts.data || []) as LineDiscount[],
+        connections: (connections.data || []) as ProductSupplier[],
+      };
     } catch (error) {
-      return [];
+      console.error("Provider Error (getReferences):", error);
+      return {
+        suppliers: [],
+        branches: [],
+        products: [],
+        lineDiscounts: [],
+        connections: [],
+      };
     }
   },
 
-  async getBranches(): Promise<Branch[]> {
-    try {
-      const fields = "id,branch_name,branch_code,isActive";
-      const response = await fetch(
-        `${DIRECTUS_BASE}/branches?limit=-1&fields=${fields}`,
-        { method: "GET", headers: getHeaders() },
-      );
-      if (!response.ok) return [];
-      const result = await response.json();
-      return (result.data || []).filter((item: any) => item.isActive === 1);
-    } catch (error) {
-      return [];
-    }
-  },
-
-  async getProducts(): Promise<Product[]> {
-    try {
-      const [productsRes, unitsRes] = await Promise.all([
-        fetch(`${DIRECTUS_BASE}/products?limit=-1`, { headers: getHeaders() }),
-        fetch(`${DIRECTUS_BASE}/units?limit=-1`, { headers: getHeaders() }),
-      ]);
-
-      if (!productsRes.ok || !unitsRes.ok) return [];
-
-      const productsData: API_Product[] = (await productsRes.json()).data || [];
-      const unitsData: API_Unit[] = (await unitsRes.json()).data || [];
-      const unitMap = new Map<number, string>();
-      unitsData.forEach((u) => unitMap.set(u.unit_id, u.unit_shortcut));
-
-      return productsData
-        .filter((item) => item.isActive === 1)
-        .map((item) => {
-          const unitId = item.unit_of_measurement || 1;
-          const unitName =
-            unitId && unitMap.has(unitId) ? unitMap.get(unitId)! : "PCS";
-
-          return {
-            id: item.product_id.toString(),
-            code: item.product_code || item.barcode || "N/A",
-            name: item.description || item.product_name || "Unknown Product",
-            price: Number(item.priceA || item.standard_price || 0),
-            unit: unitName,
-            uom_id: unitId,
-          };
-        });
-    } catch (error) {
-      return [];
-    }
-  },
-
-  async getProductSupplierConnections(): Promise<ProductSupplier[]> {
-    try {
-      const response = await fetch(
-        `${DIRECTUS_BASE}/product_per_supplier?limit=-1`,
-        { method: "GET", headers: getHeaders() },
-      );
-      if (!response.ok) return [];
-      return (await response.json()).data || [];
-    } catch (error) {
-      return [];
-    }
-  },
-
-  async getDiscountTypes(): Promise<DiscountType[]> {
-    try {
-      const fields = "id,discount_type";
-      const response = await fetch(
-        `${DIRECTUS_BASE}/discount_type?limit=-1&fields=${fields}`,
-        { method: "GET", headers: getHeaders() },
-      );
-      if (!response.ok) return [];
-      return (await response.json()).data || [];
-    } catch (error) {
-      return [];
-    }
-  },
-
-  async getLineDiscounts(): Promise<LineDiscount[]> {
-    try {
-      const fields = "id,line_discount,percentage";
-      const response = await fetch(
-        `${DIRECTUS_BASE}/line_discount?limit=-1&fields=${fields}`,
-        { method: "GET", headers: getHeaders() },
-      );
-      if (!response.ok) return [];
-      return (await response.json()).data || [];
-    } catch (error) {
-      return [];
-    }
-  },
-
-  // ✅ FIXED: Manual Join to calculate totals
-  async getReturnTransactions(
-    search: string = "",
-    statusFilter: "All" | "Pending" | "Posted" = "All",
-    startDate?: string,
-    endDate?: string,
-  ): Promise<ReturnToSupplier[]> {
-    try {
-      // 1. Fetch Parents (Return Headers)
-      const parentFields = [
-        "id",
-        "doc_no",
-        "transaction_date",
-        "remarks",
-        "is_posted",
-        "supplier_id.supplier_name",
-        "branch_id.branch_name",
-      ].join(",");
-
-      const params = new URLSearchParams();
-      params.append("fields", parentFields);
-      params.append("limit", "-1");
-      params.append("sort", "-date_created");
-
-      if (search) params.append("filter[doc_no][_contains]", search);
-      if (statusFilter !== "All") {
-        const statusValue = statusFilter === "Posted" ? "1" : "0";
-        params.append("filter[is_posted][_eq]", statusValue);
-      }
-      if (startDate && endDate) {
-        params.append(
-          "filter[transaction_date][_between]",
-          `${startDate},${endDate}`,
-        );
-      }
-
-      const parentRes = await fetch(
-        `${DIRECTUS_BASE}/return_to_supplier?${params.toString()}`,
-        { method: "GET", headers: getHeaders() },
-      );
-
-      if (!parentRes.ok) return [];
-      const parentData = await parentRes.json();
-      const returns: any[] = parentData.data || [];
-
-      if (returns.length === 0) return [];
-
-      // 2. Fetch Children (Items) for these parents
-      // We grab all item IDs to perform a single batch fetch
-      const returnIds = returns.map((r) => r.id);
-
-      const childFields = "rts_id,net_amount";
-      // Filter items where rts_id is IN the list of parent IDs
-      const childParams = new URLSearchParams();
-      childParams.append("filter[rts_id][_in]", returnIds.join(","));
-      childParams.append("fields", childFields);
-      childParams.append("limit", "-1");
-
-      const childRes = await fetch(
-        `${DIRECTUS_BASE}/rts_items?${childParams.toString()}`,
-        { method: "GET", headers: getHeaders() },
-      );
-
-      let totalsMap = new Map<number, number>();
-
-      if (childRes.ok) {
-        const childData = await childRes.json();
-        const items = childData.data || [];
-
-        // Sum up items per parent ID
-        items.forEach((item: any) => {
-          const parentId = Number(item.rts_id); // Ensure ID is number
-          const amount = Number(item.net_amount) || 0;
-          const currentTotal = totalsMap.get(parentId) || 0;
-          totalsMap.set(parentId, currentTotal + amount);
-        });
-      }
-
-      // 3. Merge Data
-      return returns.map((item) => {
-        const supplierName =
-          typeof item.supplier_id === "object" && item.supplier_id
-            ? item.supplier_id.supplier_name
-            : `ID: ${item.supplier_id}`;
-        const branchName =
-          typeof item.branch_id === "object" && item.branch_id
-            ? item.branch_id.branch_name
-            : `ID: ${item.branch_id}`;
-
-        // Get total from map, default to 0
-        const calculatedTotal = totalsMap.get(item.id) || 0;
-
-        return {
-          id: item.id.toString(),
-          returnNo: item.doc_no,
-          supplier: supplierName,
-          branch: branchName,
-          returnDate: item.transaction_date,
-          totalAmount: calculatedTotal, // ✅ Populated via Manual Join
-          status: item.is_posted === 1 ? "Posted" : "Pending",
-          remarks: item.remarks,
-        };
-      });
-    } catch (error) {
-      console.error("Provider Error (getReturnTransactions):", error);
-      return [];
-    }
-  },
-
-  async getReturnItems(rtsId: string): Promise<RTSItem[]> {
-    try {
-      const fields = [
-        "id",
-        "quantity",
-        "gross_unit_price",
-        "discount_rate",
-        "discount_amount",
-        "net_amount",
-        "product_id.product_name",
-        "product_id.product_code",
-        "uom_id.unit_shortcut",
-      ].join(",");
-
-      const response = await fetch(
-        `${DIRECTUS_BASE}/rts_items?filter[rts_id][_eq]=${rtsId}&fields=${fields}`,
-        { method: "GET", headers: getHeaders() },
-      );
-
-      if (!response.ok) return [];
-      const result = await response.json();
-      const rawData: API_RTS_Item[] = result.data || [];
-
-      return rawData.map((item) => {
-        const code =
-          typeof item.product_id === "object"
-            ? item.product_id.product_code
-            : "N/A";
-        const name =
-          typeof item.product_id === "object"
-            ? item.product_id.product_name
-            : "Unknown Product";
-        const unit =
-          typeof item.uom_id === "object" ? item.uom_id.unit_shortcut : "UNIT";
-
-        return {
-          id: item.id,
-          code,
-          name,
-          unit,
-          quantity: Number(item.quantity),
-          price: Number(item.gross_unit_price),
-          discountRate: Number(item.discount_rate),
-          discountAmount: Number(item.discount_amount),
-          total: Number(item.net_amount),
-        };
-      });
-    } catch (error) {
-      console.error("Provider Error (getReturnItems):", error);
-      return [];
-    }
-  },
-
-  async getBranchInventory(
+  // 2. GET INVENTORY (Spring View) -> WATERFALL CALCULATION
+  async getInventory(
     branchId: number,
     supplierId: number,
   ): Promise<InventoryRecord[]> {
     try {
-      const result = await fetchSpring("/api/view-running-inventory/all");
-      if (!result) return [];
+      // A. Fetch Base Inventory
+      const data = await fetchSpring("/api/view-running-inventory/all");
+      const list = Array.isArray(data) ? data : data?.data || [];
+      const relevantItems = list.filter(
+        (i: any) =>
+          (i.branchId || i.branch_id) == branchId &&
+          (i.supplierId || i.supplier_id) == supplierId,
+      );
 
-      const allInventory: any[] = Array.isArray(result)
-        ? result
-        : result.data || [];
+      if (relevantItems.length === 0) return [];
 
-      return allInventory
-        .filter(
-          (item: any) =>
-            Number(item.branchId) === branchId &&
-            Number(item.supplierId) === supplierId,
-        )
-        .map((item: any) => ({
-          id: `${item.branchId}-${item.productId}`,
-          product_id: item.productId,
-          branch_id: item.branchId,
-          supplier_id: item.supplierId,
-          running_inventory: item.runningInventory,
-        }));
+      // B. Fetch Product Relations & Units
+      const [productsRes, unitsRes] = await Promise.all([
+        fetch(
+          `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count`,
+          { headers: getHeaders() },
+        ).then((r) => r.json()),
+        fetch(`${DIRECTUS_BASE}/units?limit=-1`, {
+          headers: getHeaders(),
+        }).then((r) => r.json()),
+      ]);
+
+      const productMap = new Map<string, any>();
+      (productsRes.data || []).forEach((p: any) => {
+        productMap.set(String(p.product_id), {
+          parent_id: p.parent_id,
+          uom_id: p.unit_of_measurement,
+          uom_count: Number(p.unit_of_measurement_count || 1),
+          name: p.product_name,
+          description: p.description, // ✅ Capture Description
+          code: p.product_code,
+        });
+      });
+
+      const unitMap = new Map<string, string>();
+      (unitsRes.data || []).forEach((u: any) => {
+        unitMap.set(String(u.unit_id), u.unit_name);
+      });
+
+      // --- 1. AGGREGATE & NORMALIZE TO BASE PIECES ---
+      // We first convert everything to "Pieces" and group by Master Family
+
+      const masterPoolMap = new Map<string, number>(); // MasterID -> Total Pieces
+      const familyMap = new Map<string, any[]>(); // MasterID -> List of Variants
+
+      // Helper map to deduplicate rows (e.g. multiple entries for same product/unit)
+      const uniqueVariantMap = new Map<string, any>();
+
+      relevantItems.forEach((item: any) => {
+        const pId = String(item.productId || item.product_id);
+        const pInfo = productMap.get(pId);
+
+        // --- NAME LOGIC: Priority = Description > Product Name ---
+        const displayName =
+          pInfo?.description ||
+          pInfo?.name ||
+          item.productName ||
+          item.product_name;
+
+        // Determine Master ID (Parent or Self)
+        let masterId = pId;
+        if (pInfo && pInfo.parent_id && pInfo.parent_id !== 0) {
+          masterId = String(pInfo.parent_id);
+        }
+
+        // Determine Unit Count
+        const unitCount = pInfo ? pInfo.uom_count : Number(item.unitCount || 1);
+        const safeUnitCount = unitCount > 0 ? unitCount : 1;
+
+        // Unique Key for aggregation
+        const variantKey = `${pId}`;
+
+        if (!uniqueVariantMap.has(variantKey)) {
+          const uomId = pInfo ? String(pInfo.uom_id) : "0";
+          const unitName =
+            unitMap.get(uomId) || item.unitName || item.unit_name || "Units";
+
+          const variantObj = {
+            id: `${item.branchId || item.branch_id}-${pId}`,
+            product_id: pId,
+            master_id: masterId,
+            branch_id: item.branchId || item.branch_id,
+            supplier_id: item.supplierId || item.supplier_id,
+            product_code: pInfo?.code || item.product_code || item.productCode,
+            name: displayName, // ✅ Uses Description
+            unit_name: unitName,
+            unit_count: safeUnitCount,
+            running_inventory: 0, // Placeholder
+            raw_pieces_contributed: 0,
+          };
+          uniqueVariantMap.set(variantKey, variantObj);
+
+          // Add to family grouping
+          const list = familyMap.get(masterId) || [];
+          list.push(variantObj);
+          familyMap.set(masterId, list);
+        }
+
+        // Add Inventory contribution to the pool
+        const rawQty = Number(
+          item.runningInventory || item.running_inventory || 0,
+        );
+        const pieces = rawQty * safeUnitCount;
+
+        const currentPool = masterPoolMap.get(masterId) || 0;
+        masterPoolMap.set(masterId, currentPool + pieces);
+      });
+
+      // --- 2. WATERFALL CALCULATION (The Consumption Model) ---
+      const finalInventory: InventoryRecord[] = [];
+
+      familyMap.forEach((variants, masterId) => {
+        // SORT: Largest Unit Count first (Descending)
+        // This ensures we fill Boxes before we count remaining Pieces
+        variants.sort((a, b) => b.unit_count - a.unit_count);
+
+        let remainingPool = masterPoolMap.get(masterId) || 0;
+
+        variants.forEach((variant) => {
+          // Calculate how many of this unit we can make from the CURRENT pool
+          const possibleCount = Math.floor(remainingPool / variant.unit_count);
+
+          // Assign the calculated stock
+          variant.running_inventory = possibleCount;
+
+          // ✅ CONSUME THE POOL (Waterfall)
+          // Update the pool to be the REMAINDER
+          // 941 % 16 = 13 remaining
+          remainingPool = remainingPool % variant.unit_count;
+
+          finalInventory.push(variant);
+        });
+      });
+
+      return finalInventory;
     } catch (error) {
+      console.error("Inventory Fetch/Calc Error", error);
       return [];
     }
   },
 
-  // --- 2. POST METHODS ---
-  async createReturnTransaction(payload: any): Promise<boolean> {
+  // ... (getTransactions, getTransactionDetails, create, update - UNCHANGED)
+  async getTransactions(
+    search = "",
+    status = "All",
+  ): Promise<ReturnToSupplier[]> {
     try {
-      const { rts_items, ...headerPayload } = payload;
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomSuffix = Math.floor(Math.random() * 10000)
-        .toString()
-        .padStart(4, "0");
-      headerPayload.doc_no =
-        headerPayload.doc_no || `RTS-${dateStr}-${randomSuffix}`;
+      const params = new URLSearchParams({
+        limit: "-1",
+        sort: "-date_created",
+        fields:
+          "id,doc_no,transaction_date,remarks,is_posted,supplier_id.supplier_name,branch_id.branch_name,total_net_amount",
+      });
+      if (search) params.append("filter[doc_no][_contains]", search);
+      if (status !== "All")
+        params.append(
+          "filter[is_posted][_eq]",
+          status === "Posted" ? "1" : "0",
+        );
 
-      // Create Parent
-      const parentResponse = await fetch(
-        `${DIRECTUS_BASE}/return_to_supplier`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify(headerPayload),
-        },
+      const res = await fetch(`${DIRECTUS_BASE}/return_to_supplier?${params}`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) return [];
+      const { data } = await res.json();
+      const returns: API_ReturnToSupplier[] = data || [];
+      if (returns.length === 0) return [];
+
+      const ids = returns.map((r) => r.id);
+      const childRes = await fetch(
+        `${DIRECTUS_BASE}/rts_items?limit=-1&fields=rts_id,net_amount&filter[rts_id][_in]=${ids.join(",")}`,
+        { headers: getHeaders() },
       );
+      const { data: items } = await childRes.json();
 
-      if (!parentResponse.ok) {
-        const errorData = await parentResponse.json();
-        console.error("❌ Parent Creation Failed:", JSON.stringify(errorData));
-        return false;
-      }
+      const totalsMap = new Map<string, number>();
+      (items || []).forEach((i: any) => {
+        const parentId =
+          typeof i.rts_id === "object" ? String(i.rts_id.id) : String(i.rts_id);
+        totalsMap.set(
+          parentId,
+          (totalsMap.get(parentId) || 0) + (Number(i.net_amount) || 0),
+        );
+      });
 
-      const parentResult = await parentResponse.json();
-      const newParentId = parentResult.data?.id || parentResult.id;
-
-      if (!newParentId) return false;
-
-      // Create Items
-      if (rts_items && rts_items.length > 0) {
-        const itemCreationPromises = rts_items.map((item: any) => {
-          return fetch(`${DIRECTUS_BASE}/rts_items`, {
+      return returns.map((r) => {
+        const idKey = String(r.id);
+        const manualTotal = totalsMap.get(idKey) || 0;
+        const storedTotal = Number(r.total_net_amount || 0);
+        return {
+          id: idKey,
+          returnNo: r.doc_no,
+          supplier:
+            typeof r.supplier_id === "object"
+              ? r.supplier_id.supplier_name
+              : "Unknown",
+          branch:
+            typeof r.branch_id === "object"
+              ? r.branch_id.branch_name
+              : "Unknown",
+          returnDate: r.transaction_date,
+          totalAmount: manualTotal > 0 ? manualTotal : storedTotal,
+          status: r.is_posted === 1 ? "Posted" : "Pending",
+          remarks: r.remarks,
+        };
+      });
+    } catch (error) {
+      return [];
+    }
+  },
+  async getTransactionDetails(id: string): Promise<RTSItem[]> {
+    try {
+      const params = new URLSearchParams({
+        "filter[rts_id][_eq]": id,
+        fields:
+          "id,quantity,gross_unit_price,discount_rate,discount_amount,net_amount,product_id.product_name,product_id.product_code,product_id.product_id,product_id.unit_of_measurement_count,uom_id.unit_shortcut,uom_id.unit_id",
+      });
+      const res = await fetch(`${DIRECTUS_BASE}/rts_items?${params}`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { data } = await res.json();
+      return (data || []).map((i: any) => {
+        const rawProductId =
+          typeof i.product_id === "object"
+            ? i.product_id.product_id
+            : i.product_id;
+        const rawUomId =
+          typeof i.uom_id === "object" ? i.uom_id.unit_id : i.uom_id;
+        const rawUnitCount =
+          typeof i.product_id === "object"
+            ? i.product_id.unit_of_measurement_count
+            : 1;
+        return {
+          id: i.id,
+          productId: Number(rawProductId),
+          uomId: Number(rawUomId),
+          code:
+            typeof i.product_id === "object"
+              ? i.product_id.product_code
+              : "N/A",
+          name:
+            typeof i.product_id === "object"
+              ? i.product_id.product_name
+              : "Unknown",
+          unit: typeof i.uom_id === "object" ? i.uom_id.unit_shortcut : "UNIT",
+          quantity: Number(i.quantity),
+          price: Number(i.gross_unit_price),
+          discountRate: Number(i.discount_rate),
+          discountAmount: Number(i.discount_amount),
+          total: Number(i.net_amount),
+          unitCount: Number(rawUnitCount) > 0 ? Number(rawUnitCount) : 1,
+        };
+      });
+    } catch (error) {
+      return [];
+    }
+  },
+  async createTransaction(dto: CreateReturnDTO): Promise<boolean> {
+    try {
+      const { rts_items, ...header } = dto;
+      const docNo = `RTS-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(
+        Math.random() * 10000,
+      )
+        .toString()
+        .padStart(4, "0")}`;
+      const res = await fetch(`${DIRECTUS_BASE}/return_to_supplier`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ ...header, doc_no: docNo }),
+      });
+      if (!res.ok) return false;
+      const { data: parent } = await res.json();
+      await Promise.all(
+        rts_items.map((item) =>
+          fetch(`${DIRECTUS_BASE}/rts_items`, {
             method: "POST",
             headers: getHeaders(),
-            body: JSON.stringify({ ...item, rts_id: newParentId }),
-          });
-        });
-        await Promise.all(itemCreationPromises);
-      }
+            body: JSON.stringify({ ...item, rts_id: parent.id }),
+          }),
+        ),
+      );
+      const totalNet = rts_items.reduce((s, i) => s + i.net_amount, 0);
+      const totalGross = rts_items.reduce((s, i) => s + i.gross_amount, 0);
+      await fetch(`${DIRECTUS_BASE}/return_to_supplier/${parent.id}`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          total_net_amount: totalNet,
+          total_gross_amount: totalGross,
+        }),
+      });
       return true;
     } catch (error) {
-      console.error("Provider Error (createReturnTransaction):", error);
+      return false;
+    }
+  },
+  async updateTransaction(id: string, dto: CreateReturnDTO): Promise<boolean> {
+    try {
+      const { rts_items, ...header } = dto;
+      await fetch(`${DIRECTUS_BASE}/return_to_supplier/${id}`, {
+        method: "PATCH",
+        headers: getHeaders(),
+        body: JSON.stringify(header),
+      });
+      const existingItems = await this.getTransactionDetails(id);
+      if (existingItems.length > 0)
+        await Promise.all(
+          existingItems.map((i) =>
+            fetch(`${DIRECTUS_BASE}/rts_items/${i.id}`, {
+              method: "DELETE",
+              headers: getHeaders(),
+            }),
+          ),
+        );
+      if (rts_items.length > 0)
+        await Promise.all(
+          rts_items.map((item) =>
+            fetch(`${DIRECTUS_BASE}/rts_items`, {
+              method: "POST",
+              headers: getHeaders(),
+              body: JSON.stringify({ ...item, rts_id: Number(id) }),
+            }),
+          ),
+        );
+      return true;
+    } catch (error) {
       return false;
     }
   },
