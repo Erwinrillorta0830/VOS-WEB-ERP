@@ -176,8 +176,6 @@ export const ReturnToSupplierProvider = {
 
       const masterPoolMap = new Map<string, number>(); // MasterID -> Total Pieces
       const familyMap = new Map<string, any[]>(); // MasterID -> List of Variants
-
-      // Helper map to deduplicate rows (e.g. multiple entries for same product/unit)
       const uniqueVariantMap = new Map<string, any>();
 
       relevantItems.forEach((item: any) => {
@@ -215,7 +213,8 @@ export const ReturnToSupplierProvider = {
             master_id: masterId,
             branch_id: item.branchId || item.branch_id,
             supplier_id: item.supplierId || item.supplier_id,
-            product_code: pInfo?.code || item.product_code || item.productCode,
+            product_code:
+              pInfo?.code || item.product_code || item.productCode || "N/A",
             name: displayName, // ✅ Uses Description
             unit_name: unitName,
             unit_count: safeUnitCount,
@@ -273,7 +272,7 @@ export const ReturnToSupplierProvider = {
     }
   },
 
-  // ... (getTransactions, getTransactionDetails, create, update - UNCHANGED)
+  // ... (getTransactions, getTransactionDetails - UNCHANGED)
   async getTransactions(
     search = "",
     status = "All",
@@ -390,6 +389,8 @@ export const ReturnToSupplierProvider = {
       return [];
     }
   },
+
+  // 5. CREATE
   async createTransaction(dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;
@@ -398,6 +399,7 @@ export const ReturnToSupplierProvider = {
       )
         .toString()
         .padStart(4, "0")}`;
+
       const res = await fetch(`${DIRECTUS_BASE}/return_to_supplier`, {
         method: "POST",
         headers: getHeaders(),
@@ -405,6 +407,7 @@ export const ReturnToSupplierProvider = {
       });
       if (!res.ok) return false;
       const { data: parent } = await res.json();
+
       await Promise.all(
         rts_items.map((item) =>
           fetch(`${DIRECTUS_BASE}/rts_items`, {
@@ -414,21 +417,22 @@ export const ReturnToSupplierProvider = {
           }),
         ),
       );
+
       const totalNet = rts_items.reduce((s, i) => s + i.net_amount, 0);
-      const totalGross = rts_items.reduce((s, i) => s + i.gross_amount, 0);
+
+      // ✅ FIX: Removed total_gross_amount to fix Permission Error
       await fetch(`${DIRECTUS_BASE}/return_to_supplier/${parent.id}`, {
         method: "PATCH",
         headers: getHeaders(),
-        body: JSON.stringify({
-          total_net_amount: totalNet,
-          total_gross_amount: totalGross,
-        }),
+        body: JSON.stringify({ total_net_amount: totalNet }),
       });
       return true;
     } catch (error) {
       return false;
     }
   },
+
+  // 6. UPDATE
   async updateTransaction(id: string, dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;

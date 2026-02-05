@@ -5,7 +5,6 @@ import {
   Search,
   Scan,
   Package,
-  AlertCircle,
   ShoppingCart,
   Trash2,
   X,
@@ -17,12 +16,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Product, CartItem } from "../type";
+import { CartItem } from "../type";
+
+interface GroupedProduct {
+  masterId: string;
+  masterCode: string;
+  masterName: string;
+  variants: {
+    id: string;
+    code: string;
+    name: string;
+    unit: string;
+    unitCount: number;
+    price: number;
+    stock: number;
+    discountType?: string;
+    supplierDiscount?: number;
+  }[];
+}
 
 interface ProductPickerProps {
   isVisible: boolean;
   onClose: () => void;
-  products: any[]; // Using any to be flexible with the computed objects from modal
+  products: any[]; // Accepts both GroupedProduct[] and flat item arrays
   addedProducts: CartItem[];
   onAdd: (product: any, quantity?: number) => void;
   onRemove: (id: string) => void;
@@ -45,24 +61,73 @@ export function ProductPicker({
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeQuery, setBarcodeQuery] = useState("");
 
+  // ✅ CRITICAL LOGIC: Normalized Data handling
+  // This detects if 'products' is flat (from ReturnDetailsModal) or Grouped (from CreateReturnModal)
+  // and standardizes it to prevent the "undefined map" crash.
+  const normalizedGroups = useMemo(() => {
+    if (!products || products.length === 0) return [];
+
+    // Check if data is already grouped (has 'variants' property)
+    const firstItem = products[0];
+    const isAlreadyGrouped =
+      firstItem && "variants" in firstItem && Array.isArray(firstItem.variants);
+
+    if (isAlreadyGrouped) {
+      return products as GroupedProduct[];
+    }
+
+    // FALLBACK: Auto-Group flat items (Fixes ReturnDetailsModal crash)
+    const groups: Record<string, any> = {};
+
+    products.forEach((item) => {
+      // Use masterId if available (from api.ts), otherwise use product_id
+      const groupKey = item.masterId || String(item.id);
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          masterId: groupKey,
+          masterCode: item.code || "N/A",
+          masterName: item.name,
+          variants: [],
+        };
+      }
+      groups[groupKey].variants.push(item);
+    });
+
+    return Object.values(groups).map((group: any) => {
+      // Sort variants to find best Master Name (Smallest unit)
+      group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
+      if (group.variants.length > 0) group.masterName = group.variants[0].name;
+
+      // Sort for display (Largest unit first)
+      group.variants.sort((a: any, b: any) => b.unitCount - a.unitCount);
+      return group;
+    }) as GroupedProduct[];
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     if (isLoading) return [];
-    let result = products;
+    let result = normalizedGroups;
+
     if (searchQuery) {
       const lower = searchQuery.toLowerCase();
       result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(lower) ||
-          p.code.toLowerCase().includes(lower) ||
-          p.unit.toLowerCase().includes(lower),
+        (group) =>
+          group.masterName.toLowerCase().includes(lower) ||
+          group.masterCode.toLowerCase().includes(lower) ||
+          group.variants.some((v) => v.name.toLowerCase().includes(lower)),
       );
     }
     if (barcodeQuery) {
       const lower = barcodeQuery.toLowerCase();
-      result = result.filter((p) => p.code.toLowerCase().includes(lower));
+      result = result.filter(
+        (group) =>
+          group.masterCode.toLowerCase().includes(lower) ||
+          group.variants.some((v) => v.code.toLowerCase().includes(lower)),
+      );
     }
     return result;
-  }, [products, searchQuery, barcodeQuery, isLoading]);
+  }, [normalizedGroups, searchQuery, barcodeQuery, isLoading]);
 
   const currentTotal = addedProducts.reduce((sum, item) => {
     const price = item.customPrice ?? item.price ?? 0;
@@ -83,11 +148,11 @@ export function ProductPicker({
             <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100 font-medium">
               {isLoading
                 ? "Fetching..."
-                : `${filteredProducts.length} items found`}
+                : `${filteredProducts.length} Product Families`}
             </span>
           </div>
+          {/* Search Inputs */}
           <div className="flex gap-3">
-            {/* Search Inputs */}
             <div className="relative grow group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
               <Input
@@ -143,76 +208,83 @@ export function ProductPicker({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-8">
-              {filteredProducts.map((product) => {
-                const stock = product.stock || 0;
-                const inCart =
-                  addedProducts.find((p) => p.id === product.id)?.quantity || 0;
-                const isMaxed = stock > 0 && inCart >= stock;
-                const displayPrice = (product.price || 0).toLocaleString(
-                  undefined,
-                  { minimumFractionDigits: 2 },
-                );
-
-                return (
-                  <div
-                    key={product.id}
-                    className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col justify-between h-full min-h-[180px]"
-                  >
-                    <div>
-                      <div className="flex justify-between items-start gap-2 mb-1">
-                        <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight">
-                          {product.name}
-                        </h4>
-                        {product.discountType && (
-                          <Badge
-                            variant="outline"
-                            className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] shrink-0 whitespace-nowrap h-5 px-1.5"
-                          >
-                            <Tag className="w-3 h-3 mr-1" />{" "}
-                            {product.discountType}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-500 font-mono mb-3">
-                        Code: {product.code}
-                      </div>
-                      <div className="text-lg font-bold text-slate-900">
-                        ₱ {displayPrice}
-                      </div>
-                      <div className="text-xs text-slate-600 mt-1">
-                        <span className="font-medium">{product.unit}</span>
-                        <span className="text-slate-400">
-                          {" "}
-                          (1 {product.unit} = {product.unitCount} pcs)
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-50 flex justify-between items-end">
-                      <div className="text-xs text-slate-500">
-                        Stock:{" "}
-                        <div className="font-bold text-slate-700 text-sm">
-                          {stock} available
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => onAdd(product, 1)}
-                        disabled={isMaxed}
-                        className={`h-9 px-4 text-xs font-bold rounded-lg shadow-sm ${isMaxed ? "bg-slate-100 text-slate-400" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
-                      >
-                        {isMaxed ? "Maxed" : "+ Add"}
-                      </Button>
+              {filteredProducts.map((group) => (
+                <div
+                  key={group.masterId}
+                  className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col overflow-hidden"
+                >
+                  <div className="p-4 border-b border-slate-50 bg-slate-50/50">
+                    <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight">
+                      {group.masterName}
+                    </h4>
+                    <div className="text-[11px] text-slate-500 font-mono mt-1">
+                      Code: {group.masterCode}
                     </div>
                   </div>
-                );
-              })}
+
+                  <div className="p-2 space-y-2">
+                    {/* ✅ SAFE MAPPING: Added optional chaining and fallback */}
+                    {(group.variants || []).map((variant) => {
+                      const inCart =
+                        addedProducts.find((p) => p.id === variant.id)
+                          ?.quantity || 0;
+                      const isMaxed =
+                        variant.stock > 0 && inCart >= variant.stock;
+
+                      return (
+                        <div
+                          key={variant.id}
+                          className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-100 hover:border-blue-100 transition-colors"
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-900 text-sm">
+                              ₱{" "}
+                              {variant.price.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                              })}
+                            </span>
+                            <div className="text-xs text-slate-500 flex items-center gap-1">
+                              <span>
+                                {variant.unit} ({variant.unitCount} pcs)
+                              </span>
+                              {variant.discountType && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] h-4 px-1 py-0 border-amber-200 text-amber-700 bg-amber-50"
+                                >
+                                  {variant.discountType}
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-400 mt-0.5">
+                              Stock: {variant.stock} available
+                            </span>
+                          </div>
+
+                          <Button
+                            size="sm"
+                            onClick={() => onAdd(variant, 1)}
+                            disabled={isMaxed}
+                            className={`h-8 px-3 text-xs font-bold shadow-sm ${
+                              isMaxed
+                                ? "bg-slate-100 text-slate-400"
+                                : "bg-blue-600 hover:bg-blue-700 text-white"
+                            }`}
+                          >
+                            {isMaxed ? "Maxed" : "+ Add"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* RIGHT: CART SIDEBAR */}
+      {/* RIGHT: CART SIDEBAR (Identical to previous) */}
       <div className="col-span-1 bg-white h-full border-l border-slate-200 flex flex-col shadow-xl z-20 overflow-hidden relative">
         <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-white z-10">
           <h3 className="font-bold text-slate-800 flex gap-2 items-center text-sm uppercase tracking-wide">

@@ -85,55 +85,88 @@ export function CreateReturnModal({
     );
   }, [refs.branches, branchSearch]);
 
-  // ✅ DISPLAY LOGIC: Merge Calculated Inventory (from API) with Pricing
-  const availableProducts = useMemo(() => {
+  // ✅ DISPLAY LOGIC: Group Flat Items into Product Families (Parent + Children)
+  const groupedProducts = useMemo(() => {
     const invArray = Array.from(inventory.values());
 
-    return (
-      invArray
-        // Casting to any to ensure property access for 'product_code' and 'name'
-        .map((item: any) => {
-          const priceRef = refs.products.find(
-            (p) => String(p.id) === String(item.product_id),
+    // 1. Enrich Data (Attach Price/Discount)
+    const enrichedItems = invArray
+      .map((item: any) => {
+        const priceRef = refs.products.find(
+          (p) => String(p.id) === String(item.product_id),
+        );
+
+        const connection = refs.connections.find(
+          (c) =>
+            String(c.product_id) === String(item.product_id) &&
+            String(c.supplier_id) === String(item.supplier_id),
+        );
+
+        let discountLabel = undefined;
+        let computedDiscount = 0;
+
+        if (connection?.discount_type) {
+          const discountObj = refs.discounts.find(
+            (d) => String(d.id) === String(connection.discount_type),
           );
-
-          const connection = refs.connections.find(
-            (c) =>
-              String(c.product_id) === String(item.product_id) &&
-              String(c.supplier_id) === String(item.supplier_id),
-          );
-
-          let discountLabel = undefined;
-          let computedDiscount = 0;
-
-          if (connection?.discount_type) {
-            const discountObj = refs.discounts.find(
-              (d) => String(d.id) === String(connection.discount_type),
-            );
-            if (discountObj) {
-              computedDiscount = parseFloat(discountObj.percentage);
-              discountLabel = discountObj.line_discount;
-            } else if (typeof connection.discount_type === "string") {
-              discountLabel = connection.discount_type;
-            }
+          if (discountObj) {
+            computedDiscount = parseFloat(discountObj.percentage);
+            discountLabel = discountObj.line_discount;
+          } else if (typeof connection.discount_type === "string") {
+            discountLabel = connection.discount_type;
           }
+        }
 
-          return {
-            id: String(item.product_id),
-            code: item.product_code || "N/A",
-            name: item.name, // Already handled in API (prioritizes Description)
-            unit: item.unit_name,
-            unitCount: item.unit_count,
-            stock: item.running_inventory, // Waterfall Remainder Stock
-            price: priceRef ? priceRef.price : 0,
-            uom_id: 0,
-            discountType: discountLabel,
-            supplierDiscount: computedDiscount,
-          };
-        })
-        // [FIX] Strict Filter: Only show items that have remainder stock available
-        .filter((p) => Number(p.stock ?? 0) > 0)
-    );
+        return {
+          id: String(item.product_id),
+          // We use master_id provided by API for grouping
+          masterId: String(item.master_id),
+          code: item.product_code || "N/A",
+          name: item.name,
+          unit: item.unit_name,
+          unitCount: item.unit_count,
+          stock: item.running_inventory,
+          price: priceRef ? priceRef.price : 0,
+          uom_id: 0,
+          discountType: discountLabel,
+          supplierDiscount: computedDiscount,
+        };
+      })
+      // Strict Filter: Only show items with available stock
+      .filter((p) => Number(p.stock ?? 0) > 0);
+
+    // 2. Group by MASTER ID (Parent Relationship)
+    const groups: Record<string, any> = {};
+
+    enrichedItems.forEach((item) => {
+      // ✅ Key is now the Master ID (guaranteed unique integer from DB)
+      const groupKey = item.masterId;
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          masterId: groupKey,
+          masterCode: item.code, // For display
+          masterName: item.name, // Will be updated
+          variants: [],
+        };
+      }
+      groups[groupKey].variants.push(item);
+    });
+
+    // 3. Finalize Groups (Sort variants, Pick best name)
+    return Object.values(groups).map((group) => {
+      // Sort: Smallest unit first (usually represents the base product)
+      group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
+
+      if (group.variants.length > 0) {
+        group.masterName = group.variants[0].name;
+      }
+
+      // Sort display: Largest unit first (Box -> Pack -> Piece)
+      group.variants.sort((a: any, b: any) => b.unitCount - a.unitCount);
+
+      return group;
+    });
   }, [inventory, refs.products, refs.connections, refs.discounts]);
 
   useEffect(() => {
@@ -183,7 +216,7 @@ export function CreateReturnModal({
       return {
         product_id: Number(item.id),
         uom_id: item.uom_id || 1,
-        quantity: item.quantity * (item.unitCount || 1), // Converts back to base units for storage
+        quantity: item.quantity * (item.unitCount || 1),
         gross_unit_price: item.customPrice || item.price,
         gross_amount: gross,
         discount_rate: item.discount,
@@ -251,7 +284,7 @@ export function CreateReturnModal({
             <ProductPicker
               isVisible={true}
               onClose={() => setShowPicker(false)}
-              products={availableProducts}
+              products={groupedProducts}
               addedProducts={cart}
               onAdd={addToCart}
               onRemove={(id) => setCart((c) => c.filter((i) => i.id !== id))}
@@ -261,6 +294,7 @@ export function CreateReturnModal({
             />
           ) : (
             <div className="space-y-8">
+              {/* ... (Rest of Input is Unchanged) ... */}
               {step === "input" ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                   {/* Supplier Select */}
