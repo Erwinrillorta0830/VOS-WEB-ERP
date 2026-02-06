@@ -5,7 +5,8 @@ import { ReturnToSupplier, ReturnItem, LineDiscount } from "../type";
 
 interface Props {
   data: ReturnToSupplier;
-  items: ReturnItem[];
+  // Use any[] here to allow the extended 'returnType' property without strict TS errors
+  items: any[];
   lineDiscounts: LineDiscount[];
 }
 
@@ -39,15 +40,56 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
           `}
         </style>
 
-        {/* ... (Header and Table sections remain the same) ... */}
+        {/* Header - Unchanged */}
+        <div className="flex justify-between items-start mb-8 pb-4 border-b-2 border-gray-800">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 uppercase">
+              Return Slip
+            </h1>
+            <div className="mt-4 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-500 uppercase w-20">
+                  RTS No:
+                </span>
+                <span className="font-mono text-sm font-bold text-black">
+                  {data.returnNo}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-500 uppercase w-20">
+                  Date:
+                </span>
+                <span className="text-sm font-medium text-gray-800">
+                  {data.returnDate}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="flex flex-col items-end gap-1 mb-2">
+              <span className="text-[10px] font-bold text-gray-400 uppercase">
+                Supplier
+              </span>
+              <span className="text-xl font-bold text-black uppercase tracking-tight">
+                {data.supplier}
+              </span>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[10px] font-bold text-gray-400 uppercase">
+                Branch
+              </span>
+              <span className="text-base font-bold text-gray-700 uppercase">
+                {data.branch}
+              </span>
+            </div>
+          </div>
+        </div>
 
-        {/* Items Table - Unchanged */}
+        {/* Items Table */}
         <div className="mb-4">
-          {/* ... table code ... */}
           <table className="w-full text-[10px] text-left border-collapse border border-gray-300">
             <thead>
               <tr className="bg-gray-100 border-b border-gray-300">
-                {/* ... headers ... */}
                 <th className="py-1 px-2 font-bold text-gray-600 uppercase border-r border-gray-200 w-[10%]">
                   Code
                 </th>
@@ -65,6 +107,10 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
                 </th>
                 <th className="py-1 px-2 font-bold text-gray-600 uppercase text-center border-r border-gray-200 w-[10%]">
                   Disc Type
+                </th>
+                {/* ✅ NEW COLUMN: Return Type */}
+                <th className="py-1 px-2 font-bold text-gray-600 uppercase text-center border-r border-gray-200 w-[10%]">
+                  Return Type
                 </th>
                 <th className="py-1 px-2 font-bold text-gray-600 uppercase text-right w-[10%]">
                   Total
@@ -94,6 +140,10 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
                   <td className="py-1 px-2 text-center text-gray-600 border-r border-gray-200">
                     {getDiscountName(item.discount)}
                   </td>
+                  {/* ✅ NEW CELL: Return Type */}
+                  <td className="py-1 px-2 text-center text-gray-600 border-r border-gray-200 text-[9px] font-medium uppercase tracking-tight">
+                    {item.returnType}
+                  </td>
                   <td className="py-1 px-2 text-right font-bold text-gray-900">
                     {item.total.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
@@ -105,9 +155,8 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
           </table>
         </div>
 
-        {/* ✅ FOOTER SECTION: Updated with Gross/Discount/Net */}
+        {/* Footer Section */}
         <div className="flex items-start gap-8 mb-6">
-          {/* Remarks */}
           <div className="flex-1 border border-gray-200 p-3 rounded bg-gray-50 min-h-[100px]">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
               Remarks
@@ -117,7 +166,6 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
             </p>
           </div>
 
-          {/* Totals */}
           <div className="w-1/3">
             <div className="text-right w-full space-y-1 border-t-2 border-gray-800 pt-2">
               <p className="flex justify-between text-xs text-gray-500">
@@ -131,7 +179,6 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
 
               <div className="my-2 border-t border-dashed border-gray-300"></div>
 
-              {/* ✅ NEW FIELDS */}
               <p className="flex justify-between text-sm">
                 <span className="text-gray-600">Gross Amount:</span>
                 <span className="font-bold text-gray-900">
@@ -164,9 +211,8 @@ export const PrintableReturnSlip = React.forwardRef<HTMLDivElement, Props>(
           </div>
         </div>
 
-        {/* Signatories - Unchanged */}
+        {/* Signatories */}
         <div className="absolute bottom-10 left-8 right-8">
-          {/* ... existing signature code ... */}
           <div className="grid grid-cols-3 gap-16">
             <div className="text-center">
               <div className="border-b border-gray-400 mb-1 h-8"></div>

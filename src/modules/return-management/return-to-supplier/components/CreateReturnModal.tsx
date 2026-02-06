@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner"; // ✅ IMPORTED SONNER TOAST
 import {
   Dialog,
   DialogContent,
@@ -67,7 +68,6 @@ export function CreateReturnModal({
   const [showPicker, setShowPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Combobox States
   const [openSupplier, setOpenSupplier] = useState(false);
   const [openBranch, setOpenBranch] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState("");
@@ -87,30 +87,23 @@ export function CreateReturnModal({
     );
   }, [refs.branches, branchSearch]);
 
-  // ✅ DISPLAY LOGIC: Group Flat Items + Apply Supplier Discounts + INHERITANCE
   const groupedProducts = useMemo(() => {
     const invArray = Array.from(inventory.values());
 
-    // 1. Create Lookup Maps for Performance (O(1) Access)
     const productPriceMap = new Map();
     refs.products.forEach((p) => productPriceMap.set(String(p.id), p));
 
     const connectionMap = new Map();
     refs.connections.forEach((c) =>
-      // Key: "ProductID-SupplierID" for precise lookup
       connectionMap.set(`${c.product_id}-${c.supplier_id}`, c),
     );
 
     const discountMap = new Map();
     refs.discounts.forEach((d) => discountMap.set(String(d.id), d));
 
-    // 2. Enrich Data (Attach Price & Calculate Discount)
     const enrichedItems = invArray
       .map((item: any) => {
-        // Price Lookup
         const priceRef = productPriceMap.get(String(item.product_id));
-
-        // Discount Lookup: Specific to this Product AND the selected Supplier
         const connection = connectionMap.get(
           `${item.product_id}-${selection.supplierId}`,
         );
@@ -119,15 +112,11 @@ export function CreateReturnModal({
         let computedDiscount = 0;
 
         if (connection?.discount_type) {
-          // Try to find the discount definition in line_discount table
           const discountObj = discountMap.get(String(connection.discount_type));
-
           if (discountObj) {
-            // Case A: Linked Discount (e.g., ID pointing to "L1 - 5%")
             computedDiscount = parseFloat(discountObj.percentage);
             discountLabel = discountObj.line_discount;
           } else {
-            // Case B: Direct Value/Code (fallback)
             discountLabel = String(connection.discount_type);
           }
         }
@@ -142,19 +131,16 @@ export function CreateReturnModal({
           stock: item.running_inventory,
           price: priceRef ? priceRef.price : 0,
           uom_id: 0,
-          // ✅ Data for UI & Calculation
-          discountType: discountLabel, // Shows in Badge (e.g. "L1")
-          supplierDiscount: computedDiscount, // Used for auto-applying %
+          discountType: discountLabel,
+          supplierDiscount: computedDiscount,
         };
       })
       .filter((p) => Number(p.stock ?? 0) > 0);
 
-    // 3. Group by MASTER ID (Parent Relationship)
     const groups: Record<string, any> = {};
 
     enrichedItems.forEach((item) => {
       const groupKey = item.masterId;
-
       if (!groups[groupKey]) {
         groups[groupKey] = {
           masterId: groupKey,
@@ -166,14 +152,11 @@ export function CreateReturnModal({
       groups[groupKey].variants.push(item);
     });
 
-    // 4. Finalize Groups & Apply Inheritance Logic
     return Object.values(groups).map((group) => {
-      // Check if any variant in the group has a discount
       const parentDiscount = group.variants.find(
         (v: any) => v.supplierDiscount > 0 || v.discountType,
       );
 
-      // If a discount exists in the family, apply it to all children
       if (parentDiscount) {
         group.variants = group.variants.map((v: any) => ({
           ...v,
@@ -183,7 +166,6 @@ export function CreateReturnModal({
         }));
       }
 
-      // Sort variants
       group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
       if (group.variants.length > 0) {
         group.masterName = group.variants[0].name;
@@ -219,7 +201,6 @@ export function CreateReturnModal({
           ...p,
           quantity: qty,
           onHand: p.stock,
-          // ✅ Apply the fetched (and potentially inherited) Supplier Discount automatically
           discount: p.supplierDiscount || 0,
           customPrice: p.price,
         },
@@ -242,6 +223,18 @@ export function CreateReturnModal({
   };
 
   const handleSubmit = async () => {
+    // ✅ VALIDATION: Check if any item is missing a return type
+    const missingReturnType = cart.some((item) => !item.return_type_id);
+
+    if (missingReturnType) {
+      // ✅ TOAST NOTIFICATION using Shadcn Sonner
+      toast.error("Validation Error", {
+        description:
+          "Please select a 'Return Type' for all items before confirming.",
+      });
+      return; // ⛔ STOP execution
+    }
+
     setSubmitting(true);
     const rts_items = cart.map((item) => {
       const { gross, discountAmount, net } = calculateLineItem(item);
@@ -255,7 +248,6 @@ export function CreateReturnModal({
         discount_amount: discountAmount,
         net_amount: net,
         item_remarks: "",
-        // Capture the return type if user selected one in review
         return_type_id: item.return_type_id || null,
       };
     });
@@ -270,10 +262,15 @@ export function CreateReturnModal({
     });
 
     if (success) {
+      toast.success("Success", {
+        description: "Return transaction created successfully.",
+      });
       onReturnCreated();
       handleCloseFull();
     } else {
-      alert("Failed to create return transaction.");
+      toast.error("Error", {
+        description: "Failed to create return transaction.",
+      });
     }
     setSubmitting(false);
   };
@@ -324,7 +321,6 @@ export function CreateReturnModal({
               onRemove={(id) => setCart((c) => c.filter((i) => i.id !== id))}
               onUpdateQty={(id, q) => updateCart(id, "quantity", q)}
               onClearAll={() => setCart([])}
-              // ✅ PASS LOADING STATE TO PICKER
               isLoading={isLoadingInventory}
             />
           ) : (

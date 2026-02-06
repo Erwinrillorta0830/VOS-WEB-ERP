@@ -1,16 +1,8 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useMemo } from "react";
-// Removed useReactToPrint
-import {
-  Printer,
-  X,
-  Loader2,
-  Save,
-  Send,
-  Plus,
-  ExternalLink,
-} from "lucide-react";
+import { toast } from "sonner"; // ✅ IMPORTED SONNER TOAST
+import { Printer, X, Loader2, Save, Send, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -38,19 +30,19 @@ export function ReturnDetailsModal({
   const componentRef = useRef<HTMLDivElement>(null);
   const { refs, inventory, loadInventory } = useReturnCreationData(isOpen);
 
-  // ... (Existing State - No Changes) ...
   const [items, setItems] = useState<CartItem[]>([]);
   const [remarks, setRemarks] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [isEditable, setIsEditable] = useState(false);
+
   const [currentSupplierId, setCurrentSupplierId] = useState<number | null>(
     null,
   );
   const [currentBranchId, setCurrentBranchId] = useState<number | null>(null);
 
-  // ... (Existing useEffects and Data Loading - No Changes) ...
+  // 1. Initialize Data
   useEffect(() => {
     if (isOpen && data) {
       const isPending = data.status === "Pending";
@@ -105,26 +97,31 @@ export function ReturnDetailsModal({
     }
   }, [isOpen, data, refs.suppliers, refs.branches]);
 
+  // 2. Trigger Inventory Load
   useEffect(() => {
     if (isOpen && currentSupplierId && currentBranchId) {
       loadInventory(currentBranchId, currentSupplierId);
     }
   }, [isOpen, currentSupplierId, currentBranchId]);
 
+  // 3. Sync Items with Inventory
   useEffect(() => {
     if (inventory.size > 0 && items.length > 0) {
       setItems((prevItems) => {
         let hasChanges = false;
         const nextItems = prevItems.map((item) => {
           const invRecord = inventory.get(Number(item.id)) as any;
+
           if (invRecord) {
             const realStock = Number(invRecord.running_inventory || 0);
             const newUomId = invRecord.uom_id || item.uom_id;
+
             const needsUpdate =
               item.unit !== invRecord.unit_name ||
               item.onHand !== realStock ||
               item.unitCount !== invRecord.unit_count ||
               item.uom_id !== newUomId;
+
             if (needsUpdate) {
               hasChanges = true;
               return {
@@ -143,26 +140,34 @@ export function ReturnDetailsModal({
     }
   }, [inventory, items.length]);
 
+  // 4. Group Items Logic
   const availableProducts = useMemo(() => {
     if (!currentSupplierId) return [];
+
     const invArray = Array.from(inventory.values());
+
     const productPriceMap = new Map();
     refs.products.forEach((p) => productPriceMap.set(String(p.id), p));
+
     const connectionMap = new Map();
     refs.connections.forEach((c) =>
       connectionMap.set(`${c.product_id}-${c.supplier_id}`, c),
     );
+
     const discountMap = new Map();
     refs.discounts.forEach((d) => discountMap.set(String(d.id), d));
 
+    // A. Enrich Items
     const enrichedItems = invArray
       .map((item: any) => {
         const priceRef = productPriceMap.get(String(item.product_id));
         const connection = connectionMap.get(
           `${item.product_id}-${currentSupplierId}`,
         );
+
         let discountLabel = undefined;
         let computedDiscount = 0;
+
         if (connection?.discount_type) {
           const discountObj = discountMap.get(String(connection.discount_type));
           if (discountObj) {
@@ -172,6 +177,7 @@ export function ReturnDetailsModal({
             discountLabel = connection.discount_type;
           }
         }
+
         return {
           id: String(item.product_id),
           masterId: String(item.master_id),
@@ -188,9 +194,12 @@ export function ReturnDetailsModal({
       })
       .filter((p) => p.stock > 0 || items.some((i) => i.id === p.id));
 
+    // B. Group by Master ID
     const groups: Record<string, any> = {};
+
     enrichedItems.forEach((item) => {
       const groupKey = item.masterId;
+
       if (!groups[groupKey]) {
         groups[groupKey] = {
           masterId: groupKey,
@@ -202,6 +211,7 @@ export function ReturnDetailsModal({
       groups[groupKey].variants.push(item);
     });
 
+    // C. Finalize Groups
     return Object.values(groups).map((group) => {
       group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
       if (group.variants.length > 0) {
@@ -219,7 +229,7 @@ export function ReturnDetailsModal({
     refs.discounts,
   ]);
 
-  // ✅ NEW: Handle Preview in New Tab
+  // ✅ PREVIEW HANDLER
   const handlePreview = () => {
     if (!componentRef.current) return;
 
@@ -257,6 +267,18 @@ export function ReturnDetailsModal({
 
   const handleSave = async (post: boolean = false) => {
     if (!data) return;
+
+    // ✅ VALIDATION: Check for missing Return Type
+    const missingReturnType = items.some((item) => !item.return_type_id);
+    if (missingReturnType) {
+      // ✅ TOAST NOTIFICATION using Shadcn Sonner
+      toast.error("Validation Error", {
+        description:
+          "Please select a 'Return Type' for all items before saving.",
+      });
+      return; // ⛔ STOP execution
+    }
+
     setSaving(true);
     try {
       const rts_items = items.map((item) => {
@@ -291,10 +313,13 @@ export function ReturnDetailsModal({
       );
 
       if (success) {
+        toast.success("Success", {
+          description: "Transaction updated successfully.",
+        });
         if (onUpdateSuccess) onUpdateSuccess();
         onClose();
       } else {
-        alert("Failed to update transaction.");
+        toast.error("Error", { description: "Failed to update transaction." });
       }
     } catch (e) {
       console.error(e);
@@ -304,20 +329,33 @@ export function ReturnDetailsModal({
   };
 
   if (!data) return null;
-  const printableItems: ReturnItem[] = items.map((i) => ({
-    code: i.code,
-    name: i.name,
-    unit: i.unit,
-    quantity: i.quantity,
-    price: i.customPrice || i.price,
-    discount: i.discount,
-    total: (i.customPrice || i.price) * i.quantity * (1 - i.discount / 100),
-  }));
+
+  // ✅ MAP DATA FOR PRINTING
+  const printableItems: any[] = items.map((i) => {
+    const returnTypeObj = refs.returnTypes.find(
+      (rt: any) => String(rt.id) === String(i.return_type_id),
+    );
+    const returnTypeName = returnTypeObj
+      ? returnTypeObj.return_type_name || "-"
+      : "-";
+
+    return {
+      code: i.code,
+      name: i.name,
+      unit: i.unit,
+      quantity: i.quantity,
+      price: i.customPrice || i.price,
+      discount: i.discount,
+      total: (i.customPrice || i.price) * i.quantity * (1 - i.discount / 100),
+      returnType: returnTypeName,
+    };
+  });
 
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-[1200px]! w-[90vw]! h-[90vh] bg-white p-0 gap-0 flex flex-col overflow-hidden shadow-2xl sm:rounded-xl border border-slate-200 [&>button]:hidden">
+          {/* ... Header ... */}
           <div className="flex flex-row items-center justify-between px-8 py-6 bg-white shrink-0 border-b border-slate-100">
             <div>
               <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -328,7 +366,6 @@ export function ReturnDetailsModal({
               </div>
             </div>
             <div className="flex gap-2">
-              {/* ✅ UPDATE: Calls handlePreview instead of handlePrint */}
               <Button
                 variant="outline"
                 onClick={() => handlePreview()}
@@ -346,6 +383,7 @@ export function ReturnDetailsModal({
               </Button>
             </div>
           </div>
+
           <div className="flex-1 overflow-y-auto custom-scrollbar bg-white p-6">
             <div className="bg-slate-50 rounded-xl p-6 h-full">
               {/* Header Info */}
@@ -498,7 +536,6 @@ export function ReturnDetailsModal({
       </Dialog>
 
       <Dialog open={showPicker} onOpenChange={setShowPicker}>
-        {/* ... (ProductPicker Content remains the same) ... */}
         <DialogContent className="max-w-[95vw]! w-[95vw]! h-[95vh] p-0 overflow-hidden bg-white shadow-2xl border-none flex flex-col z-9999 [&>button]:hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b">
             <DialogTitle>Select Products</DialogTitle>
