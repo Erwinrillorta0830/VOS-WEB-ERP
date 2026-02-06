@@ -3,28 +3,51 @@
 import React, { useState, useMemo } from "react";
 import {
   Search,
-  Scan,
   X,
   Plus,
   Minus,
-  Package,
-  AlertCircle,
-  ShoppingCart,
   Trash2,
+  Loader2,
+  PackageOpen,
+  ScanBarcode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Product, CartItem } from "../type";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { CartItem } from "../type";
 
 interface ProductPickerProps {
   isVisible: boolean;
   onClose: () => void;
-  products: Product[];
+  products: any[];
   addedProducts: CartItem[];
-  onAdd: (product: Product, quantity?: number) => void;
+  onAdd: (product: any, qty: number) => void;
   onRemove: (id: string) => void;
   onUpdateQty: (id: string, qty: number) => void;
   onClearAll: () => void;
+  isLoading?: boolean; // ✅ NEW PROP
+}
+
+// ✅ HELPER: Skeleton Card Component for Loading State
+function ProductSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm">
+      <div className="flex justify-between items-start">
+        <div className="space-y-2 w-3/4">
+          <div className="h-4 bg-slate-100 rounded w-full animate-pulse" />
+          <div className="h-3 bg-slate-50 rounded w-1/2 animate-pulse" />
+        </div>
+      </div>
+      <div className="pt-2 flex justify-between items-end border-t border-slate-50 mt-2">
+        <div className="space-y-1">
+          <div className="h-5 bg-slate-100 rounded w-20 animate-pulse" />
+          <div className="h-3 bg-slate-50 rounded w-12 animate-pulse" />
+        </div>
+        <div className="h-8 w-20 bg-slate-100 rounded animate-pulse" />
+      </div>
+    </div>
+  );
 }
 
 export function ProductPicker({
@@ -36,304 +59,327 @@ export function ProductPicker({
   onRemove,
   onUpdateQty,
   onClearAll,
+  isLoading = false, // ✅ Defaults to false
 }: ProductPickerProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [barcodeQuery, setBarcodeQuery] = useState("");
-  const [warningMessage, setWarningMessage] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
-  const filteredRawProducts = useMemo(() => {
-    let result = products;
-    if (searchQuery) {
-      const lower = searchQuery.toLowerCase();
-      result = products.filter(
-        (p) =>
-          p.name.toLowerCase().includes(lower) ||
-          p.code.toLowerCase().includes(lower),
-      );
-    }
-    if (barcodeQuery) {
-      const lower = barcodeQuery.toLowerCase();
-      result = result.filter((p) => p.code.toLowerCase().includes(lower));
-    }
-    return result;
-  }, [products, searchQuery, barcodeQuery]);
+  const filteredGroups = useMemo(() => {
+    if (!search) return products;
+    const lowerSearch = search.toLowerCase();
 
-  const groupedProducts = useMemo(() => {
-    const groups = new Map<string, Product[]>();
-    filteredRawProducts.forEach((p) => {
-      const key = p.name.trim();
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(p);
-    });
-    return Array.from(groups.values());
-  }, [filteredRawProducts]);
+    return products
+      .map((group) => {
+        if (group.masterName.toLowerCase().includes(lowerSearch)) return group;
+        const matchingVariants = group.variants.filter(
+          (v: any) =>
+            v.name.toLowerCase().includes(lowerSearch) ||
+            v.code.toLowerCase().includes(lowerSearch),
+        );
+        if (matchingVariants.length > 0) {
+          return { ...group, variants: matchingVariants };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [products, search]);
 
-  const currentTotal = addedProducts.reduce((sum, item) => {
-    const price = item.customPrice ?? item.price;
-    return sum + price * item.quantity;
-  }, 0);
-
-  const handleAdd = (variant: Product) => {
-    const stock = variant.stock || 0;
-    const inCart =
-      addedProducts.find((p) => p.id === variant.id)?.quantity || 0;
-
-    if (inCart + 1 > stock) {
-      setWarningMessage(`Limit reached. Only ${stock} available.`);
-      setTimeout(() => setWarningMessage(null), 3000);
-      return;
-    }
-    setWarningMessage(null);
-    onAdd(variant, 1);
-  };
-
-  const handleQty = (id: string, newQty: number) => {
-    const existingItem = addedProducts.find((item) => item.id === id);
-    const stock = existingItem?.stock || 0;
-
-    if (newQty <= 0) onRemove(id);
-    else {
-      if (newQty > stock) {
-        setWarningMessage(`Limit reached. Only ${stock} available.`);
-        setTimeout(() => setWarningMessage(null), 3000);
-        return;
-      }
-      setWarningMessage(null);
-      onUpdateQty(id, newQty);
-    }
-  };
+  const totalAmount = addedProducts.reduce(
+    (sum, item) => sum + (item.customPrice || item.price) * item.quantity,
+    0,
+  );
 
   if (!isVisible) return null;
 
   return (
-    // Main Container: Matches the height passed from the parent modal
-    <div className="grid grid-cols-1 lg:grid-cols-3 h-full animate-in fade-in slide-in-from-right-8 bg-white overflow-hidden relative">
-      {/* WARNING BANNER */}
-      {warningMessage && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[60] bg-red-100 text-red-700 px-4 py-2 rounded-full shadow-lg text-sm font-bold flex gap-2 border border-red-200">
-          <AlertCircle className="h-4 w-4" /> {warningMessage}
-        </div>
-      )}
-
-      {/* LEFT COLUMN: PRODUCT BROWSER */}
-      <div className="col-span-2 flex flex-col h-full bg-slate-50 border-r relative overflow-hidden">
-        {/* Header - Fixed Height */}
-        <div className="p-6 border-b bg-white shadow-sm z-10 shrink-0">
+    <div className="flex h-full w-full bg-slate-50/50 overflow-hidden">
+      {/* LEFT SIDE: BROWSE PRODUCTS */}
+      <div className="flex-1 flex flex-col h-full min-h-0 border-r border-slate-200 bg-slate-50/50">
+        {/* Search Header */}
+        <div className="p-6 bg-white border-b border-slate-200 shrink-0 z-10">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold flex gap-2 text-slate-800">
-              <Search className="h-5 w-5 text-blue-600" /> Browse Products
-            </h3>
-            <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100 font-medium">
-              {filteredRawProducts.length} variants
-            </span>
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+              <Search className="w-5 h-5 text-blue-600" />
+              Browse Products
+            </h2>
+            <div className="flex items-center gap-2">
+              {/* ✅ NEW: "Fetching..." Badge */}
+              {isLoading && (
+                <Badge
+                  variant="secondary"
+                  className="bg-blue-50 text-blue-600 animate-pulse border-blue-100"
+                >
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  Fetching...
+                </Badge>
+              )}
+              <Badge
+                variant="secondary"
+                className="bg-slate-100 text-slate-600 hover:bg-slate-100 border-slate-200"
+              >
+                {isLoading ? "-" : products.length} Product Families
+              </Badge>
+            </div>
           </div>
           <div className="flex gap-3">
-            <div className="relative flex-grow group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search name/code..."
-                className="pl-10 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search product name or code..."
+                className="pl-9 bg-white border-slate-200 focus-visible:ring-blue-500 transition-all"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+                disabled={isLoading} // Disable input while loading
               />
             </div>
-            <div className="relative w-1/3 group">
-              <Scan className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+            <div className="relative w-1/3">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400">
+                <ScanBarcode className="w-4 h-4" />
+              </div>
               <Input
                 placeholder="Scan barcode..."
-                className="pl-10 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
-                value={barcodeQuery}
-                onChange={(e) => setBarcodeQuery(e.target.value)}
+                className="pl-9 bg-white border-slate-200"
+                disabled
               />
             </div>
           </div>
         </div>
 
-        {/* Scrollable Product List - Fills remaining space */}
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar pb-24 bg-slate-50/50 min-h-0">
-          {groupedProducts.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-              <Package className="h-10 w-10 mb-2 opacity-50" />{" "}
-              <p className="font-medium">No products found</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-8">
-              {groupedProducts.map((group) => {
-                const main = group[0];
-                return (
+        {/* Product Grid - Scrollable Area */}
+        <ScrollArea className="flex-1 p-6">
+          <div className="pb-6">
+            {isLoading ? (
+              // ✅ NEW: Render Skeletons when loading
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <ProductSkeleton key={i} />
+                ))}
+              </div>
+            ) : filteredGroups.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4 min-h-[400px]">
+                <div className="bg-white p-4 rounded-full shadow-sm border border-slate-100">
+                  <PackageOpen className="h-8 w-8 text-slate-300" />
+                </div>
+                <p className="text-sm font-medium">No available stock found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {filteredGroups.map((group: any) => (
                   <div
-                    key={main.id}
-                    className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col"
+                    key={group.masterId}
+                    className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow"
                   >
-                    <div className="p-3 border-b border-slate-50 bg-slate-50/30">
-                      <h4 className="font-bold text-sm text-slate-800 line-clamp-1">
-                        {main.name}
-                      </h4>
-                      <div className="text-xs text-slate-500 font-mono mt-1 bg-slate-100 inline-block px-1.5 rounded">
-                        {main.code}
-                      </div>
+                    <div className="p-4 border-b border-slate-50 bg-slate-50/50">
+                      <h3
+                        className="font-bold text-slate-800 text-sm line-clamp-1"
+                        title={group.masterName}
+                      >
+                        {group.masterName}
+                      </h3>
+                      <p className="text-xs text-slate-400 font-mono mt-1">
+                        Code: {group.masterCode || "N/A"}
+                      </p>
                     </div>
-                    <div className="p-3 space-y-2 flex-1">
-                      {group.map((variant) => {
-                        const stock = variant.stock || 0;
-                        const inCart =
-                          addedProducts.find((p) => p.id === variant.id)
-                            ?.quantity || 0;
-                        const isMaxed = inCart >= stock;
-                        const isOutOfStock = stock <= 0;
+                    <div className="p-3 space-y-2">
+                      {group.variants.map((variant: any) => {
+                        const cartItem = addedProducts.find(
+                          (i) => i.id === variant.id,
+                        );
+                        const currentQty = cartItem ? cartItem.quantity : 0;
+                        const maxStock = Number(variant.stock || 0);
+                        const isMaxed = currentQty >= maxStock;
 
                         return (
                           <div
                             key={variant.id}
-                            className="flex justify-between items-center group/item"
+                            className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:border-blue-100 hover:bg-blue-50/30 transition-all group"
                           >
-                            <div>
-                              <div className="text-sm font-bold text-slate-900">
-                                ₱
-                                {variant.price.toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                })}
+                            <div className="flex-1 min-w-0 mr-4">
+                              <div className="flex items-baseline gap-2 mb-1">
+                                <span className="font-extrabold text-slate-900">
+                                  ₱ {variant.price.toLocaleString()}
+                                </span>
+                                <span className="text-xs text-slate-500 font-medium">
+                                  / {variant.unit}
+                                </span>
                               </div>
-                              <div className="text-xs text-slate-500 flex items-center gap-1">
-                                <span className="w-1 h-1 rounded-full bg-slate-300"></span>{" "}
-                                {variant.unit}
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-slate-500">
+                                  Stock:{" "}
+                                  <span className="font-bold text-slate-700">
+                                    {maxStock}
+                                  </span>
+                                </span>
+                                {variant.discountType && (
+                                  <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200">
+                                    {variant.discountType}
+                                  </span>
+                                )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <div className="text-right">
-                                <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">
-                                  Stock
-                                </div>
-                                <div
-                                  className={`text-sm font-bold leading-none ${isOutOfStock ? "text-red-500" : "text-emerald-600"}`}
-                                >
-                                  {isOutOfStock ? "0" : stock}
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleAdd(variant)}
-                                disabled={isOutOfStock || isMaxed}
-                                className={`h-8 px-3 text-xs font-bold rounded-lg shadow-sm ${isOutOfStock || isMaxed ? "bg-slate-100 text-slate-400" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
-                              >
-                                {isMaxed ? "Max" : "Add"}
-                              </Button>
-                            </div>
+                            <Button
+                              size="sm"
+                              className={`h-8 px-4 font-semibold text-xs shadow-sm transition-all ${
+                                isMaxed
+                                  ? "bg-slate-100 text-slate-400 hover:bg-slate-100 cursor-not-allowed"
+                                  : "bg-slate-900 text-white hover:bg-blue-600"
+                              }`}
+                              disabled={isMaxed}
+                              onClick={() => onAdd(variant, 1)}
+                            >
+                              {isMaxed ? (
+                                "Maxed"
+                              ) : (
+                                <>
+                                  <Plus className="w-3 h-3 mr-1.5" /> Add
+                                </>
+                              )}
+                            </Button>
                           </div>
                         );
                       })}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </div>
 
-      {/* RIGHT COLUMN: CART & CONFIRMATION */}
-      {/* ✅ FIXED: Use flex-col and h-full so footer can be sticky at bottom */}
-      <div className="col-span-1 bg-white h-full border-l border-slate-200 flex flex-col shadow-xl z-20 overflow-hidden relative">
-        {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-white z-10">
-          <h3 className="font-bold text-slate-800 flex gap-2 items-center text-sm uppercase tracking-wide">
-            <ShoppingCart className="h-4 w-4 text-slate-400" /> Selected Items
-          </h3>
+      {/* RIGHT SIDE: SELECTED ITEMS (CART) */}
+      <div className="w-[400px] bg-white flex flex-col h-full min-h-0 shadow-xl z-20 border-l border-slate-200">
+        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-sm uppercase tracking-wide">
+            <span className="h-2 w-2 rounded-full bg-blue-600"></span>
+            Selected Items
+          </div>
           {addedProducts.length > 0 && (
             <button
               onClick={onClearAll}
-              className="text-xs text-red-500 hover:text-red-700 font-semibold px-2 py-1 hover:bg-red-50 rounded"
+              className="text-xs font-semibold text-red-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors"
             >
               Clear All
             </button>
           )}
         </div>
 
-        {/* Cart Items List - Takes all available space but shrinks for footer */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0 bg-slate-50/30">
-          {addedProducts.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-3">
-              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center border-2 border-dashed border-slate-200">
-                <Package className="h-6 w-6 text-slate-300" />
-              </div>
-              <p className="text-sm font-medium">List is empty</p>
-            </div>
-          ) : (
-            addedProducts.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col gap-3 animate-in slide-in-from-bottom-2 duration-300"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-sm text-slate-800 line-clamp-2">
-                      {item.name}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1 font-mono bg-slate-100 inline-block px-1 rounded">
-                      {item.code}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onRemove(item.id)}
-                    className="text-slate-400 hover:text-red-500 p-1 hover:bg-red-50 rounded transition-colors"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+        <ScrollArea className="flex-1 bg-white">
+          <div className="p-4 pb-6">
+            {addedProducts.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-3 p-10 mt-10">
+                <div className="border-2 border-dashed border-slate-200 rounded-full p-6 bg-slate-50">
+                  <PackageOpen className="h-8 w-8" />
                 </div>
-
-                <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
-                  <div className="text-xs font-medium text-slate-600">
-                    ₱
-                    {(
-                      item.quantity * (item.customPrice || item.price)
-                    ).toLocaleString()}
-                  </div>
-                  <div className="flex items-center gap-1 bg-white rounded border border-slate-200 shadow-sm">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 rounded hover:bg-slate-100"
-                      onClick={() => handleQty(item.id, item.quantity - 1)}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="w-8 text-center text-xs font-bold tabular-nums">
-                      {item.quantity}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 rounded hover:bg-slate-100"
-                      onClick={() => handleQty(item.id, item.quantity + 1)}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
+                <p className="text-sm font-medium">No products selected</p>
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              <div className="space-y-3">
+                {addedProducts.map((item) => {
+                  const maxStock = Number(item.stock || 0);
+                  const isMaxed = item.quantity >= maxStock;
 
-        {/* Footer - Fixed at Bottom */}
-        {/* ✅ FIXED: High Z-Index, white background, shadow to ensure it sits on top */}
-        <div className="px-6 pt-5 pb-20 border-t border-slate-200 bg-white shrink-0 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-50 relative">
-          <div className="flex justify-between items-end mb-4">
-            <span className="text-xs font-bold text-slate-500 uppercase">
-              Total Amount
+                  return (
+                    <div
+                      key={item.id}
+                      className="group bg-white rounded-lg border border-slate-100 p-3 shadow-sm hover:shadow-md hover:border-blue-100 transition-all relative"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="pr-6">
+                          <h4 className="font-bold text-sm text-slate-800 line-clamp-2">
+                            {item.name}
+                          </h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 border-slate-200 text-slate-500 bg-slate-50"
+                            >
+                              {item.unit} ({item.unitCount})
+                            </Badge>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onRemove(item.id)}
+                          className="text-slate-300 hover:text-red-500 transition-colors absolute top-3 right-3"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
+                        <div className="font-bold text-slate-700 text-sm">
+                          ₱ {(item.customPrice || item.price).toLocaleString()}
+                        </div>
+
+                        <div className="flex items-center bg-slate-50 rounded-md border border-slate-200">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-none rounded-l-md hover:bg-white hover:text-red-500"
+                            onClick={() => {
+                              if (item.quantity <= 1) onRemove(item.id);
+                              else onUpdateQty(item.id, item.quantity - 1);
+                            }}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+
+                          <div className="w-12 border-x border-slate-200 bg-white">
+                            <Input
+                              type="number"
+                              min={1}
+                              max={maxStock}
+                              className="h-7 w-full text-center border-none p-0 text-xs font-bold focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                let val = parseInt(e.target.value);
+                                if (isNaN(val)) return;
+                                if (val > maxStock) val = maxStock;
+                                if (val < 1) val = 1;
+                                onUpdateQty(item.id, val);
+                              }}
+                            />
+                          </div>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 rounded-none rounded-r-md transition-colors ${isMaxed ? "opacity-50 cursor-not-allowed" : "hover:bg-white hover:text-blue-600"}`}
+                            disabled={isMaxed}
+                            onClick={() =>
+                              onUpdateQty(item.id, item.quantity + 1)
+                            }
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <div className="p-5 border-t pb-15 border-slate-100 bg-slate-50 shrink-0">
+          <div className="flex justify-between items-center mb-4 text-sm">
+            <span className="font-bold text-slate-500 uppercase text-xs">
+              Total Price
             </span>
-            <span className="text-2xl font-extrabold text-slate-900 leading-none">
-              ₱
-              {currentTotal.toLocaleString(undefined, {
+            <span className="font-extrabold text-xl text-slate-900">
+              ₱{" "}
+              {totalAmount.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
               })}
             </span>
           </div>
           <Button
-            className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-100 transition-all active:scale-[0.98]"
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-11 transition-all active:scale-[0.98]"
             onClick={onClose}
+            disabled={addedProducts.length === 0}
           >
-            Confirm Selection
+            Confirm Selected Products
           </Button>
         </div>
       </div>
