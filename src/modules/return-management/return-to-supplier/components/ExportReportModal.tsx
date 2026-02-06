@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { useReactToPrint } from "react-to-print";
-import { Printer, X, Check, ChevronsUpDown } from "lucide-react";
+// Removed useReactToPrint
+import { Printer, X, Check, ChevronsUpDown, ExternalLink } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -49,22 +49,16 @@ export function ExportReportModal({
   allData,
 }: ExportReportModalProps) {
   const componentRef = useRef<HTMLDivElement>(null);
-
-  // -- Filter States --
   const [dateRange, setDateRange] = useState("thisMonth");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [supplierId, setSupplierId] = useState("all");
   const [branchId, setBranchId] = useState("all");
   const [status, setStatus] = useState("all");
-
-  // -- UI States for Comboboxes --
   const [openSupplier, setOpenSupplier] = useState(false);
   const [openBranch, setOpenBranch] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState("");
   const [branchSearch, setBranchSearch] = useState("");
-
-  // -- Reference Data --
   const [refs, setRefs] = useState<{ suppliers: any[]; branches: any[] }>({
     suppliers: [],
     branches: [],
@@ -78,7 +72,6 @@ export function ExportReportModal({
     }
   }, [isOpen]);
 
-  // Filter lists for search
   const filteredSuppliers = refs.suppliers.filter((s) =>
     s.supplier_name.toLowerCase().includes(supplierSearch.toLowerCase()),
   );
@@ -86,26 +79,22 @@ export function ExportReportModal({
     b.branch_name.toLowerCase().includes(branchSearch.toLowerCase()),
   );
 
-  // -- Filtering Logic --
   const filteredData = useMemo(() => {
     return allData.filter((item) => {
       const itemDate = new Date(item.returnDate);
       const now = new Date();
-
-      // 1. Date Filter
       let dateMatch = true;
-      if (dateRange === "all") {
-        dateMatch = true;
-      } else if (dateRange === "today") {
+
+      if (dateRange === "today") {
         dateMatch = itemDate.toDateString() === now.toDateString();
       } else if (dateRange === "tomorrow") {
         const tmrw = new Date(now);
         tmrw.setDate(tmrw.getDate() + 1);
         dateMatch = itemDate.toDateString() === tmrw.toDateString();
       } else if (dateRange === "thisWeek") {
-        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
-        const lastDay = new Date(now.setDate(now.getDate() - now.getDay() + 6));
-        dateMatch = itemDate >= firstDay && itemDate <= lastDay;
+        const first = new Date(now.setDate(now.getDate() - now.getDay()));
+        const last = new Date(now.setDate(now.getDate() - now.getDay() + 6));
+        dateMatch = itemDate >= first && itemDate <= last;
       } else if (dateRange === "thisMonth") {
         dateMatch =
           itemDate.getMonth() === new Date().getMonth() &&
@@ -119,25 +108,22 @@ export function ExportReportModal({
           end.setHours(23, 59, 59, 999);
           dateMatch = itemDate >= start && itemDate <= end;
         } else {
-          dateMatch = false; // Don't export if range incomplete
+          dateMatch = false;
         }
       }
 
-      // 2. Supplier Filter
       let supplierMatch = true;
       if (supplierId !== "all") {
         const supObj = refs.suppliers.find((s) => String(s.id) === supplierId);
         if (supObj) supplierMatch = item.supplier === supObj.supplier_name;
       }
 
-      // 3. Branch Filter
       let branchMatch = true;
       if (branchId !== "all") {
         const branchObj = refs.branches.find((b) => String(b.id) === branchId);
         if (branchObj) branchMatch = item.branch === branchObj.branch_name;
       }
 
-      // 4. Status Filter
       let statusMatch = true;
       if (status !== "all") {
         statusMatch = item.status === status;
@@ -156,14 +142,44 @@ export function ExportReportModal({
     refs,
   ]);
 
-  const handlePrint = useReactToPrint({
-    contentRef: componentRef,
-    documentTitle: "RTS_Summary_Report",
-  });
+  // ✅ NEW: Handle Preview in New Tab
+  const handlePreview = () => {
+    if (!componentRef.current) return;
+
+    const content = componentRef.current.innerHTML;
+    const printWindow = window.open("", "_blank");
+
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>RTS Summary Report Preview</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+              body { background-color: #f8fafc; padding: 40px; }
+              @media print {
+                body { background-color: white; padding: 0; }
+                .no-print { display: none !important; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="no-print" style="margin-bottom: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+               <button onclick="window.print()" style="background-color: #0f172a; color: white; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none;">🖨️ Print Now</button>
+               <button onclick="window.close()" style="background-color: white; color: #64748b; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">Close</button>
+            </div>
+            <div style="background: white; padding: 40px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border-radius: 8px;">
+              ${content}
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      {/* [&>button]:hidden removes the duplicate X button */}
       <DialogContent className="max-w-[600px] bg-white p-0 gap-0 border-slate-200 shadow-xl sm:rounded-xl overflow-visible [&>button]:hidden">
         {/* Header */}
         <DialogHeader className="px-6 py-5 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
@@ -198,12 +214,15 @@ export function ExportReportModal({
                   <Button
                     variant="outline"
                     role="combobox"
-                    className="w-full justify-between bg-white border-slate-200 text-slate-700 h-10"
+                    className="w-full justify-between bg-white border-slate-200 text-slate-700 h-10 px-3"
                   >
-                    {supplierId === "all"
-                      ? "All Suppliers"
-                      : refs.suppliers.find((s) => String(s.id) === supplierId)
-                          ?.supplier_name || "Select Supplier"}
+                    <span className="truncate flex-1 text-left">
+                      {supplierId === "all"
+                        ? "All Suppliers"
+                        : refs.suppliers.find(
+                            (s) => String(s.id) === supplierId,
+                          )?.supplier_name || "Select Supplier"}
+                    </span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
@@ -214,7 +233,6 @@ export function ExportReportModal({
                       value={supplierSearch}
                       onValueChange={setSupplierSearch}
                     />
-                    {/* ✅ FIX 1: stopPropagation onWheel allows scrolling inside the popover */}
                     <CommandList
                       className="max-h-[200px] overflow-y-auto"
                       onWheel={(e) => e.stopPropagation()}
@@ -275,12 +293,14 @@ export function ExportReportModal({
                   <Button
                     variant="outline"
                     role="combobox"
-                    className="w-full justify-between bg-white border-slate-200 text-slate-700 h-10"
+                    className="w-full justify-between bg-white border-slate-200 text-slate-700 h-10 px-3"
                   >
-                    {branchId === "all"
-                      ? "All Branches"
-                      : refs.branches.find((b) => String(b.id) === branchId)
-                          ?.branch_name || "Select Branch"}
+                    <span className="truncate flex-1 text-left">
+                      {branchId === "all"
+                        ? "All Branches"
+                        : refs.branches.find((b) => String(b.id) === branchId)
+                            ?.branch_name || "Select Branch"}
+                    </span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
@@ -291,12 +311,10 @@ export function ExportReportModal({
                       value={branchSearch}
                       onValueChange={setBranchSearch}
                     />
-                    {/* ✅ FIX 1: stopPropagation onWheel allows scrolling inside the popover */}
                     <CommandList
                       className="max-h-[200px] overflow-y-auto"
                       onWheel={(e) => e.stopPropagation()}
                     >
-                      <CommandEmpty>No branch found.</CommandEmpty>
                       <CommandGroup>
                         <CommandItem
                           value="all"
@@ -341,7 +359,6 @@ export function ExportReportModal({
             </div>
           </div>
 
-          {/* 2. Date Range */}
           <div className="space-y-3">
             <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
               Date Range
@@ -370,8 +387,6 @@ export function ExportReportModal({
                 </button>
               ))}
             </div>
-
-            {/* ✅ FIX 2: Custom Date Inputs showing when dateRange === 'custom' */}
             {dateRange === "custom" && (
               <div className="flex items-center gap-4 mt-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <div className="flex-1 space-y-1">
@@ -400,7 +415,6 @@ export function ExportReportModal({
             )}
           </div>
 
-          {/* 3. Status (Select) */}
           <div className="space-y-2">
             <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
               Status
@@ -420,7 +434,7 @@ export function ExportReportModal({
           </div>
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer */}
         <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50 rounded-b-xl">
           <Button
             variant="outline"
@@ -429,33 +443,33 @@ export function ExportReportModal({
           >
             Cancel
           </Button>
+          {/* ✅ UPDATE: Calls handlePreview instead of handlePrint */}
           <Button
             className="bg-slate-900 hover:bg-slate-800 text-white h-11 px-8 shadow-lg shadow-slate-900/10"
-            onClick={() => handlePrint()}
+            onClick={() => handlePreview()}
           >
-            <Printer className="w-4 h-4 mr-2" /> Export Report
+            <Printer className="w-4 h-4 mr-2" /> Export / Preview
           </Button>
         </div>
       </DialogContent>
 
-      {/* Hidden Printable Component */}
       <div style={{ position: "absolute", top: "-10000px", left: "-10000px" }}>
         <PrintableReportSummary
           ref={componentRef}
           data={filteredData}
           filters={{
-            dateRange: dateRange === "all" ? "All Time" : dateRange,
+            dateRange: dateRange,
             supplier:
               supplierId === "all"
                 ? "All Suppliers"
                 : refs.suppliers.find((s) => String(s.id) === supplierId)
-                    ?.supplier_name || "Selected",
+                    ?.supplier_name,
             branch:
               branchId === "all"
                 ? "All Branches"
                 : refs.branches.find((b) => String(b.id) === branchId)
-                    ?.branch_name || "Selected",
-            status: status === "all" ? "All Statuses" : status,
+                    ?.branch_name,
+            status: status,
           }}
         />
       </div>

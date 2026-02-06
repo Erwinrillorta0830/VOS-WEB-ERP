@@ -66,6 +66,8 @@ export function CreateReturnModal({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Combobox States
   const [openSupplier, setOpenSupplier] = useState(false);
   const [openBranch, setOpenBranch] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState("");
@@ -85,7 +87,7 @@ export function CreateReturnModal({
     );
   }, [refs.branches, branchSearch]);
 
-  // ✅ DISPLAY LOGIC: Group Flat Items + Apply Supplier Discounts
+  // ✅ DISPLAY LOGIC: Group Flat Items + Apply Supplier Discounts + INHERITANCE
   const groupedProducts = useMemo(() => {
     const invArray = Array.from(inventory.values());
 
@@ -164,13 +166,30 @@ export function CreateReturnModal({
       groups[groupKey].variants.push(item);
     });
 
-    // 4. Finalize Groups (Sort variants)
+    // 4. Finalize Groups & Apply Inheritance Logic
     return Object.values(groups).map((group) => {
+      // Check if any variant in the group has a discount
+      const parentDiscount = group.variants.find(
+        (v: any) => v.supplierDiscount > 0 || v.discountType,
+      );
+
+      // If a discount exists in the family, apply it to all children
+      if (parentDiscount) {
+        group.variants = group.variants.map((v: any) => ({
+          ...v,
+          supplierDiscount:
+            v.supplierDiscount || parentDiscount.supplierDiscount,
+          discountType: v.discountType || parentDiscount.discountType,
+        }));
+      }
+
+      // Sort variants
       group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
       if (group.variants.length > 0) {
         group.masterName = group.variants[0].name;
       }
       group.variants.sort((a: any, b: any) => b.unitCount - a.unitCount);
+
       return group;
     });
   }, [
@@ -200,7 +219,7 @@ export function CreateReturnModal({
           ...p,
           quantity: qty,
           onHand: p.stock,
-          // ✅ Apply the fetched Supplier Discount automatically
+          // ✅ Apply the fetched (and potentially inherited) Supplier Discount automatically
           discount: p.supplierDiscount || 0,
           customPrice: p.price,
         },
@@ -236,6 +255,8 @@ export function CreateReturnModal({
         discount_amount: discountAmount,
         net_amount: net,
         item_remarks: "",
+        // Capture the return type if user selected one in review
+        return_type_id: item.return_type_id || null,
       };
     });
 
@@ -303,6 +324,7 @@ export function CreateReturnModal({
               onRemove={(id) => setCart((c) => c.filter((i) => i.id !== id))}
               onUpdateQty={(id, q) => updateCart(id, "quantity", q)}
               onClearAll={() => setCart([])}
+              // ✅ PASS LOADING STATE TO PICKER
               isLoading={isLoadingInventory}
             />
           ) : (
@@ -340,7 +362,7 @@ export function CreateReturnModal({
                             value={supplierSearch}
                             onValueChange={setSupplierSearch}
                           />
-                          <CommandList>
+                          <CommandList className="max-h-[200px] overflow-y-auto">
                             <CommandGroup>
                               {filteredSuppliers.map((s) => (
                                 <CommandItem
@@ -404,7 +426,7 @@ export function CreateReturnModal({
                             value={branchSearch}
                             onValueChange={setBranchSearch}
                           />
-                          <CommandList>
+                          <CommandList className="max-h-[200px] overflow-y-auto">
                             <CommandGroup>
                               {filteredBranches.map((b) => (
                                 <CommandItem
@@ -487,6 +509,8 @@ export function CreateReturnModal({
                     <ReturnReviewPanel
                       items={cart}
                       lineDiscounts={refs.discounts}
+                      // Pass return types for categorization
+                      returnTypes={refs.returnTypes || []}
                       onUpdateItem={updateCart}
                       onRemoveItem={(id) =>
                         setCart((c) => c.filter((i) => i.id !== id))
@@ -496,7 +520,6 @@ export function CreateReturnModal({
                         setSelection((s) => ({ ...s, remarks: r }))
                       }
                       readOnly={step === "review"}
-                      returnTypes={[]}
                     />
                   ) : (
                     <div className="border-2 border-dashed h-32 flex items-center justify-center text-slate-400 text-sm">

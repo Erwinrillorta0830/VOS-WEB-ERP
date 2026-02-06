@@ -29,7 +29,7 @@ interface ProductPickerProps {
   isLoading?: boolean; // ✅ NEW PROP
 }
 
-// ✅ HELPER: Skeleton Card Component
+// ✅ HELPER: Skeleton Card Component for Loading State
 function ProductSkeleton() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm">
@@ -59,7 +59,7 @@ export function ProductPicker({
   onRemove,
   onUpdateQty,
   onClearAll,
-  isLoading = false, // ✅ Default to false
+  isLoading = false, // ✅ Defaults to false
 }: ProductPickerProps) {
   const [search, setSearch] = useState("");
 
@@ -102,18 +102,19 @@ export function ProductPicker({
               Browse Products
             </h2>
             <div className="flex items-center gap-2">
-              {/* ✅ NEW: Loading Indicator */}
+              {/* ✅ NEW: "Fetching..." Badge */}
               {isLoading && (
                 <Badge
                   variant="secondary"
-                  className="bg-blue-50 text-blue-600 animate-pulse"
+                  className="bg-blue-50 text-blue-600 animate-pulse border-blue-100"
                 >
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                   Fetching...
                 </Badge>
               )}
               <Badge
                 variant="secondary"
-                className="bg-slate-100 text-slate-600 hover:bg-slate-100"
+                className="bg-slate-100 text-slate-600 hover:bg-slate-100 border-slate-200"
               >
                 {isLoading ? "-" : products.length} Product Families
               </Badge>
@@ -124,11 +125,11 @@ export function ProductPicker({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 placeholder="Search product name or code..."
-                className="pl-9 bg-white border-slate-200 focus-visible:ring-blue-500"
+                className="pl-9 bg-white border-slate-200 focus-visible:ring-blue-500 transition-all"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                disabled={isLoading} // Disable search while loading
+                disabled={isLoading} // Disable input while loading
               />
             </div>
             <div className="relative w-1/3">
@@ -156,17 +157,17 @@ export function ProductPicker({
               </div>
             ) : filteredGroups.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4 min-h-[400px]">
-                <div className="bg-white p-4 rounded-full shadow-sm">
+                <div className="bg-white p-4 rounded-full shadow-sm border border-slate-100">
                   <PackageOpen className="h-8 w-8 text-slate-300" />
                 </div>
-                <p>No available stock found</p>
+                <p className="text-sm font-medium">No available stock found</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {filteredGroups.map((group: any) => (
                   <div
                     key={group.masterId}
-                    className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
+                    className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow"
                   >
                     <div className="p-4 border-b border-slate-50 bg-slate-50/50">
                       <h3
@@ -210,7 +211,7 @@ export function ProductPicker({
                                   </span>
                                 </span>
                                 {variant.discountType && (
-                                  <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                  <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-200">
                                     {variant.discountType}
                                   </span>
                                 )}
@@ -246,7 +247,7 @@ export function ProductPicker({
         </ScrollArea>
       </div>
 
-      {/* RIGHT SIDE: SELECTED ITEMS (CART) - UNCHANGED */}
+      {/* RIGHT SIDE: SELECTED ITEMS (CART) */}
       <div className="w-[400px] bg-white flex flex-col h-full min-h-0 shadow-xl z-20 border-l border-slate-200">
         <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
           <div className="flex items-center gap-2 text-slate-800 font-bold text-sm uppercase tracking-wide">
@@ -267,7 +268,7 @@ export function ProductPicker({
           <div className="p-4 pb-6">
             {addedProducts.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-3 p-10 mt-10">
-                <div className="border-2 border-dashed border-slate-200 rounded-full p-6">
+                <div className="border-2 border-dashed border-slate-200 rounded-full p-6 bg-slate-50">
                   <PackageOpen className="h-8 w-8" />
                 </div>
                 <p className="text-sm font-medium">No products selected</p>
@@ -291,7 +292,7 @@ export function ProductPicker({
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
                               variant="outline"
-                              className="text-[10px] px-1.5 py-0 border-slate-200 text-slate-500"
+                              className="text-[10px] px-1.5 py-0 border-slate-200 text-slate-500 bg-slate-50"
                             >
                               {item.unit} ({item.unitCount})
                             </Badge>
@@ -361,7 +362,7 @@ export function ProductPicker({
           </div>
         </ScrollArea>
 
-        <div className="p-5 pb-14 border-t border-slate-100 bg-slate-50 shrink-0">
+        <div className="p-5 border-t pb-15 border-slate-100 bg-slate-50 shrink-0">
           <div className="flex justify-between items-center mb-4 text-sm">
             <span className="font-bold text-slate-500 uppercase text-xs">
               Total Price
@@ -374,7 +375,7 @@ export function ProductPicker({
             </span>
           </div>
           <Button
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-11"
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-11 transition-all active:scale-[0.98]"
             onClick={onClose}
             disabled={addedProducts.length === 0}
           >

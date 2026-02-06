@@ -5,29 +5,41 @@ import { ReturnToSupplier } from "../type";
 
 interface Props {
   data: ReturnToSupplier[];
-  filters: {
-    dateRange: string;
-    supplier: string;
-    branch: string;
-    status: string;
-  };
+  filters: any;
 }
 
 export const PrintableReportSummary = React.forwardRef<HTMLDivElement, Props>(
   ({ data, filters }, ref) => {
-    const totalAmount = data.reduce((sum, item) => sum + item.totalAmount, 0);
+    // Totals
+    const totalGross = data.reduce(
+      (sum, item) => sum + (item.grossAmount || 0),
+      0,
+    );
+    const totalDisc = data.reduce(
+      (sum, item) => sum + (item.discountAmount || 0),
+      0,
+    );
+    const totalNet = data.reduce(
+      (sum, item) => sum + (item.totalAmount || 0),
+      0,
+    );
+
+    // ✅ HELPER: Strict 2 decimal formatting
+    const formatCurrency = (amount: number) => {
+      return amount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    };
 
     return (
       <div
         ref={ref}
         className="font-sans text-black bg-white w-full h-full mx-auto p-8"
-        style={{ width: "297mm", height: "210mm" }} // Landscape
+        style={{ width: "297mm", height: "210mm" }}
       >
         <style type="text/css" media="print">
-          {`
-            @page { size: landscape; margin: 10mm; }
-            body { -webkit-print-color-adjust: exact; }
-          `}
+          {`@page { size: landscape; margin: 10mm; } body { -webkit-print-color-adjust: exact; }`}
         </style>
 
         <div className="mb-6">
@@ -64,11 +76,14 @@ export const PrintableReportSummary = React.forwardRef<HTMLDivElement, Props>(
               <th className="py-2 px-2 font-bold text-slate-700 uppercase text-center">
                 Status
               </th>
-              <th className="py-2 px-2 font-bold text-slate-700 uppercase">
-                Remarks
+              <th className="py-2 px-2 font-bold text-slate-700 uppercase text-right">
+                Gross
               </th>
               <th className="py-2 px-2 font-bold text-slate-700 uppercase text-right">
-                Amount
+                Disc
+              </th>
+              <th className="py-2 px-2 font-bold text-slate-700 uppercase text-right">
+                Net
               </th>
             </tr>
           </thead>
@@ -76,10 +91,10 @@ export const PrintableReportSummary = React.forwardRef<HTMLDivElement, Props>(
             {data.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="py-8 text-center text-slate-400 italic"
                 >
-                  No records found matching the criteria.
+                  No records found.
                 </td>
               </tr>
             ) : (
@@ -99,23 +114,22 @@ export const PrintableReportSummary = React.forwardRef<HTMLDivElement, Props>(
                   </td>
                   <td className="py-1.5 px-2 text-center">
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        item.status === "Posted"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${item.status === "Posted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
                     >
                       {item.status}
                     </span>
                   </td>
-                  <td className="py-1.5 px-2 text-slate-500 truncate max-w-[200px]">
-                    {item.remarks || "-"}
+                  {/* ✅ FIX: Apply strict formatting */}
+                  <td className="py-1.5 px-2 text-right text-slate-600">
+                    {formatCurrency(item.grossAmount)}
+                  </td>
+                  <td className="py-1.5 px-2 text-right text-red-500">
+                    {item.discountAmount > 0
+                      ? `(${formatCurrency(item.discountAmount)})`
+                      : "-"}
                   </td>
                   <td className="py-1.5 px-2 text-right font-bold text-slate-900">
-                    {item.totalAmount.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(item.totalAmount)}
                   </td>
                 </tr>
               ))
@@ -124,16 +138,19 @@ export const PrintableReportSummary = React.forwardRef<HTMLDivElement, Props>(
           <tfoot>
             <tr className="border-t-2 border-slate-800 bg-slate-50">
               <td
-                colSpan={6}
+                colSpan={5}
                 className="py-2 px-2 text-right font-bold text-slate-700 uppercase"
               >
                 Grand Total
               </td>
+              <td className="py-2 px-2 text-right font-bold text-slate-700">
+                {formatCurrency(totalGross)}
+              </td>
+              <td className="py-2 px-2 text-right font-bold text-red-600">
+                ({formatCurrency(totalDisc)})
+              </td>
               <td className="py-2 px-2 text-right font-extrabold text-slate-900 text-sm">
-                {totalAmount.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {formatCurrency(totalNet)}
               </td>
             </tr>
           </tfoot>

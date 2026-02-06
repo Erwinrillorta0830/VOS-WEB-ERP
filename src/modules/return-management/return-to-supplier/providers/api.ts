@@ -28,7 +28,6 @@ const getHeaders = () => {
   return headers;
 };
 
-// ... (Keep getSpringToken and fetchSpring helper functions) ...
 const getSpringToken = async (): Promise<string | null> => {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(
@@ -101,7 +100,7 @@ export const ReturnToSupplierProvider = {
           headers: getHeaders(),
         }).then((r) => r.json()),
         fetch(
-          `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count,priceA,price_per_unit,cost_per_unit`,
+          `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count,cost_per_unit`,
           { headers: getHeaders() },
         ).then((r) => r.json()),
         fetch(`${DIRECTUS_BASE}/units?limit=-1`, {
@@ -114,13 +113,13 @@ export const ReturnToSupplierProvider = {
           `${DIRECTUS_BASE}/product_per_supplier?limit=-1&fields=id,product_id,supplier_id,discount_type`,
           { headers: getHeaders() },
         ).then((r) => r.json()),
-        // ✅ NEW: Fetch Return Types
+        // ✅ ADDED: Fetch Return Types
         fetch(`${DIRECTUS_BASE}/rts_return_type?limit=-1`, {
           headers: getHeaders(),
         }).then((r) => r.json()),
       ]);
 
-      // Populate Cache
+      // Populate Cache (Existing logic...)
       GLOBAL_CACHE.products.clear();
       GLOBAL_CACHE.units.clear();
 
@@ -159,7 +158,7 @@ export const ReturnToSupplierProvider = {
         products: priceList,
         lineDiscounts: (discounts.data || []) as LineDiscount[],
         connections: (connections.data || []) as ProductSupplier[],
-        // ✅ NEW: Return Types
+        // ✅ ADDED: Return the fetched types
         returnTypes: (returnTypes.data || []) as any[],
       };
     } catch (error) {
@@ -170,12 +169,12 @@ export const ReturnToSupplierProvider = {
         products: [],
         lineDiscounts: [],
         connections: [],
-        returnTypes: [],
+        returnTypes: [], // Ensure this defaults to empty array on error
       };
     }
   },
 
-  // 2. GET INVENTORY (Spring View) - UNCHANGED
+  // 2. GET INVENTORY (Spring View)
   async getInventory(
     branchId: number,
     supplierId: number,
@@ -277,72 +276,97 @@ export const ReturnToSupplierProvider = {
     }
   },
 
-  // ... (getTransactions UNCHANGED) ...
-  async getTransactions(
-    search = "",
-    status = "All",
-  ): Promise<ReturnToSupplier[]> {
+  // 3. GET TRANSACTIONS (Dual Fetch Strategy)
+  async getTransactions(): Promise<ReturnToSupplier[]> {
     try {
-      const params = new URLSearchParams({
+      // A. Fetch Parents (Returns)
+      // ✅ FIX 1: Changed 'return_no' to 'doc_no' to match your DB schema
+      const parentParams = new URLSearchParams({
         limit: "-1",
         sort: "-date_created",
         fields:
-          "id,doc_no,transaction_date,remarks,is_posted,supplier_id.supplier_name,branch_id.branch_name,total_net_amount",
+          "id,doc_no,transaction_date,is_posted,remarks,supplier_id.supplier_name,branch_id.branch_name,total_net_amount",
       });
-      if (search) params.append("filter[doc_no][_contains]", search);
-      if (status !== "All")
-        params.append(
-          "filter[is_posted][_eq]",
-          status === "Posted" ? "1" : "0",
+
+      // B. Fetch Children (Items)
+      const childParams = new URLSearchParams({
+        limit: "-1",
+        fields: "rts_id,gross_amount,discount_amount,net_amount",
+      });
+
+      // C. Execute Fetches in Parallel
+      const [parentRes, childRes] = await Promise.all([
+        fetch(`${DIRECTUS_BASE}/return_to_supplier?${parentParams}`, {
+          headers: getHeaders(),
+        }),
+        fetch(`${DIRECTUS_BASE}/rts_items?${childParams}`, {
+          headers: getHeaders(),
+        }),
+      ]);
+
+      if (!parentRes.ok)
+        throw new Error(`Parent Fetch Error: ${parentRes.status}`);
+      if (!childRes.ok)
+        throw new Error(`Child Fetch Error: ${childRes.status}`);
+
+      const { data: parents } = await parentRes.json();
+      const { data: children } = await childRes.json();
+
+      // D. Map Children to Parent IDs
+      const itemsMap = new Map<string, any[]>();
+
+      (children || []).forEach((item: any) => {
+        // ✅ FIX 2: robust ID extraction (handle object or primitive)
+        const rawRtsId =
+          typeof item.rts_id === "object" ? item.rts_id.id : item.rts_id;
+        const pId = String(rawRtsId); // Normalize to string for safe matching
+
+        if (!itemsMap.has(pId)) {
+          itemsMap.set(pId, []);
+        }
+        itemsMap.get(pId)?.push(item);
+      });
+
+      // E. Calculate Totals
+      return (parents || []).map((r: any) => {
+        const pId = String(r.id);
+        const items = itemsMap.get(pId) || [];
+
+        const calculatedGross = items.reduce(
+          (sum: number, item: any) => sum + Number(item.gross_amount || 0),
+          0,
         );
 
-      const res = await fetch(`${DIRECTUS_BASE}/return_to_supplier?${params}`, {
-        headers: getHeaders(),
-      });
-      if (!res.ok) return [];
-      const { data } = await res.json();
-      const returns: API_ReturnToSupplier[] = data || [];
-      if (returns.length === 0) return [];
-
-      const ids = returns.map((r) => r.id);
-      const childRes = await fetch(
-        `${DIRECTUS_BASE}/rts_items?limit=-1&fields=rts_id,net_amount&filter[rts_id][_in]=${ids.join(",")}`,
-        { headers: getHeaders() },
-      );
-      const { data: items } = await childRes.json();
-
-      const totalsMap = new Map<string, number>();
-      (items || []).forEach((i: any) => {
-        const parentId =
-          typeof i.rts_id === "object" ? String(i.rts_id.id) : String(i.rts_id);
-        totalsMap.set(
-          parentId,
-          (totalsMap.get(parentId) || 0) + (Number(i.net_amount) || 0),
+        const calculatedDiscount = items.reduce(
+          (sum: number, item: any) => sum + Number(item.discount_amount || 0),
+          0,
         );
-      });
 
-      return returns.map((r) => {
-        const idKey = String(r.id);
-        const manualTotal = totalsMap.get(idKey) || 0;
-        const storedTotal = Number(r.total_net_amount || 0);
+        const calculatedNet = items.reduce(
+          (sum: number, item: any) => sum + Number(item.net_amount || 0),
+          0,
+        );
+
+        // Fallback: If no items found, try to use the parent's total_net_amount
+        const finalNet =
+          items.length > 0 ? calculatedNet : Number(r.total_net_amount || 0);
+
         return {
-          id: idKey,
-          returnNo: r.doc_no,
-          supplier:
-            typeof r.supplier_id === "object"
-              ? r.supplier_id.supplier_name
-              : "Unknown",
-          branch:
-            typeof r.branch_id === "object"
-              ? r.branch_id.branch_name
-              : "Unknown",
+          id: r.id,
+          returnNo: r.doc_no || "N/A", // ✅ Mapped from doc_no
+          supplier: r.supplier_id?.supplier_name || "Unknown",
+          branch: r.branch_id?.branch_name || "Unknown",
           returnDate: r.transaction_date,
-          totalAmount: manualTotal > 0 ? manualTotal : storedTotal,
-          status: r.is_posted === 1 ? "Posted" : "Pending",
+          status: r.is_posted ? "Posted" : "Pending",
           remarks: r.remarks,
+
+          totalAmount: finalNet,
+          grossAmount: calculatedGross,
+          discountAmount: calculatedDiscount,
         };
       });
     } catch (error) {
+      console.error("Error fetching transactions:", error);
       return [];
     }
   },
@@ -351,7 +375,7 @@ export const ReturnToSupplierProvider = {
     try {
       const params = new URLSearchParams({
         "filter[rts_id][_eq]": id,
-        // ✅ NEW: Added return_type_id to fetched fields
+        // ✅ FIX 1: Added 'return_type_id' to fields list
         fields:
           "id,quantity,gross_unit_price,discount_rate,discount_amount,net_amount,return_type_id,product_id.product_name,product_id.product_code,product_id.product_id,product_id.unit_of_measurement_count,uom_id.unit_shortcut,uom_id.unit_id",
       });
@@ -389,9 +413,9 @@ export const ReturnToSupplierProvider = {
           discountRate: Number(i.discount_rate),
           discountAmount: Number(i.discount_amount),
           total: Number(i.net_amount),
-          // ✅ NEW: Map return type
-          returnTypeId: i.return_type_id,
           unitCount: Number(rawUnitCount) > 0 ? Number(rawUnitCount) : 1,
+          // ✅ FIX 2: Map the fetched return type ID
+          returnTypeId: i.return_type_id ? Number(i.return_type_id) : null,
         };
       });
     } catch (error) {
@@ -438,7 +462,6 @@ export const ReturnToSupplierProvider = {
       return false;
     }
   },
-
   async updateTransaction(id: string, dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;

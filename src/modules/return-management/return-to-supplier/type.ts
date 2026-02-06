@@ -154,14 +154,17 @@ export interface API_ReturnToSupplier {
 }
 
 export interface ReturnToSupplier {
-  id: string;
+  id: number;
   returnNo: string;
   supplier: string;
   branch: string;
   returnDate: string;
-  totalAmount: number;
-  status: "Pending" | "Posted";
+  status: string;
   remarks: string;
+  totalAmount: number; // This is typically the Net Amount
+  // ✅ NEW FIELDS
+  grossAmount: number;
+  discountAmount: number;
 }
 
 export interface CreateReturnItemDTO {
