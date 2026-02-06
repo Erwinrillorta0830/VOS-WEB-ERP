@@ -496,6 +496,7 @@ export function CreateReturnModal({
                         setSelection((s) => ({ ...s, remarks: r }))
                       }
                       readOnly={step === "review"}
+                      returnTypes={[]}
                     />
                   ) : (
                     <div className="border-2 border-dashed h-32 flex items-center justify-center text-slate-400 text-sm">

@@ -3,48 +3,51 @@
 import React, { useState, useMemo } from "react";
 import {
   Search,
-  Scan,
-  Package,
-  ShoppingCart,
-  Trash2,
   X,
-  Minus,
   Plus,
-  Tag,
+  Minus,
+  Trash2,
+  Loader2,
+  PackageOpen,
+  ScanBarcode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { CartItem } from "../type";
-
-interface GroupedProduct {
-  masterId: string;
-  masterCode: string;
-  masterName: string;
-  variants: {
-    id: string;
-    code: string;
-    name: string;
-    unit: string;
-    unitCount: number;
-    price: number;
-    stock: number;
-    discountType?: string;
-    supplierDiscount?: number;
-  }[];
-}
 
 interface ProductPickerProps {
   isVisible: boolean;
   onClose: () => void;
-  products: any[]; // Accepts both GroupedProduct[] and flat item arrays
+  products: any[];
   addedProducts: CartItem[];
-  onAdd: (product: any, quantity?: number) => void;
+  onAdd: (product: any, qty: number) => void;
   onRemove: (id: string) => void;
   onUpdateQty: (id: string, qty: number) => void;
   onClearAll: () => void;
-  isLoading?: boolean;
+  isLoading?: boolean; // ✅ NEW PROP
+}
+
+// ✅ HELPER: Skeleton Card Component
+function ProductSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm">
+      <div className="flex justify-between items-start">
+        <div className="space-y-2 w-3/4">
+          <div className="h-4 bg-slate-100 rounded w-full animate-pulse" />
+          <div className="h-3 bg-slate-50 rounded w-1/2 animate-pulse" />
+        </div>
+      </div>
+      <div className="pt-2 flex justify-between items-end border-t border-slate-50 mt-2">
+        <div className="space-y-1">
+          <div className="h-5 bg-slate-100 rounded w-20 animate-pulse" />
+          <div className="h-3 bg-slate-50 rounded w-12 animate-pulse" />
+        </div>
+        <div className="h-8 w-20 bg-slate-100 rounded animate-pulse" />
+      </div>
+    </div>
+  );
 }
 
 export function ProductPicker({
@@ -56,326 +59,324 @@ export function ProductPicker({
   onRemove,
   onUpdateQty,
   onClearAll,
-  isLoading = false,
+  isLoading = false, // ✅ Default to false
 }: ProductPickerProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [barcodeQuery, setBarcodeQuery] = useState("");
+  const [search, setSearch] = useState("");
 
-  // ✅ CRITICAL LOGIC: Normalized Data handling
-  // This detects if 'products' is flat (from ReturnDetailsModal) or Grouped (from CreateReturnModal)
-  // and standardizes it to prevent the "undefined map" crash.
-  const normalizedGroups = useMemo(() => {
-    if (!products || products.length === 0) return [];
+  const filteredGroups = useMemo(() => {
+    if (!search) return products;
+    const lowerSearch = search.toLowerCase();
 
-    // Check if data is already grouped (has 'variants' property)
-    const firstItem = products[0];
-    const isAlreadyGrouped =
-      firstItem && "variants" in firstItem && Array.isArray(firstItem.variants);
+    return products
+      .map((group) => {
+        if (group.masterName.toLowerCase().includes(lowerSearch)) return group;
+        const matchingVariants = group.variants.filter(
+          (v: any) =>
+            v.name.toLowerCase().includes(lowerSearch) ||
+            v.code.toLowerCase().includes(lowerSearch),
+        );
+        if (matchingVariants.length > 0) {
+          return { ...group, variants: matchingVariants };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [products, search]);
 
-    if (isAlreadyGrouped) {
-      return products as GroupedProduct[];
-    }
-
-    // FALLBACK: Auto-Group flat items (Fixes ReturnDetailsModal crash)
-    const groups: Record<string, any> = {};
-
-    products.forEach((item) => {
-      // Use masterId if available (from api.ts), otherwise use product_id
-      const groupKey = item.masterId || String(item.id);
-
-      if (!groups[groupKey]) {
-        groups[groupKey] = {
-          masterId: groupKey,
-          masterCode: item.code || "N/A",
-          masterName: item.name,
-          variants: [],
-        };
-      }
-      groups[groupKey].variants.push(item);
-    });
-
-    return Object.values(groups).map((group: any) => {
-      // Sort variants to find best Master Name (Smallest unit)
-      group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
-      if (group.variants.length > 0) group.masterName = group.variants[0].name;
-
-      // Sort for display (Largest unit first)
-      group.variants.sort((a: any, b: any) => b.unitCount - a.unitCount);
-      return group;
-    }) as GroupedProduct[];
-  }, [products]);
-
-  const filteredProducts = useMemo(() => {
-    if (isLoading) return [];
-    let result = normalizedGroups;
-
-    if (searchQuery) {
-      const lower = searchQuery.toLowerCase();
-      result = result.filter(
-        (group) =>
-          group.masterName.toLowerCase().includes(lower) ||
-          group.masterCode.toLowerCase().includes(lower) ||
-          group.variants.some((v) => v.name.toLowerCase().includes(lower)),
-      );
-    }
-    if (barcodeQuery) {
-      const lower = barcodeQuery.toLowerCase();
-      result = result.filter(
-        (group) =>
-          group.masterCode.toLowerCase().includes(lower) ||
-          group.variants.some((v) => v.code.toLowerCase().includes(lower)),
-      );
-    }
-    return result;
-  }, [normalizedGroups, searchQuery, barcodeQuery, isLoading]);
-
-  const currentTotal = addedProducts.reduce((sum, item) => {
-    const price = item.customPrice ?? item.price ?? 0;
-    return sum + price * item.quantity;
-  }, 0);
+  const totalAmount = addedProducts.reduce(
+    (sum, item) => sum + (item.customPrice || item.price) * item.quantity,
+    0,
+  );
 
   if (!isVisible) return null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 h-full animate-in fade-in slide-in-from-right-8 bg-white overflow-hidden relative">
-      {/* LEFT: BROWSER */}
-      <div className="col-span-2 flex flex-col h-full bg-slate-50 border-r relative overflow-hidden">
-        <div className="p-6 border-b bg-white shadow-sm z-10 shrink-0">
+    <div className="flex h-full w-full bg-slate-50/50 overflow-hidden">
+      {/* LEFT SIDE: BROWSE PRODUCTS */}
+      <div className="flex-1 flex flex-col h-full min-h-0 border-r border-slate-200 bg-slate-50/50">
+        {/* Search Header */}
+        <div className="p-6 bg-white border-b border-slate-200 shrink-0 z-10">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold flex gap-2 text-slate-800">
-              <Search className="h-5 w-5 text-blue-600" /> Browse Products
-            </h3>
-            <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100 font-medium">
-              {isLoading
-                ? "Fetching..."
-                : `${filteredProducts.length} Product Families`}
-            </span>
-          </div>
-          {/* Search Inputs */}
-          <div className="flex gap-3">
-            <div className="relative grow group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-              <Input
-                autoFocus
-                disabled={isLoading}
-                placeholder="Search product name or code..."
-                className="pl-10 pr-10 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all disabled:opacity-50"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+              <Search className="w-5 h-5 text-blue-600" />
+              Browse Products
+            </h2>
+            <div className="flex items-center gap-2">
+              {/* ✅ NEW: Loading Indicator */}
+              {isLoading && (
+                <Badge
+                  variant="secondary"
+                  className="bg-blue-50 text-blue-600 animate-pulse"
                 >
-                  <X className="h-4 w-4" />
-                </button>
+                  Fetching...
+                </Badge>
               )}
+              <Badge
+                variant="secondary"
+                className="bg-slate-100 text-slate-600 hover:bg-slate-100"
+              >
+                {isLoading ? "-" : products.length} Product Families
+              </Badge>
             </div>
-            <div className="relative w-1/3 group">
-              <Scan className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+          </div>
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                disabled={isLoading}
+                placeholder="Search product name or code..."
+                className="pl-9 bg-white border-slate-200 focus-visible:ring-blue-500"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+                disabled={isLoading} // Disable search while loading
+              />
+            </div>
+            <div className="relative w-1/3">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400">
+                <ScanBarcode className="w-4 h-4" />
+              </div>
+              <Input
                 placeholder="Scan barcode..."
-                className="pl-10 pr-10 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all disabled:opacity-50"
-                value={barcodeQuery}
-                onChange={(e) => setBarcodeQuery(e.target.value)}
+                className="pl-9 bg-white border-slate-200"
+                disabled
               />
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar pb-24 bg-slate-50/50 min-h-0">
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-8">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col justify-between h-48"
-                >
-                  <div className="space-y-3">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                  <Skeleton className="h-8 w-1/3 self-end" />
+        {/* Product Grid - Scrollable Area */}
+        <ScrollArea className="flex-1 p-6">
+          <div className="pb-6">
+            {isLoading ? (
+              // ✅ NEW: Render Skeletons when loading
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <ProductSkeleton key={i} />
+                ))}
+              </div>
+            ) : filteredGroups.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4 min-h-[400px]">
+                <div className="bg-white p-4 rounded-full shadow-sm">
+                  <PackageOpen className="h-8 w-8 text-slate-300" />
                 </div>
-              ))}
-            </div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-              <Package className="h-10 w-10 mb-2 opacity-50" />
-              <p className="font-medium">No available stock found</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-8">
-              {filteredProducts.map((group) => (
-                <div
-                  key={group.masterId}
-                  className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col overflow-hidden"
-                >
-                  <div className="p-4 border-b border-slate-50 bg-slate-50/50">
-                    <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight">
-                      {group.masterName}
-                    </h4>
-                    <div className="text-[11px] text-slate-500 font-mono mt-1">
-                      Code: {group.masterCode}
+                <p>No available stock found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {filteredGroups.map((group: any) => (
+                  <div
+                    key={group.masterId}
+                    className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
+                  >
+                    <div className="p-4 border-b border-slate-50 bg-slate-50/50">
+                      <h3
+                        className="font-bold text-slate-800 text-sm line-clamp-1"
+                        title={group.masterName}
+                      >
+                        {group.masterName}
+                      </h3>
+                      <p className="text-xs text-slate-400 font-mono mt-1">
+                        Code: {group.masterCode || "N/A"}
+                      </p>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      {group.variants.map((variant: any) => {
+                        const cartItem = addedProducts.find(
+                          (i) => i.id === variant.id,
+                        );
+                        const currentQty = cartItem ? cartItem.quantity : 0;
+                        const maxStock = Number(variant.stock || 0);
+                        const isMaxed = currentQty >= maxStock;
+
+                        return (
+                          <div
+                            key={variant.id}
+                            className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:border-blue-100 hover:bg-blue-50/30 transition-all group"
+                          >
+                            <div className="flex-1 min-w-0 mr-4">
+                              <div className="flex items-baseline gap-2 mb-1">
+                                <span className="font-extrabold text-slate-900">
+                                  ₱ {variant.price.toLocaleString()}
+                                </span>
+                                <span className="text-xs text-slate-500 font-medium">
+                                  / {variant.unit}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-slate-500">
+                                  Stock:{" "}
+                                  <span className="font-bold text-slate-700">
+                                    {maxStock}
+                                  </span>
+                                </span>
+                                {variant.discountType && (
+                                  <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                    {variant.discountType}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              className={`h-8 px-4 font-semibold text-xs shadow-sm transition-all ${
+                                isMaxed
+                                  ? "bg-slate-100 text-slate-400 hover:bg-slate-100 cursor-not-allowed"
+                                  : "bg-slate-900 text-white hover:bg-blue-600"
+                              }`}
+                              disabled={isMaxed}
+                              onClick={() => onAdd(variant, 1)}
+                            >
+                              {isMaxed ? (
+                                "Maxed"
+                              ) : (
+                                <>
+                                  <Plus className="w-3 h-3 mr-1.5" /> Add
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-
-                  <div className="p-2 space-y-2">
-                    {/* ✅ SAFE MAPPING: Added optional chaining and fallback */}
-                    {(group.variants || []).map((variant) => {
-                      const inCart =
-                        addedProducts.find((p) => p.id === variant.id)
-                          ?.quantity || 0;
-                      const isMaxed =
-                        variant.stock > 0 && inCart >= variant.stock;
-
-                      return (
-                        <div
-                          key={variant.id}
-                          className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-100 hover:border-blue-100 transition-colors"
-                        >
-                          <div className="flex flex-col">
-                            <span className="font-bold text-slate-900 text-sm">
-                              ₱{" "}
-                              {variant.price.toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                              })}
-                            </span>
-                            <div className="text-xs text-slate-500 flex items-center gap-1">
-                              <span>
-                                {variant.unit} ({variant.unitCount} pcs)
-                              </span>
-                              {variant.discountType && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[9px] h-4 px-1 py-0 border-amber-200 text-amber-700 bg-amber-50"
-                                >
-                                  {variant.discountType}
-                                </Badge>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 mt-0.5">
-                              Stock: {variant.stock} available
-                            </span>
-                          </div>
-
-                          <Button
-                            size="sm"
-                            onClick={() => onAdd(variant, 1)}
-                            disabled={isMaxed}
-                            className={`h-8 px-3 text-xs font-bold shadow-sm ${
-                              isMaxed
-                                ? "bg-slate-100 text-slate-400"
-                                : "bg-blue-600 hover:bg-blue-700 text-white"
-                            }`}
-                          >
-                            {isMaxed ? "Maxed" : "+ Add"}
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </div>
 
-      {/* RIGHT: CART SIDEBAR (Identical to previous) */}
-      <div className="col-span-1 bg-white h-full border-l border-slate-200 flex flex-col shadow-xl z-20 overflow-hidden relative">
-        <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-white z-10">
-          <h3 className="font-bold text-slate-800 flex gap-2 items-center text-sm uppercase tracking-wide">
-            <ShoppingCart className="h-4 w-4 text-slate-400" /> Selected Items
-          </h3>
+      {/* RIGHT SIDE: SELECTED ITEMS (CART) - UNCHANGED */}
+      <div className="w-[400px] bg-white flex flex-col h-full min-h-0 shadow-xl z-20 border-l border-slate-200">
+        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-sm uppercase tracking-wide">
+            <span className="h-2 w-2 rounded-full bg-blue-600"></span>
+            Selected Items
+          </div>
           {addedProducts.length > 0 && (
             <button
               onClick={onClearAll}
-              className="text-xs text-red-500 hover:text-red-700 font-semibold px-2 py-1 hover:bg-red-50 rounded"
+              className="text-xs font-semibold text-red-500 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded transition-colors"
             >
               Clear All
             </button>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0 bg-slate-50/30">
-          {addedProducts.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-3">
-              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center border-2 border-dashed border-slate-200">
-                <Package className="h-6 w-6 text-slate-300" />
-              </div>
-              <p className="text-sm font-medium">No products selected</p>
-            </div>
-          ) : (
-            addedProducts.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col gap-3"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-sm text-slate-800 line-clamp-2">
-                      {item.name}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1">
-                      {item.unit} ({item.unitCount})
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onRemove(item.id)}
-                    className="text-slate-400 hover:text-red-500 p-1"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+        <ScrollArea className="flex-1 bg-white">
+          <div className="p-4 pb-6">
+            {addedProducts.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-3 p-10 mt-10">
+                <div className="border-2 border-dashed border-slate-200 rounded-full p-6">
+                  <PackageOpen className="h-8 w-8" />
                 </div>
-                <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg">
-                  <div className="text-xs font-medium text-slate-600">
-                    ₱{" "}
-                    {(item.quantity * (item.customPrice ?? 0)).toLocaleString()}
-                  </div>
-                  <div className="flex items-center gap-1 bg-white rounded border border-slate-200 shadow-sm">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => onUpdateQty(item.id, item.quantity - 1)}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="w-8 text-center text-xs font-bold tabular-nums">
-                      {item.quantity}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => onUpdateQty(item.id, item.quantity + 1)}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
+                <p className="text-sm font-medium">No products selected</p>
               </div>
-            ))
-          )}
-        </div>
-        <div className="px-6 pt-5 pb-14 border-t border-slate-200 bg-white shrink-0 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-50 relative">
-          <div className="flex justify-between items-end mb-4">
-            <span className="text-xs font-bold text-slate-500 uppercase">
+            ) : (
+              <div className="space-y-3">
+                {addedProducts.map((item) => {
+                  const maxStock = Number(item.stock || 0);
+                  const isMaxed = item.quantity >= maxStock;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="group bg-white rounded-lg border border-slate-100 p-3 shadow-sm hover:shadow-md hover:border-blue-100 transition-all relative"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="pr-6">
+                          <h4 className="font-bold text-sm text-slate-800 line-clamp-2">
+                            {item.name}
+                          </h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 border-slate-200 text-slate-500"
+                            >
+                              {item.unit} ({item.unitCount})
+                            </Badge>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onRemove(item.id)}
+                          className="text-slate-300 hover:text-red-500 transition-colors absolute top-3 right-3"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
+                        <div className="font-bold text-slate-700 text-sm">
+                          ₱ {(item.customPrice || item.price).toLocaleString()}
+                        </div>
+
+                        <div className="flex items-center bg-slate-50 rounded-md border border-slate-200">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-none rounded-l-md hover:bg-white hover:text-red-500"
+                            onClick={() => {
+                              if (item.quantity <= 1) onRemove(item.id);
+                              else onUpdateQty(item.id, item.quantity - 1);
+                            }}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+
+                          <div className="w-12 border-x border-slate-200 bg-white">
+                            <Input
+                              type="number"
+                              min={1}
+                              max={maxStock}
+                              className="h-7 w-full text-center border-none p-0 text-xs font-bold focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                let val = parseInt(e.target.value);
+                                if (isNaN(val)) return;
+                                if (val > maxStock) val = maxStock;
+                                if (val < 1) val = 1;
+                                onUpdateQty(item.id, val);
+                              }}
+                            />
+                          </div>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 rounded-none rounded-r-md transition-colors ${isMaxed ? "opacity-50 cursor-not-allowed" : "hover:bg-white hover:text-blue-600"}`}
+                            disabled={isMaxed}
+                            onClick={() =>
+                              onUpdateQty(item.id, item.quantity + 1)
+                            }
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <div className="p-5 pb-14 border-t border-slate-100 bg-slate-50 shrink-0">
+          <div className="flex justify-between items-center mb-4 text-sm">
+            <span className="font-bold text-slate-500 uppercase text-xs">
               Total Price
             </span>
-            <span className="text-2xl font-extrabold text-slate-900 leading-none">
+            <span className="font-extrabold text-xl text-slate-900">
               ₱{" "}
-              {currentTotal.toLocaleString(undefined, {
+              {totalAmount.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
               })}
             </span>
           </div>
           <Button
-            className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-11"
             onClick={onClose}
+            disabled={addedProducts.length === 0}
           >
             Confirm Selected Products
           </Button>

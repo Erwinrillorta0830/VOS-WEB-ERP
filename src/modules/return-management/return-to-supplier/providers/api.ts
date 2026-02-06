@@ -28,6 +28,7 @@ const getHeaders = () => {
   return headers;
 };
 
+// ... (Keep getSpringToken and fetchSpring helper functions) ...
 const getSpringToken = async (): Promise<string | null> => {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(
@@ -84,30 +85,40 @@ export const ReturnToSupplierProvider = {
   // 1. GET REFERENCES
   async getReferences() {
     try {
-      const [suppliers, branches, products, units, discounts, connections] =
-        await Promise.all([
-          fetch(`${DIRECTUS_BASE}/suppliers?limit=-1`, {
-            headers: getHeaders(),
-          }).then((r) => r.json()),
-          fetch(`${DIRECTUS_BASE}/branches?limit=-1`, {
-            headers: getHeaders(),
-          }).then((r) => r.json()),
-          // ✅ REFACTOR: Fetches 'cost_per_unit' as the primary price source
-          fetch(
-            `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count,cost_per_unit`,
-            { headers: getHeaders() },
-          ).then((r) => r.json()),
-          fetch(`${DIRECTUS_BASE}/units?limit=-1`, {
-            headers: getHeaders(),
-          }).then((r) => r.json()),
-          fetch(`${DIRECTUS_BASE}/line_discount?limit=-1`, {
-            headers: getHeaders(),
-          }).then((r) => r.json()),
-          fetch(
-            `${DIRECTUS_BASE}/product_per_supplier?limit=-1&fields=id,product_id,supplier_id,discount_type`,
-            { headers: getHeaders() },
-          ).then((r) => r.json()),
-        ]);
+      const [
+        suppliers,
+        branches,
+        products,
+        units,
+        discounts,
+        connections,
+        returnTypes,
+      ] = await Promise.all([
+        fetch(`${DIRECTUS_BASE}/suppliers?limit=-1`, {
+          headers: getHeaders(),
+        }).then((r) => r.json()),
+        fetch(`${DIRECTUS_BASE}/branches?limit=-1`, {
+          headers: getHeaders(),
+        }).then((r) => r.json()),
+        fetch(
+          `${DIRECTUS_BASE}/products?limit=-1&fields=product_id,product_name,description,product_code,parent_id,unit_of_measurement,unit_of_measurement_count,priceA,price_per_unit,cost_per_unit`,
+          { headers: getHeaders() },
+        ).then((r) => r.json()),
+        fetch(`${DIRECTUS_BASE}/units?limit=-1`, {
+          headers: getHeaders(),
+        }).then((r) => r.json()),
+        fetch(`${DIRECTUS_BASE}/line_discount?limit=-1`, {
+          headers: getHeaders(),
+        }).then((r) => r.json()),
+        fetch(
+          `${DIRECTUS_BASE}/product_per_supplier?limit=-1&fields=id,product_id,supplier_id,discount_type`,
+          { headers: getHeaders() },
+        ).then((r) => r.json()),
+        // ✅ NEW: Fetch Return Types
+        fetch(`${DIRECTUS_BASE}/rts_return_type?limit=-1`, {
+          headers: getHeaders(),
+        }).then((r) => r.json()),
+      ]);
 
       // Populate Cache
       GLOBAL_CACHE.products.clear();
@@ -122,7 +133,6 @@ export const ReturnToSupplierProvider = {
           name: p.product_name,
           description: p.description,
           code: p.product_code,
-          // ✅ REFACTOR: Strictly use cost_per_unit
           price: Number(p.cost_per_unit ?? 0),
         });
       });
@@ -137,7 +147,6 @@ export const ReturnToSupplierProvider = {
         id: p.product_id.toString(),
         code: p.product_code || "N/A",
         name: p.description || "Ref",
-        // ✅ REFACTOR: Strictly use cost_per_unit
         price: Number(p.cost_per_unit ?? 0),
         unit: "",
         uom_id: p.unit_of_measurement || 0,
@@ -150,6 +159,8 @@ export const ReturnToSupplierProvider = {
         products: priceList,
         lineDiscounts: (discounts.data || []) as LineDiscount[],
         connections: (connections.data || []) as ProductSupplier[],
+        // ✅ NEW: Return Types
+        returnTypes: (returnTypes.data || []) as any[],
       };
     } catch (error) {
       console.error("Provider Error (getReferences):", error);
@@ -159,11 +170,12 @@ export const ReturnToSupplierProvider = {
         products: [],
         lineDiscounts: [],
         connections: [],
+        returnTypes: [],
       };
     }
   },
 
-  // 2. GET INVENTORY (Spring View)
+  // 2. GET INVENTORY (Spring View) - UNCHANGED
   async getInventory(
     branchId: number,
     supplierId: number,
@@ -265,7 +277,7 @@ export const ReturnToSupplierProvider = {
     }
   },
 
-  // ... (Rest of functions UNCHANGED) ...
+  // ... (getTransactions UNCHANGED) ...
   async getTransactions(
     search = "",
     status = "All",
@@ -334,12 +346,14 @@ export const ReturnToSupplierProvider = {
       return [];
     }
   },
+
   async getTransactionDetails(id: string): Promise<RTSItem[]> {
     try {
       const params = new URLSearchParams({
         "filter[rts_id][_eq]": id,
+        // ✅ NEW: Added return_type_id to fetched fields
         fields:
-          "id,quantity,gross_unit_price,discount_rate,discount_amount,net_amount,product_id.product_name,product_id.product_code,product_id.product_id,product_id.unit_of_measurement_count,uom_id.unit_shortcut,uom_id.unit_id",
+          "id,quantity,gross_unit_price,discount_rate,discount_amount,net_amount,return_type_id,product_id.product_name,product_id.product_code,product_id.product_id,product_id.unit_of_measurement_count,uom_id.unit_shortcut,uom_id.unit_id",
       });
       const res = await fetch(`${DIRECTUS_BASE}/rts_items?${params}`, {
         headers: getHeaders(),
@@ -375,6 +389,8 @@ export const ReturnToSupplierProvider = {
           discountRate: Number(i.discount_rate),
           discountAmount: Number(i.discount_amount),
           total: Number(i.net_amount),
+          // ✅ NEW: Map return type
+          returnTypeId: i.return_type_id,
           unitCount: Number(rawUnitCount) > 0 ? Number(rawUnitCount) : 1,
         };
       });
@@ -382,6 +398,7 @@ export const ReturnToSupplierProvider = {
       return [];
     }
   },
+
   async createTransaction(dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;
@@ -421,6 +438,7 @@ export const ReturnToSupplierProvider = {
       return false;
     }
   },
+
   async updateTransaction(id: string, dto: CreateReturnDTO): Promise<boolean> {
     try {
       const { rts_items, ...header } = dto;

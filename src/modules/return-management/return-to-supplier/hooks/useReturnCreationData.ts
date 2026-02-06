@@ -1,5 +1,3 @@
-// src/modules/return-to-supplier/hooks/useReturnCreationData.ts
-
 import { useState, useEffect } from "react";
 import { ReturnToSupplierProvider } from "../providers/api";
 import {
@@ -9,55 +7,73 @@ import {
   LineDiscount,
   ProductSupplier,
   InventoryRecord,
+  RTSReturnType, // Import the new type (or use any if you skipped step 1)
 } from "../type";
 
 export function useReturnCreationData(isOpen: boolean) {
+  const [loading, setLoading] = useState(false);
+
+  // ✅ FIX: Update the type definition of the state
   const [refs, setRefs] = useState<{
     suppliers: Supplier[];
     branches: Branch[];
     products: Product[];
     discounts: LineDiscount[];
     connections: ProductSupplier[];
+    returnTypes: RTSReturnType[]; // <--- ADD THIS LINE
   }>({
     suppliers: [],
     branches: [],
     products: [],
     discounts: [],
     connections: [],
+    returnTypes: [], // <--- Initialize it
   });
 
-  // [REV] Changed Map to store full InventoryRecord
   const [inventory, setInventory] = useState<Map<number, InventoryRecord>>(
     new Map(),
   );
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      setLoading(true);
-      ReturnToSupplierProvider.getReferences().then((data) => {
-        setRefs({
-          suppliers: data.suppliers,
-          branches: data.branches,
-          products: data.products,
-          discounts: data.lineDiscounts,
-          connections: data.connections,
-        });
-        setLoading(false);
-      });
+    if (isOpen && !refs.suppliers.length) {
+      const loadRefs = async () => {
+        setLoading(true);
+        try {
+          const data = await ReturnToSupplierProvider.getReferences();
+          setRefs({
+            suppliers: data.suppliers,
+            branches: data.branches,
+            products: data.products,
+            discounts: data.lineDiscounts,
+            connections: data.connections,
+            returnTypes: data.returnTypes, // <--- Assign data from API
+          });
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      loadRefs();
     }
-  }, [isOpen]);
+  }, [isOpen, refs.suppliers.length]);
 
   const loadInventory = async (branchId: number, supplierId: number) => {
-    const inv = await ReturnToSupplierProvider.getInventory(
-      branchId,
-      supplierId,
-    );
-    // [REV] Store full record
-    const map = new Map<number, InventoryRecord>();
-    inv.forEach((i) => map.set(i.product_id, i));
-    setInventory(map);
+    setLoading(true);
+    try {
+      const data = await ReturnToSupplierProvider.getInventory(
+        branchId,
+        supplierId,
+      );
+      const map = new Map<number, InventoryRecord>();
+      data.forEach((item) => map.set(item.product_id, item));
+      setInventory(map);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return { refs, inventory, loading, loadInventory };
+  return { refs, inventory, loadInventory, loading };
 }

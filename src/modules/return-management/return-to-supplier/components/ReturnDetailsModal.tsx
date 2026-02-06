@@ -42,7 +42,7 @@ export function ReturnDetailsModal({
   );
   const [currentBranchId, setCurrentBranchId] = useState<number | null>(null);
 
-  // 1. Initialize Data (Parse Supplier/Branch & Fetch Details)
+  // 1. Initialize Data
   useEffect(() => {
     if (isOpen && data) {
       const isPending = data.status === "Pending";
@@ -75,10 +75,11 @@ export function ReturnDetailsModal({
               unit: i.unit,
               uom_id: i.uomId,
               quantity: i.quantity / validUnitCount,
-              onHand: 0, // Placeholder, will be updated by sync effect below
+              onHand: 0,
               discount: i.discountRate,
               customPrice: i.price,
               unitCount: validUnitCount,
+              return_type_id: i.returnTypeId,
             };
           });
           setItems(cartItems);
@@ -103,13 +104,12 @@ export function ReturnDetailsModal({
     }
   }, [isOpen, currentSupplierId, currentBranchId]);
 
-  // 3. Sync Items with Inventory (Updates Unit Name, Stock, and UOM ID)
+  // 3. Sync Items with Inventory
   useEffect(() => {
     if (inventory.size > 0 && items.length > 0) {
       setItems((prevItems) => {
         let hasChanges = false;
         const nextItems = prevItems.map((item) => {
-          // Cast to any to safely access uom_id if needed from API response
           const invRecord = inventory.get(Number(item.id)) as any;
 
           if (invRecord) {
@@ -140,13 +140,12 @@ export function ReturnDetailsModal({
     }
   }, [inventory, items.length]);
 
-  // 4. Available Products for Picker
+  // 4. ✅ FIX: Group Items Logic (Copied and adapted from CreateReturnModal)
   const availableProducts = useMemo(() => {
     if (!currentSupplierId) return [];
 
     const invArray = Array.from(inventory.values());
 
-    // Create lookup maps for performance
     const productPriceMap = new Map();
     refs.products.forEach((p) => productPriceMap.set(String(p.id), p));
 
@@ -158,7 +157,8 @@ export function ReturnDetailsModal({
     const discountMap = new Map();
     refs.discounts.forEach((d) => discountMap.set(String(d.id), d));
 
-    return invArray
+    // A. Enrich Items
+    const enrichedItems = invArray
       .map((item: any) => {
         const priceRef = productPriceMap.get(String(item.product_id));
         const connection = connectionMap.get(
@@ -192,7 +192,35 @@ export function ReturnDetailsModal({
           supplierDiscount: computedDiscount,
         };
       })
+      // Keep items if they have stock OR if they are already in the cart (so they don't disappear while editing)
       .filter((p) => p.stock > 0 || items.some((i) => i.id === p.id));
+
+    // B. Group by Master ID
+    const groups: Record<string, any> = {};
+
+    enrichedItems.forEach((item) => {
+      const groupKey = item.masterId;
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          masterId: groupKey,
+          masterCode: item.code,
+          masterName: item.name,
+          variants: [],
+        };
+      }
+      groups[groupKey].variants.push(item);
+    });
+
+    // C. Finalize Groups (Sort variants)
+    return Object.values(groups).map((group) => {
+      group.variants.sort((a: any, b: any) => a.unitCount - b.unitCount);
+      if (group.variants.length > 0) {
+        group.masterName = group.variants[0].name;
+      }
+      group.variants.sort((a: any, b: any) => b.unitCount - a.unitCount);
+      return group;
+    });
   }, [
     refs.products,
     refs.connections,
@@ -222,6 +250,7 @@ export function ReturnDetailsModal({
           discount_rate: item.discount,
           discount_amount: discountAmount,
           net_amount: net,
+          return_type_id: item.return_type_id || null,
           item_remarks: "",
         };
       });
@@ -270,7 +299,6 @@ export function ReturnDetailsModal({
     <>
       <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-[1200px]! w-[90vw]! h-[90vh] bg-white p-0 gap-0 flex flex-col overflow-hidden shadow-2xl sm:rounded-xl border border-slate-200 [&>button]:hidden">
-          {/* Header */}
           <div className="flex flex-row items-center justify-between px-8 py-6 bg-white shrink-0 border-b border-slate-100">
             <div>
               <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -298,9 +326,7 @@ export function ReturnDetailsModal({
               </Button>
             </div>
           </div>
-
-          {/* Body Content - Updated Structure for Spacing */}
-          <div className="rounded-xl p-6 h-full flex-1 overflow-y-auto custom-scrollbar bg-white">
+          <div className="flex-1 overflow-y-auto custom-scrollbar bg-white p-6">
             <div className="bg-slate-50 rounded-xl p-6 h-full">
               {/* Header Info */}
               <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mb-8">
@@ -379,6 +405,7 @@ export function ReturnDetailsModal({
                 <ReturnReviewPanel
                   items={items}
                   lineDiscounts={refs.discounts}
+                  returnTypes={refs.returnTypes || []}
                   onUpdateItem={(id, field, val) =>
                     setItems((prev) =>
                       prev.map((i) =>
@@ -445,6 +472,7 @@ export function ReturnDetailsModal({
             ref={componentRef}
             data={data}
             items={printableItems}
+            lineDiscounts={refs.discounts}
           />
         </div>
       </Dialog>
@@ -497,6 +525,7 @@ export function ReturnDetailsModal({
                 )
               }
               onClearAll={() => setItems([])}
+              isLoading={loading}
             />
           </div>
         </DialogContent>

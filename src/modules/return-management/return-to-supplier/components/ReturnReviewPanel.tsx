@@ -21,11 +21,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CartItem, LineDiscount } from "../type";
+import { CartItem, LineDiscount, RTSReturnType } from "../type";
 
 interface ReturnReviewPanelProps {
   items: CartItem[];
   lineDiscounts: LineDiscount[];
+  returnTypes: RTSReturnType[];
   onUpdateItem: (id: string, field: keyof CartItem, value: number) => void;
   onRemoveItem: (id: string) => void;
   remarks: string;
@@ -36,6 +37,7 @@ interface ReturnReviewPanelProps {
 export function ReturnReviewPanel({
   items,
   lineDiscounts,
+  returnTypes = [],
   onUpdateItem,
   onRemoveItem,
   remarks,
@@ -59,6 +61,15 @@ export function ReturnReviewPanel({
     0,
   );
   const grossAmount = totalAmount + totalDiscountAmount;
+
+  // Helper to find discount name by percentage
+  const getDiscountName = (percentage: number) => {
+    if (percentage === 0) return "0%";
+    const match = lineDiscounts.find(
+      (d) => parseFloat(d.percentage) === percentage,
+    );
+    return match ? match.line_discount : `${percentage}%`; // Fallback to % if custom
+  };
 
   return (
     <div className="space-y-8">
@@ -88,6 +99,9 @@ export function ReturnReviewPanel({
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
                 Discount Amt
               </TableHead>
+              <TableHead className="w-[160px] text-xs font-bold text-slate-500 uppercase text-center">
+                Return Type
+              </TableHead>
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
                 Total
               </TableHead>
@@ -102,7 +116,7 @@ export function ReturnReviewPanel({
             {items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={readOnly ? 8 : 9}
+                  colSpan={readOnly ? 9 : 10}
                   className="h-32 text-center text-slate-400"
                 >
                   No items selected.
@@ -111,10 +125,7 @@ export function ReturnReviewPanel({
             ) : (
               items.map((item) => {
                 const unitPrice = item.customPrice || item.price;
-
-                // Discount Amount per unit
                 const discountPerUnit = unitPrice * (item.discount / 100);
-
                 const rowTotal =
                   unitPrice * item.quantity * (1 - item.discount / 100);
 
@@ -155,8 +166,6 @@ export function ReturnReviewPanel({
                         />
                       )}
                     </TableCell>
-
-                    {/* Unit Price (Read-Only) */}
                     <TableCell className="text-right text-sm font-medium text-slate-600">
                       <div>
                         ₱{" "}
@@ -166,11 +175,11 @@ export function ReturnReviewPanel({
                       </div>
                     </TableCell>
 
-                    {/* Discount Type Selector (Removed the extra input) */}
+                    {/* ✅ DISCOUNT TYPE COLUMN */}
                     <TableCell>
                       {readOnly ? (
-                        <div className="text-center text-sm">
-                          {item.discount > 0 ? `${item.discount}%` : "-"}
+                        <div className="text-center text-sm font-medium text-slate-700">
+                          {getDiscountName(item.discount)}
                         </div>
                       ) : (
                         <div className="flex justify-center">
@@ -184,7 +193,7 @@ export function ReturnReviewPanel({
                             }
                             onValueChange={(val) => {
                               if (val === "custom") {
-                                // Logic for custom selection if needed
+                                // Custom logic if implemented
                               } else {
                                 const selected = lineDiscounts.find(
                                   (d) => d.id.toString() === val,
@@ -205,8 +214,7 @@ export function ReturnReviewPanel({
                               <SelectItem value="custom">Custom</SelectItem>
                               {lineDiscounts.map((d) => (
                                 <SelectItem key={d.id} value={d.id.toString()}>
-                                  {d.line_discount} (
-                                  {parseFloat(d.percentage.toString())}%)
+                                  {d.line_discount}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -215,7 +223,6 @@ export function ReturnReviewPanel({
                       )}
                     </TableCell>
 
-                    {/* Discount Amount (Read-Only) */}
                     <TableCell className="text-right text-sm text-amber-600 font-medium">
                       {discountPerUnit > 0 ? (
                         <span>
@@ -230,13 +237,49 @@ export function ReturnReviewPanel({
                       )}
                     </TableCell>
 
-                    <TableCell className="text-right font-bold text-slate-900 text-sm">
+                    <TableCell>
+                      {readOnly ? (
+                        <div className="text-center text-sm text-slate-600">
+                          {returnTypes.find((r) => r.id === item.return_type_id)
+                            ?.return_type_name || "-"}
+                        </div>
+                      ) : (
+                        <div className="flex justify-center">
+                          <Select
+                            value={
+                              item.return_type_id
+                                ? String(item.return_type_id)
+                                : ""
+                            }
+                            onValueChange={(val) => {
+                              onUpdateItem(
+                                item.id,
+                                "return_type_id" as any,
+                                Number(val),
+                              );
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-full text-xs truncate bg-white border-slate-200">
+                              <SelectValue placeholder="Select Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {returnTypes.map((r) => (
+                                <SelectItem key={r.id} value={String(r.id)}>
+                                  {r.return_type_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </TableCell>
+
+                    <TableCell className="text-right font-bold text-slate-700 text-sm">
                       ₱{" "}
                       {rowTotal.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                       })}
                     </TableCell>
-
                     {!readOnly && (
                       <TableCell className="text-center pr-4">
                         <Button
@@ -259,7 +302,6 @@ export function ReturnReviewPanel({
 
       {/* 2. REMARKS & SUMMARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Remarks Column */}
         <div className="lg:col-span-2 space-y-3">
           <Label className="flex items-center gap-2 font-bold text-slate-700 text-sm">
             Transaction Remarks
@@ -273,7 +315,6 @@ export function ReturnReviewPanel({
           />
         </div>
 
-        {/* Summary Card */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm h-full flex flex-col">
             <h4 className="font-bold text-xs uppercase text-slate-800 mb-6 flex items-center gap-2 tracking-wider border-b border-slate-100 pb-3">

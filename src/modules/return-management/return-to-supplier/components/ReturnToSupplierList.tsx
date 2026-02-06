@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useReturnLists } from "../hooks/useReturnLists";
 import { CreateReturnModal } from "./CreateReturnModal";
 import { ReturnDetailsModal } from "./ReturnDetailsModal";
+import { ExportReportModal } from "./ExportReportModal"; // ✅ Import new modal
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,17 +24,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Eye,
   Plus,
   Search,
   Loader2,
   ChevronLeft,
   ChevronRight,
+  Printer, // ✅ Import Printer icon
 } from "lucide-react";
 
 export function ReturnToSupplierList() {
   const { data, loading, filters, setFilters, refresh } = useReturnLists();
-  const [modal, setModal] = useState({ create: false, details: false });
+  const [modal, setModal] = useState({
+    create: false,
+    details: false,
+    export: false,
+  }); // ✅ Add export state
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
   const [page, setPage] = useState(1);
@@ -68,7 +73,7 @@ export function ReturnToSupplierList() {
         </Button>
       </div>
 
-      {/* FILTERS */}
+      {/* FILTERS & EXPORT */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -82,22 +87,35 @@ export function ReturnToSupplierList() {
             }
           />
         </div>
-        <div className="w-full sm:w-[180px]">
-          <Select
-            value={filters.status}
-            onValueChange={(val: any) =>
-              setFilters((prev) => ({ ...prev, status: val }))
-            }
+        <div className="flex w-full sm:w-auto">
+          {/* Status Filter */}
+          <div className="w-full sm:w-[150px]">
+            <Select
+              value={filters.status}
+              onValueChange={(val: any) =>
+                setFilters((prev) => ({ ...prev, status: val }))
+              }
+            >
+              <SelectTrigger className="bg-white h-10 border-gray-200">
+                <SelectValue placeholder="Filter Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All Status</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Posted">Posted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* ✅ EXPORT BUTTON */}
+          <Button
+            variant="outline"
+            className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 h-10 px-4"
+            onClick={() => setModal((m) => ({ ...m, export: true }))}
           >
-            <SelectTrigger className="bg-white h-10 border-gray-200">
-              <SelectValue placeholder="Filter Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All Status</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
-              <SelectItem value="Posted">Posted</SelectItem>
-            </SelectContent>
-          </Select>
+            <Printer className="w-4 h-4 mr-2 text-slate-500" />
+            Export
+          </Button>
         </div>
       </div>
 
@@ -121,21 +139,18 @@ export function ReturnToSupplierList() {
               <TableHead className="font-bold text-xs uppercase text-gray-500 h-11 text-right">
                 Total Amount
               </TableHead>
-              <TableHead className="font-bold text-xs uppercase text-gray-500 h-11 pl-8 text-center">
+              <TableHead className="font-bold text-xs uppercase text-gray-500 h-11 text-center w-[100px]">
                 Status
               </TableHead>
-              <TableHead className="font-bold text-xs uppercase text-gray-500 h-11 text-center">
+              <TableHead className="font-bold text-xs uppercase text-gray-500 h-11 text-left">
                 Remarks
-              </TableHead>
-              <TableHead className="font-bold text-xs uppercase text-gray-500 h-11 text-center">
-                Actions
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-gray-500">
                     <Loader2 className="h-5 w-5 animate-spin" /> Loading data...
                   </div>
@@ -144,7 +159,7 @@ export function ReturnToSupplierList() {
             ) : paginatedData.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={7}
                   className="h-24 text-center text-gray-500"
                 >
                   No return transactions found.
@@ -180,31 +195,19 @@ export function ReturnToSupplierList() {
                       maximumFractionDigits: 2,
                     })}
                   </TableCell>
-                  <TableCell className="pl-8 text-center">
-                    <Badge
-                      variant="secondary"
-                      className={`px-2.5 py-0.5 text-xs font-medium border-0 rounded-md ${item.status === "Posted" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                  <TableCell className="text-center align-middle">
+                    <span
+                      className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-[11px] font-bold ${
+                        item.status === "Posted"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
                     >
                       {item.status}
-                    </Badge>
+                    </span>
                   </TableCell>
-                  <TableCell className="text-sm text-gray-500 truncate max-w-[200px] text-center">
+                  <TableCell className="text-sm text-gray-500 truncate max-w-[200px] text-left">
                     {item.remarks || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-gray-400 hover:text-blue-600"
-                        onClick={() => {
-                          setSelectedItem(item);
-                          setModal((m) => ({ ...m, details: true }));
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -233,7 +236,11 @@ export function ReturnToSupplierList() {
               <Button
                 key={i + 1}
                 variant={page === i + 1 ? "default" : "outline"}
-                className={`h-8 w-8 p-0 ${page === i + 1 ? "bg-blue-600 hover:bg-blue-700" : "text-gray-600"}`}
+                className={`h-8 w-8 p-0 ${
+                  page === i + 1
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "text-gray-600"
+                }`}
                 onClick={() => handlePageChange(i + 1)}
               >
                 {i + 1}
@@ -257,12 +264,18 @@ export function ReturnToSupplierList() {
         onReturnCreated={refresh}
       />
 
-      {/* ✅ FIXED: Added onUpdateSuccess={refresh} to update the list instantly after edit */}
       <ReturnDetailsModal
         isOpen={modal.details}
         onClose={() => setModal((m) => ({ ...m, details: false }))}
         data={selectedItem}
         onUpdateSuccess={refresh}
+      />
+
+      {/* ✅ EXPORT MODAL */}
+      <ExportReportModal
+        isOpen={modal.export}
+        onClose={() => setModal((m) => ({ ...m, export: false }))}
+        allData={data} // Passing all data for filtering inside modal
       />
     </div>
   );

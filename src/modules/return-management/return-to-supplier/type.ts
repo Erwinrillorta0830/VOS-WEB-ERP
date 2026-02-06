@@ -41,6 +41,8 @@ export interface CartItem extends Product {
   onHand: number;
   discount: number;
   customPrice?: number;
+  // ✅ NEW: Return Type ID property
+  return_type_id?: number | null;
 }
 
 export interface Supplier {
@@ -70,7 +72,6 @@ export interface LineDiscount {
   percentage: string;
 }
 
-// [REV] Updated InventoryRecord to include unit info from the view
 export interface InventoryRecord {
   id: string;
   product_id: number;
@@ -79,6 +80,8 @@ export interface InventoryRecord {
   running_inventory: string | number;
   unit_name?: string;
   unit_count?: number;
+  // ✅ NEW: uom_id for inventory record
+  uom_id?: number;
 }
 
 export interface API_RTS_Item {
@@ -101,6 +104,8 @@ export interface API_RTS_Item {
   discount_amount: string;
   net_amount: string;
   item_remarks: string | null;
+  // ✅ NEW: API Response field
+  return_type_id?: number;
 }
 
 export interface RTSItem {
@@ -116,6 +121,14 @@ export interface RTSItem {
   discountAmount: number;
   total: number;
   unitCount: number;
+  // ✅ NEW: Mapped property
+  returnTypeId?: number;
+}
+
+export interface RTSReturnType {
+  id: number;
+  return_type_name: string; // ✅ Must match DB field exactly
+  return_type_code?: string;
 }
 
 export interface ReturnItem {
@@ -161,6 +174,8 @@ export interface CreateReturnItemDTO {
   discount_amount: number;
   net_amount: number;
   item_remarks: string;
+  // ✅ NEW: Create DTO field
+  return_type_id?: number | null;
 }
 
 export interface CreateReturnDTO {
