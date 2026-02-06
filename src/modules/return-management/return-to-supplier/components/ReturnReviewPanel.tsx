@@ -84,7 +84,7 @@ export function ReturnReviewPanel({
               <TableHead className="text-xs font-bold text-slate-500 uppercase">
                 Product Name
               </TableHead>
-              <TableHead className="w-[80px] text-xs font-bold text-slate-500 uppercase text-center">
+              <TableHead className="w-20 text-xs font-bold text-slate-500 uppercase text-center">
                 Unit
               </TableHead>
               <TableHead className="w-[100px] text-xs font-bold text-slate-500 uppercase text-center">
@@ -93,13 +93,13 @@ export function ReturnReviewPanel({
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
                 Unit Price
               </TableHead>
-              <TableHead className="w-[160px] text-xs font-bold text-slate-500 uppercase text-center">
+              <TableHead className="w-40 text-xs font-bold text-slate-500 uppercase text-center">
                 Discount Type
               </TableHead>
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
                 Discount Amt
               </TableHead>
-              <TableHead className="w-[160px] text-xs font-bold text-slate-500 uppercase text-center">
+              <TableHead className="w-40 text-xs font-bold text-slate-500 uppercase text-center">
                 Return Type
               </TableHead>
               <TableHead className="w-[120px] text-xs font-bold text-slate-500 uppercase text-right">
@@ -308,7 +308,7 @@ export function ReturnReviewPanel({
           </Label>
           <Textarea
             placeholder="Enter detailed reasons for this return (Optional)..."
-            className="min-h-[160px] resize-none bg-white border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
+            className="min-h-40 resize-none bg-white border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 shadow-sm"
             value={remarks}
             onChange={(e) => !readOnly && setRemarks(e.target.value)}
             readOnly={readOnly}
