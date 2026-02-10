@@ -32,7 +32,7 @@ import {
     BadgeDollarSign,
     Briefcase,
 } from "lucide-react";
-import { DatePickerWithRange } from "../../../../components/ui/date-picker-with-range";
+import { DatePickerWithRange } from "@/components/ui/date-picker-with-range";
 import {
     format,
     startOfWeek,
@@ -89,7 +89,6 @@ const DIVISIONS = [
     "Industrial",
     "Mama Pina's",
     "Frozen Goods",
-    "Internal",
 ];
 
 const ITEMS_PER_PAGE = 5;
@@ -121,7 +120,7 @@ export default function ManagerDashboard() {
     const [customerPage, setCustomerPage] = useState(1);
     // Track page for each supplier's salesman list: { supplierId: pageNumber }
     const [salesmenPages, setSalesmenPages] = useState<Record<string, number>>(
-        {}
+        {},
     );
 
     const [timePeriod, setTimePeriod] = useState("thisMonth");
@@ -211,7 +210,7 @@ export default function ManagerDashboard() {
     const grandTotalSales =
         data?.supplierBreakdown?.reduce(
             (sum: number, sup: any) => sum + (sup.totalSales || 0),
-            0
+            0,
         ) ?? 0;
 
     const totalSuppliers = data?.supplierBreakdown?.length || 0;
@@ -219,7 +218,7 @@ export default function ManagerDashboard() {
     const paginatedSuppliers =
         data?.supplierBreakdown?.slice(
             (supplierPage - 1) * ITEMS_PER_PAGE,
-            supplierPage * ITEMS_PER_PAGE
+            supplierPage * ITEMS_PER_PAGE,
         ) || [];
 
     const totalProducts = data?.pareto?.products?.length || 0;
@@ -227,7 +226,7 @@ export default function ManagerDashboard() {
     const paginatedProducts =
         data?.pareto?.products?.slice(
             (productPage - 1) * LIST_ITEMS_PER_PAGE,
-            productPage * LIST_ITEMS_PER_PAGE
+            productPage * LIST_ITEMS_PER_PAGE,
         ) || [];
 
     const totalCustomers = data?.pareto?.customers?.length || 0;
@@ -235,16 +234,20 @@ export default function ManagerDashboard() {
     const paginatedCustomers =
         data?.pareto?.customers?.slice(
             (customerPage - 1) * LIST_ITEMS_PER_PAGE,
-            customerPage * LIST_ITEMS_PER_PAGE
+            customerPage * LIST_ITEMS_PER_PAGE,
         ) || [];
 
+    // ✅ FIX: don't divide returns by returns (always 100%).
+    // Use returns ÷ outflow instead (same KPI logic your API uses for Critical/Normal).
     const calculateBadStockRate = () => {
-        if (!data || data.badStock.totalInflow === 0) return 0;
-        return Math.min(
-            100,
-            (data.badStock.accumulated / data.badStock.totalInflow) * 100
-        );
+        if (!data) return 0;
+        const denom = data.goodStock?.totalOutflow || 0;
+        if (denom <= 0) return 0;
+        return Math.min(100, (data.badStock.accumulated / denom) * 100);
     };
+
+    const headerVelocity = data?.goodStock?.velocityRate ?? 0;
+    const headerReturns = data?.badStock?.accumulated ?? 0;
 
     return (
         <div className="p-6 w-full mx-auto space-y-6 min-h-screen relative bg-slate-50 dark:bg-gray-950 transition-all duration-300">
@@ -267,13 +270,13 @@ export default function ManagerDashboard() {
                     <div className="flex items-center gap-2 px-3 py-1 border-r">
                         <TrendingUp className="h-4 w-4 text-emerald-500" />
                         <span className="text-sm font-bold">
-              {data?.goodStock.velocityRate}% Velocity
+              {headerVelocity}% Velocity
             </span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1">
                         <AlertCircle className="h-4 w-4 text-red-500" />
                         <span className="text-sm font-bold">
-              {data?.badStock.accumulated.toLocaleString()} Returns
+              {headerReturns.toLocaleString()} Returns
             </span>
                     </div>
                 </div>
@@ -642,12 +645,12 @@ export default function ManagerDashboard() {
                                     const currentSalesmenPage = salesmenPages[supplier.id] || 1;
                                     const totalSalesmen = supplier.salesmen?.length || 0;
                                     const totalSalesmenPages = Math.ceil(
-                                        totalSalesmen / SALESMEN_PER_PAGE
+                                        totalSalesmen / SALESMEN_PER_PAGE,
                                     );
                                     const paginatedSalesmen =
                                         supplier.salesmen?.slice(
                                             (currentSalesmenPage - 1) * SALESMEN_PER_PAGE,
-                                            currentSalesmenPage * SALESMEN_PER_PAGE
+                                            currentSalesmenPage * SALESMEN_PER_PAGE,
                                         ) || [];
 
                                     const setSalesmanPage = (newPage: number) => {
@@ -755,7 +758,7 @@ export default function ManagerDashboard() {
                                         </span>
                                                                         </td>
                                                                     </tr>
-                                                                )
+                                                                ),
                                                             )}
                                                             </tbody>
                                                         </table>
@@ -923,7 +926,7 @@ export default function ManagerDashboard() {
                                         className="h-8 w-8"
                                         onClick={() =>
                                             setCustomerPage((p) =>
-                                                Math.min(totalCustomerPages, p + 1)
+                                                Math.min(totalCustomerPages, p + 1),
                                             )
                                         }
                                         disabled={customerPage === totalCustomerPages}

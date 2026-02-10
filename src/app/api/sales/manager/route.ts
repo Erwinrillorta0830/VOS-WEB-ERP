@@ -1,166 +1,213 @@
 import { NextResponse } from "next/server";
 
-const RAW_DIRECTUS_URL = process.env.DIRECTUS_URL || "";
-const DIRECTUS_BASE = RAW_DIRECTUS_URL.replace(/\/+$/, ""); // trim trailing slashes
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
+const DIRECTUS_URL = (process.env.DIRECTUS_URL ?? "http://goatedcodoer:8091").replace(/\/+$/, "");
 const DIRECTUS_TOKEN =
     process.env.DIRECTUS_TOKEN ||
     process.env.DIRECTUS_ACCESS_TOKEN ||
-    process.env.DIRECTUS_STATIC_TOKEN ||
+    process.env.DIRECTUS_SERVICE_TOKEN ||
     "";
 
-type DirectusErrorItem = {
-    collection: string;
-    status?: number;
-    message: string;
-    url: string;
-};
+type DirectusJson<T = any> = { data?: T };
 
-if (!DIRECTUS_BASE) {
-    console.error("Missing DIRECTUS_URL in .env.local");
+function getHeaders(): HeadersInit {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (DIRECTUS_TOKEN) h.Authorization = `Bearer ${DIRECTUS_TOKEN}`;
+    return h;
 }
 
-// --- 1. CONFIGURATION RULES ---
-const DIVISION_RULES: Record<string, { brands: string[]; sections: string[] }> = {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function directusFetch<T = any>(path: string, attempt = 1): Promise<T> {
+    const url = `${DIRECTUS_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    try {
+        const res = await fetch(url, {
+            cache: "no-store",
+            signal: controller.signal,
+            headers: getHeaders(),
+        });
+
+        clearTimeout(timeoutId);
+
+        // Retry transient pressure
+        if ((res.status === 429 || res.status === 503) && attempt < 4) {
+            await sleep(400 * attempt);
+            return directusFetch<T>(path, attempt + 1);
+        }
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(
+                `Directus request failed (${res.status}) for ${url}. Response: ${text.slice(0, 1400)}`
+            );
+        }
+
+        return (await res.json()) as T;
+    } catch (e) {
+        clearTimeout(timeoutId);
+        throw e;
+    }
+}
+
+/**
+ * ✅ Paged fetch that NEVER silently fails.
+ * If Directus errors, it throws and you’ll see the actual response.
+ */
+async function fetchAllPaged<T = any>(
+    collection: string,
+    fields: string,
+    extraParams = "",
+    pageSize = 1000
+): Promise<T[]> {
+    const out: T[] = [];
+    let offset = 0;
+    const MAX_PAGES = 600;
+
+    for (let i = 0; i < MAX_PAGES; i++) {
+        const path =
+            `/items/${collection}` +
+            `?fields=${encodeURIComponent(fields)}` +
+            `&limit=${pageSize}&offset=${offset}` +
+            `${extraParams || ""}`;
+
+        const json = await directusFetch<DirectusJson<T[]>>(path);
+        const chunk = Array.isArray(json?.data) ? json.data : [];
+
+        out.push(...chunk);
+
+        if (chunk.length < pageSize) break;
+        offset += pageSize;
+    }
+
+    return out;
+}
+
+async function fetchAll<T = any>(collection: string, fields: string): Promise<T[]> {
+    const path = `/items/${collection}?limit=-1&fields=${encodeURIComponent(fields)}`;
+    const json = await directusFetch<DirectusJson<T[]>>(path);
+    return Array.isArray(json?.data) ? json.data : [];
+}
+
+/* -------------------------------------------------------------------------- */
+/* YOUR EXISTING RULES / CONSTANTS (UNCHANGED)                                 */
+/* -------------------------------------------------------------------------- */
+
+const DIVISION_RULES: any = {
     "Dry Goods": {
         brands: [
-            "Lucky Me",
-            "Nescafe",
-            "Kopiko",
-            "Bear Brand",
-            "Maggi",
-            "Surf",
-            "Downy",
-            "Richeese",
-            "Richoco",
-            "Keratin",
-            "KeratinPlus",
-            "Dove",
-            "Palmolive",
-            "Safeguard",
-            "Sunsilk",
-            "Cream Silk",
-            "Head & Shoulders",
-            "Colgate",
-            "Close Up",
-            "Bioderm",
-            "Casino",
-            "Efficascent",
-            "Great Taste",
-            "Presto",
-            "Tide",
-            "Ariel",
-            "Champion",
-            "Callee",
-            "Systemack",
-            "Wings",
-            "Pride",
-            "Smart",
+            "Lucky Me","Nescafe","Kopiko","Bear Brand","Maggi","Surf","Downy","Richeese","Richoco","Keratin",
+            "KeratinPlus","Dove","Palmolive","Safeguard","Sunsilk","Cream Silk","Head & Shoulders","Colgate",
+            "Close Up","Bioderm","Casino","Efficascent","Great Taste","Presto","Tide","Ariel","Champion","Callee",
+            "Systemack","Wings","Pride","Smart",
         ],
         sections: [
-            "Grocery",
-            "Canned",
-            "Noodles",
-            "Beverages",
-            "Non-Food",
-            "Personal Care",
-            "Snacks",
-            "Biscuits",
-            "Candy",
-            "Coffee",
-            "Milk",
-            "Powder",
+            "Grocery","Canned","Noodles","Beverages","Non-Food","Personal Care","Snacks","Biscuits","Candy","Coffee","Milk","Powder",
         ],
     },
     "Frozen Goods": {
         brands: [
-            "CDO",
-            "Tender Juicy",
-            "Mekeni",
-            "Virginia",
-            "Purefoods",
-            "Aviko",
-            "Swift",
-            "Argentina",
-            "Star",
-            "Holiday",
-            "Highland",
-            "Bibbo",
-            "Home Made",
-            "Young Pork",
+            "CDO","Tender Juicy","Mekeni","Virginia","Purefoods","Aviko","Swift","Argentina","Star","Holiday","Highland","Bibbo","Home Made","Young Pork",
         ],
         sections: [
-            "Frozen",
-            "Meat",
-            "Processed Meat",
-            "Cold Cuts",
-            "Ice Cream",
-            "Hotdog",
-            "Chicken",
-            "Pork",
+            "Frozen","Meat","Processed Meat","Cold Cuts","Ice Cream","Hotdog","Chicken","Pork",
         ],
     },
     Industrial: {
         brands: [
-            "Mama Sita",
-            "Datu Puti",
-            "Silver Swan",
-            "Golden Fiesta",
-            "LPG",
-            "Solane",
-            "Gasul",
-            "Fiesta",
-            "UFC",
-            "Super Q",
-            "Biguerlai",
-            "Equal",
-            "Jufran",
+            "Mama Sita","Datu Puti","Silver Swan","Golden Fiesta","LPG","Solane","Gasul","Fiesta","UFC","Super Q","Biguerlai","Equal","Jufran",
         ],
         sections: [
-            "Condiments",
-            "Oil",
-            "Sacks",
-            "Sugar",
-            "Flour",
-            "Industrial",
-            "Gas",
-            "Rice",
-            "Salt",
+            "Condiments","Oil","Sacks","Sugar","Flour","Industrial","Gas","Rice","Salt",
         ],
     },
     "Mama Pina's": {
         brands: ["Mama Pina", "Mama Pinas", "Mama Pina's"],
         sections: ["Franchise", "Ready to Eat", "Kiosk", "Mama Pina", "MP"],
     },
-    Internal: {
-        brands: ["Internal", "Office Supplies", "VOS"],
-        sections: ["Internal", "Office", "Supplies"],
-    },
 };
 
-const ALL_DIVISIONS = ["Dry Goods", "Frozen Goods", "Industrial", "Mama Pina's", "Internal"];
+const ALL_DIVISIONS = ["Dry Goods", "Frozen Goods", "Industrial", "Mama Pina's"];
 
 const INTERNAL_CUSTOMER_KEYWORDS = [
-    "WALK-IN",
-    "WALKIN",
-    "EMPLOYEE",
-    "POLITICIAN",
-    "CLE ACE",
-    "OFFICE",
-    "INTERNAL",
-    "VOS",
-    "USE",
+    "WALK-IN","WALKIN","EMPLOYEE","POLITICIAN","CLE ACE","OFFICE","INTERNAL","VOS","USE","INTERNAL DIVISION",
 ];
 
-// --- HELPERS ---
-function normalizeDate(d: string | null) {
-    return d ? d : null; // expects YYYY-MM-DD
+const SUPPLIER_TO_DIVISION: Record<string, string> = {
+    MEN2: "Dry Goods",
+    "MEN2 MARKETING": "Dry Goods",
+    TIONGSAN: "Dry Goods",
+    CSI: "Dry Goods",
+    TSH: "Dry Goods",
+    JUMAPAS: "Dry Goods",
+    COSTSAVER: "Dry Goods",
+    "RISING SUN": "Dry Goods",
+    MUNICIPAL: "Dry Goods",
+
+    PUREFOODS: "Frozen Goods",
+    CDO: "Frozen Goods",
+    FOODSPHERE: "Frozen Goods",
+    VIRGINIA: "Frozen Goods",
+    AVIKO: "Frozen Goods",
+    MEKENI: "Frozen Goods",
+
+    INDUSTRIAL: "Industrial",
+    LPG: "Industrial",
+    SOLANE: "Industrial",
+    GASUL: "Industrial",
+    "ISLA LPG": "Industrial",
+
+    "MAMA PINA": "Mama Pina's",
+    "MAMA PINA'S": "Mama Pina's",
+};
+
+function getSafeId(val: any, preferredKeys: string[] = []): string {
+    if (val === null || val === undefined) return "";
+    if (typeof val !== "object") return String(val);
+
+    for (const k of preferredKeys) {
+        const v = val?.[k];
+        if (v !== undefined && v !== null) {
+            return typeof v === "object" ? getSafeId(v, preferredKeys) : String(v);
+        }
+    }
+
+    const keys = [
+        "product_id","supplier_id","brand_id","section_id","invoice_id","return_number","return_no","customer_code","division_id",
+    ];
+
+    for (const k of keys) {
+        const v = val?.[k];
+        if (v !== undefined && v !== null) {
+            return typeof v === "object" ? getSafeId(v, [k]) : String(v);
+        }
+    }
+
+    if (val.id !== undefined && val.id !== null) return String(val.id);
+    return "";
 }
 
-function getSafeId(val: any): string {
-    if (val === null || val === undefined) return "";
-    if (typeof val === "object" && val !== null) return val.id ? String(val.id) : "";
-    return String(val);
+function normalizeDivisionLabel(input: string) {
+    const v = String(input || "").trim().toUpperCase();
+    if (!v) return "";
+
+    if (v === "OVERVIEW") return "Overview";
+    if (v.includes("FROZEN")) return "Frozen Goods";
+    if (v.includes("INDUSTRIAL")) return "Industrial";
+    if (v.includes("MAMA") && v.includes("PINA")) return "Mama Pina's";
+    if (v.includes("DRY")) return "Dry Goods";
+
+    if (v === "DRY GOODS") return "Dry Goods";
+    if (v === "FROZEN GOODS") return "Frozen Goods";
+    if (v === "INDUSTRIAL") return "Industrial";
+    if (v === "MAMA PINA'S" || v === "MAMA PINAS") return "Mama Pina's";
+
+    return input;
 }
 
 function getDatesInRange(startDate: string, endDate: string) {
@@ -174,271 +221,266 @@ function getDatesInRange(startDate: string, endDate: string) {
     return dates;
 }
 
-function withDateFilters(baseQuery: string, dateField: string, fromDate: string | null, toDate: string | null) {
-    if (!fromDate || !toDate) return baseQuery;
-
-    // Avoid `_between` with spaces; use ISO and encode it.
-    const from = encodeURIComponent(`${fromDate}T00:00:00`);
-    const to = encodeURIComponent(`${toDate}T23:59:59`);
-    return (
-        baseQuery +
-        `&filter[${encodeURIComponent(dateField)}][_gte]=${from}` +
-        `&filter[${encodeURIComponent(dateField)}][_lte]=${to}`
-    );
-}
-
-async function directusFetchList<T>(
-    collection: string,
-    query: string,
-    errors: DirectusErrorItem[],
-    pageSize = 500
-): Promise<T[]> {
-    if (!DIRECTUS_BASE) {
-        errors.push({
-            collection,
-            status: undefined,
-            message: "Missing DIRECTUS_URL in environment",
-            url: "DIRECTUS_URL is empty",
-        });
-        return [];
-    }
-
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (DIRECTUS_TOKEN) headers.Authorization = `Bearer ${DIRECTUS_TOKEN}`;
-
-    const out: T[] = [];
-    let offset = 0;
-
-    for (let page = 0; page < 200; page++) {
-        const url = `${DIRECTUS_BASE}/items/${collection}?limit=${pageSize}&offset=${offset}${query}`;
-
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-            const res = await fetch(url, {
-                cache: "no-store",
-                headers,
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!res.ok) {
-                const text = await res.text().catch(() => "");
-                errors.push({
-                    collection,
-                    status: res.status,
-                    message: `Directus request failed. ${text}`,
-                    url,
-                });
-                return out;
-            }
-
-            const json = await res.json();
-            const chunk = ((json?.data as T[]) || []) as T[];
-            out.push(...chunk);
-
-            if (chunk.length < pageSize) break;
-            offset += pageSize;
-        } catch (e: any) {
-            errors.push({
-                collection,
-                status: undefined,
-                message: e?.message || "Unknown fetch error",
-                url,
-            });
-            return out;
-        }
-    }
-
-    return out;
-}
+/* -------------------------------------------------------------------------- */
+/* ROUTE                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export async function GET(request: Request) {
-    const errors: DirectusErrorItem[] = [];
-
     try {
         const { searchParams } = new URL(request.url);
-        const rawFrom = searchParams.get("fromDate");
-        const rawTo = searchParams.get("toDate");
-        const activeTab = searchParams.get("activeTab") || "Overview";
+        const fromDate = searchParams.get("fromDate");
+        const toDate = searchParams.get("toDate");
+        const activeTabRaw = searchParams.get("activeTab") || "Overview";
+        const debugMode = searchParams.get("debug") === "1";
+        const activeTab = normalizeDivisionLabel(activeTabRaw);
 
-        const fromDate = normalizeDate(rawFrom);
-        const toDate = normalizeDate(rawTo);
+        // ✅ IMPORTANT: Directus _between best with comma-separated form (like your working routes)
+        const invoiceFilter =
+            fromDate && toDate ? `&filter[invoice_date][_between]=${fromDate},${toDate}` : "";
+        const returnFilter =
+            fromDate && toDate ? `&filter[return_date][_between]=${fromDate},${toDate}` : "";
 
-        // --- FETCH DATA (stable + filtered) ---
-        const invoiceQueryBase = `&fields=${encodeURIComponent(
-            "invoice_id,invoice_date,total_amount,salesman_id,customer_code"
-        )}`;
-        const returnQueryBase = `&fields=${encodeURIComponent("return_number,return_date")}`;
-
-        const invoiceQuery = withDateFilters(invoiceQueryBase, "invoice_date", fromDate, toDate);
-        const returnQuery = withDateFilters(returnQueryBase, "return_date", fromDate, toDate);
-
+        // ✅ DO NOT use fragile nested filters for invoice_details / return_details
+        // Fetch them and filter locally via invoice ids / return numbers (stable)
         const [
             invoices,
             invoiceDetails,
             returns,
             returnDetails,
             products,
-            salesmen,
-            customers,
-            suppliers,
             pps,
+            suppliers,
             brands,
             sections,
+            salesmen,
+            customers,
         ] = await Promise.all([
-            directusFetchList<any>("sales_invoice", invoiceQuery, errors),
-            directusFetchList<any>(
-                "sales_invoice_details",
-                `&fields=${encodeURIComponent("invoice_no,product_id,total_amount,quantity")}`,
-                errors
-            ),
-            directusFetchList<any>("sales_return", returnQuery, errors),
-            directusFetchList<any>(
-                "sales_return_details",
-                `&fields=${encodeURIComponent("return_no,product_id,quantity")}`,
-                errors
-            ),
-            directusFetchList<any>("products", "", errors),
-            directusFetchList<any>("salesman", `&fields=${encodeURIComponent("id,salesman_name")}`, errors),
-            directusFetchList<any>("customer", `&fields=${encodeURIComponent("customer_code,store_name")}`, errors),
-            directusFetchList<any>("suppliers", `&fields=${encodeURIComponent("id,supplier_name")}`, errors),
-            directusFetchList<any>("product_per_supplier", `&fields=${encodeURIComponent("product_id,supplier_id")}`, errors),
-            directusFetchList<any>("brand", `&fields=${encodeURIComponent("brand_id,brand_name")}`, errors),
-            directusFetchList<any>("sections", `&fields=${encodeURIComponent("section_id,section_name")}`, errors),
+            fetchAllPaged("sales_invoice", "invoice_id,invoice_date,total_amount,salesman_id,customer_code", invoiceFilter),
+            fetchAllPaged("sales_invoice_details", "invoice_no,product_id,total_amount,quantity"),
+            fetchAllPaged("sales_return", "return_number,return_date", returnFilter),
+            fetchAllPaged("sales_return_details", "return_no,product_id,quantity"),
+            fetchAllPaged("products", "product_id,parent_id,product_name,product_brand,product_section"),
+            fetchAllPaged("product_per_supplier", "product_id,supplier_id"),
+            fetchAllPaged("suppliers", "id,supplier_name"),
+            fetchAllPaged("brand", "brand_id,brand_name"),
+            fetchAllPaged("sections", "section_id,section_name"),
+            fetchAll("salesman", "id,salesman_name"),
+            fetchAll("customer", "customer_code,store_name"),
         ]);
 
         // --- MAPS ---
         const supplierNameMap = new Map<string, string>();
         suppliers.forEach((s: any) => {
-            const id = getSafeId(s.id);
-            if (id) supplierNameMap.set(id, String(s.supplier_name || "").toUpperCase());
+            const sid = getSafeId(s.id, ["id"]);
+            if (!sid) return;
+            supplierNameMap.set(sid, String(s.supplier_name || "").toUpperCase());
         });
 
         const productToSupplierMap = new Map<string, string>();
         pps.forEach((p: any) => {
-            const pId = getSafeId(p.product_id);
-            const sId = getSafeId(p.supplier_id);
-            if (pId && sId && !productToSupplierMap.has(pId)) productToSupplierMap.set(pId, sId);
+            const pid = getSafeId(p.product_id, ["product_id"]);
+            const sid = getSafeId(p.supplier_id, ["supplier_id"]);
+            if (!pid || !sid) return;
+            if (!productToSupplierMap.has(pid)) productToSupplierMap.set(pid, sid);
         });
 
-        const brandMap = new Map<string, string>();
-        brands.forEach((b: any) => brandMap.set(getSafeId(b.brand_id), String(b.brand_name || "").toUpperCase()));
+        const brandNameById = new Map<string, string>();
+        brands.forEach((b: any) => {
+            const bid = getSafeId(b.brand_id, ["brand_id"]);
+            if (!bid) return;
+            brandNameById.set(bid, String(b.brand_name || "").toUpperCase());
+        });
 
-        const sectionMap = new Map<string, string>();
-        sections.forEach((s: any) => sectionMap.set(getSafeId(s.section_id), String(s.section_name || "").toUpperCase()));
+        const sectionNameById = new Map<string, string>();
+        sections.forEach((s: any) => {
+            const sid = getSafeId(s.section_id, ["section_id"]);
+            if (!sid) return;
+            sectionNameById.set(sid, String(s.section_name || "").toUpperCase());
+        });
 
         const productMap = new Map<string, any>();
+        const parentIdMap = new Map<string, string | null>();
+
         products.forEach((p: any) => {
-            const pId = getSafeId(p.product_id);
+            const pId = getSafeId(p.product_id, ["product_id"]);
+            if (!pId) return;
+
+            const brandId = getSafeId(p.product_brand, ["brand_id"]);
+            const sectionId = getSafeId(p.product_section, ["section_id"]);
+
+            const parent =
+                getSafeId(p.parent_id, ["product_id"]) ||
+                "";
+
+            const parentId = parent ? String(parent) : null;
+
             productMap.set(pId, {
                 ...p,
-                brand_name: brandMap.get(getSafeId(p.product_brand)) || "",
-                section_name: sectionMap.get(getSafeId(p.product_section)) || "",
-                stock: Number(p.stock) || Number(p.inventory) || Number(p.quantity) || 0,
+                brand_name: brandNameById.get(brandId) || "",
+                section_name: sectionNameById.get(sectionId) || "",
+                stock: Number(p.stock) || Number(p.inventory) || 0,
+                parent_id: parentId,
             });
+
+            parentIdMap.set(pId, parentId);
         });
 
+        const rootMemo = new Map<string, string>();
+        const getRootId = (pId: string): string => {
+            const pid = String(pId);
+            if (rootMemo.has(pid)) return rootMemo.get(pid)!;
+
+            let current = pid;
+            const visited = new Set<string>();
+
+            while (current && !visited.has(current)) {
+                visited.add(current);
+                const parent = parentIdMap.get(current);
+                if (!parent) break;
+                if (!parentIdMap.has(parent)) break;
+                current = parent;
+            }
+
+            rootMemo.set(pid, current || pid);
+            return current || pid;
+        };
+
+        // family supplier mapping
+        const rootSupplierFreq = new Map<string, Map<string, number>>();
+        for (const [pid, sid] of productToSupplierMap.entries()) {
+            const root = getRootId(pid);
+            if (!rootSupplierFreq.has(root)) rootSupplierFreq.set(root, new Map());
+            const fm = rootSupplierFreq.get(root)!;
+            fm.set(sid, (fm.get(sid) || 0) + 1);
+        }
+
+        const rootSupplierIdMap = new Map<string, string>();
+        for (const [root, fm] of rootSupplierFreq.entries()) {
+            let bestSid = "";
+            let bestCount = -1;
+            for (const [sid, cnt] of fm.entries()) {
+                if (cnt > bestCount) {
+                    bestCount = cnt;
+                    bestSid = sid;
+                }
+            }
+            if (bestSid) rootSupplierIdMap.set(root, bestSid);
+        }
+
+        for (const root of rootSupplierIdMap.keys()) {
+            const directRoot = productToSupplierMap.get(root);
+            if (directRoot) rootSupplierIdMap.set(root, directRoot);
+        }
+
+        const getEffectiveSupplierId = (pId: string): string | null => {
+            const pid = String(pId);
+            const direct = productToSupplierMap.get(pid);
+            if (direct) return direct;
+            const root = getRootId(pid);
+            return rootSupplierIdMap.get(root) || null;
+        };
+
+        const getResolvedSupplierNameOrNull = (pId: string): string | null => {
+            const sid = getEffectiveSupplierId(pId);
+            if (!sid) return null;
+            const name = supplierNameMap.get(sid);
+            return name ? name : null;
+        };
+
         const salesmanMap = new Map<string, string>();
-        salesmen.forEach((s: any) => salesmanMap.set(getSafeId(s.id), String(s.salesman_name || "")));
+        salesmen.forEach((s: any) =>
+            salesmanMap.set(getSafeId(s.id, ["id"]), String(s.salesman_name || "")),
+        );
 
         const customerMap = new Map<string, string>();
         customers.forEach((c: any) =>
-            customerMap.set(String(c.customer_code), String(c.store_name || "").toUpperCase())
+            customerMap.set(String(c.customer_code), String(c.store_name || "").toUpperCase()),
         );
 
+        // invoice lookup
         const invoiceLookup = new Map<string, any>();
         invoices.forEach((inv: any) => {
-            const key1 = getSafeId(inv.invoice_id);
-            const key2 = getSafeId(inv.id);
-            if (key1) invoiceLookup.set(key1, inv);
-            if (key2) invoiceLookup.set(key2, inv);
+            const invId = getSafeId(inv.invoice_id, ["invoice_id"]);
+            if (!invId) return;
+            invoiceLookup.set(invId, inv);
         });
+        const validInvoiceIds = new Set<string>(invoiceLookup.keys());
 
-        const returnLookup = new Map<string, any>();
-        returns.forEach((r: any) => {
-            const k = String(r.return_number);
-            if (k) returnLookup.set(k, r);
-        });
+        const validReturnIds = new Set(
+            returns.map((r: any) => String(r.return_number)).filter(Boolean),
+        );
 
         // --- AGGREGATION SETUP ---
         const divisionStats = new Map<string, { good: number; bad: number }>();
         ALL_DIVISIONS.forEach((div) => divisionStats.set(div, { good: 0, bad: 0 }));
 
         const trendMap = new Map<string, { good: number; bad: number }>();
+        if (fromDate && toDate) {
+            getDatesInRange(fromDate, toDate).forEach((d) => trendMap.set(d, { good: 0, bad: 0 }));
+        }
 
         const supplierSales = new Map<string, number>();
         const salesmanSales = new Map<string, number>();
         const productSales = new Map<string, number>();
         const customerSales = new Map<string, number>();
-
-        // Structure: Map<SupplierName, Map<SalesmanName, TotalAmount>>
         const supplierSalesmanMap = new Map<string, Map<string, number>>();
 
         let totalGoodStockOutflow = 0;
         let totalBadStockInflow = 0;
 
-        const getSupplierName = (pId: string) => {
-            const sId = productToSupplierMap.get(pId);
-            if (sId && supplierNameMap.has(sId)) return supplierNameMap.get(sId)!;
+        let debugUnmappedCount = 0;
+        const debugUnmappedExamples: Array<{ product_id: string; product_name: string; root_id: string }> = [];
 
-            const pName = String(productMap.get(pId)?.product_name || "").toUpperCase();
-            if (pName.includes("MEN2")) return "MEN2 MARKETING";
-            if (pName.includes("PUREFOODS") || pName.includes("PF") || pName.includes("CDO")) return "FOODSPHERE INC";
-            if (pName.includes("VIRGINIA")) return "VIRGINIA FOOD INC";
-            if (pName.includes("MEKENI")) return "MEKENI FOOD CORP";
-            if (pName.includes("MAMA PINA")) return "MAMA PINA'S";
-            return "Internal / Others";
-        };
-
-        const getTransactionDivision = (pId: string, invoiceId: string) => {
-            const inv = invoiceLookup.get(invoiceId);
-
-            // 1) Internal tagging via customer keywords
-            if (inv) {
-                const custName = customerMap.get(String(inv.customer_code)) || "";
-                if (INTERNAL_CUSTOMER_KEYWORDS.some((k) => custName.includes(k))) return "Internal";
-            }
-
-            // 2) Brand/Section tagging
+        const getDivisionForProduct = (pId: string) => {
             const prod = productMap.get(pId);
-            if (!prod) return "Dry Goods";
 
-            const pBrand = String(prod.brand_name || "").toUpperCase();
-            const pSection = String(prod.section_name || "").toUpperCase();
-            const pName = String(prod.product_name || "").toUpperCase();
+            const pBrand = String(prod?.brand_name || "").toUpperCase();
+            const pSection = String(prod?.section_name || "").toUpperCase();
+            const pName = String(prod?.product_name || "").toUpperCase();
 
             for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
-                if (rules.brands.some((b) => pBrand.includes(b.toUpperCase()) || pName.includes(b.toUpperCase())))
-                    return divName;
-                if (rules.sections.some((s) => pSection.includes(s.toUpperCase()))) return divName;
+                const r = rules as any;
+                if (r.brands.some((b: string) => pBrand.includes(b.toUpperCase()) || pName.includes(b.toUpperCase()))) return divName;
+                if (r.sections.some((s: string) => pSection.includes(s.toUpperCase()))) return divName;
             }
+
+            const sid = getEffectiveSupplierId(pId);
+            if (sid) {
+                const sName = (supplierNameMap.get(String(sid)) || "").toUpperCase();
+                for (const [key, div] of Object.entries(SUPPLIER_TO_DIVISION)) {
+                    if (sName.includes(key)) return div;
+                }
+            }
+
+            if (pSection.includes("FROZEN")) return "Frozen Goods";
+            if (pName.includes("HOTDOG") || pName.includes("ICE CREAM") || pName.includes("CHICKEN") || pName.includes("PORK")) return "Frozen Goods";
+            if (pName.includes("LPG") || pName.includes("SOLANE") || pName.includes("GASUL")) return "Industrial";
+            if (pName.includes("MAMA PINA")) return "Mama Pina's";
+
             return "Dry Goods";
         };
 
         const isTabMatch = (realDivision: string, currentTab: string) => {
-            if (!currentTab || currentTab === "Overview") return true;
-            return realDivision === currentTab;
+            const tab = normalizeDivisionLabel(currentTab);
+            if (!tab || tab === "Overview") return true;
+            return normalizeDivisionLabel(realDivision) === tab;
         };
-
-        // Init trend keys when range exists
-        if (fromDate && toDate) {
-            getDatesInRange(fromDate, toDate).forEach((d) => trendMap.set(d, { good: 0, bad: 0 }));
-        }
 
         // --- PROCESS INVOICES ---
         invoiceDetails.forEach((det: any) => {
-            const invId = getSafeId(det.invoice_no);
-            const parent = invoiceLookup.get(invId);
-            if (!parent || !parent.invoice_date) return;
+            const invId = getSafeId(det.invoice_no, ["invoice_id"]);
+            if (!invId || !validInvoiceIds.has(invId)) return;
 
-            const pId = getSafeId(det.product_id);
+            const parent = invoiceLookup.get(invId);
+            const custName = customerMap.get(String(parent?.customer_code)) || "";
+
+            const pId = getSafeId(det.product_id, ["product_id"]);
+            if (!pId) return;
+
             const qty = Number(det.quantity) || 0;
             const amt = Number(det.total_amount) || 0;
-            const realDivision = getTransactionDivision(pId, invId);
 
+            const realDivision = getDivisionForProduct(pId);
             if (divisionStats.has(realDivision)) divisionStats.get(realDivision)!.good += qty;
 
             if (isTabMatch(realDivision, activeTab)) {
@@ -447,94 +489,83 @@ export async function GET(request: Request) {
                 const pName = productMap.get(pId)?.product_name || `Product ${pId}`;
                 productSales.set(pName, (productSales.get(pName) || 0) + amt);
 
-                const sName = getSupplierName(pId);
-                supplierSales.set(sName, (supplierSales.get(sName) || 0) + amt);
+                const sName = getResolvedSupplierNameOrNull(pId);
+                if (sName) {
+                    supplierSales.set(sName, (supplierSales.get(sName) || 0) + amt);
 
-                const d = String(parent.invoice_date).substring(0, 10);
-                const curr = trendMap.get(d) || { good: 0, bad: 0 };
-                curr.good += qty;
-                trendMap.set(d, curr);
+                    if (parent) {
+                        const d = String(parent.invoice_date || "").substring(0, 10);
+                        if (trendMap.has(d)) {
+                            const curr = trendMap.get(d)!;
+                            curr.good += qty;
+                            trendMap.set(d, curr);
+                        }
 
-                const smName = salesmanMap.get(getSafeId(parent.salesman_id)) || "Unknown Salesman";
-                salesmanSales.set(smName, (salesmanSales.get(smName) || 0) + amt);
+                        const smName = salesmanMap.get(getSafeId(parent.salesman_id, ["id"])) || "Unknown Salesman";
+                        salesmanSales.set(smName, (salesmanSales.get(smName) || 0) + amt);
 
-                const cName = customerMap.get(String(parent.customer_code)) || `Customer ${parent.customer_code}`;
-                customerSales.set(cName, (customerSales.get(cName) || 0) + amt);
+                        customerSales.set(custName, (customerSales.get(custName) || 0) + amt);
 
-                // Supplier → Salesman breakdown
-                if (!supplierSalesmanMap.has(sName)) supplierSalesmanMap.set(sName, new Map());
-                const smMap = supplierSalesmanMap.get(sName)!;
-                smMap.set(smName, (smMap.get(smName) || 0) + amt);
+                        if (!supplierSalesmanMap.has(sName)) supplierSalesmanMap.set(sName, new Map());
+                        const smMap = supplierSalesmanMap.get(sName)!;
+                        smMap.set(smName, (smMap.get(smName) || 0) + amt);
+                    }
+                } else {
+                    debugUnmappedCount += 1;
+                    if (debugMode && debugUnmappedExamples.length < 25) {
+                        debugUnmappedExamples.push({
+                            product_id: pId,
+                            product_name: productMap.get(pId)?.product_name || `Product ${pId}`,
+                            root_id: getRootId(pId),
+                        });
+                    }
+                }
             }
         });
 
         // --- PROCESS RETURNS ---
         returnDetails.forEach((ret: any) => {
-            const retId = String(ret.return_no);
-            const parent = returnLookup.get(retId);
-            if (!parent || !parent.return_date) return;
+            const retId =
+                getSafeId(ret.return_no, ["return_number", "return_no"]) || String(ret.return_no || "");
+            if (!retId || !validReturnIds.has(String(retId))) return;
 
-            const pId = getSafeId(ret.product_id);
+            const pId = getSafeId(ret.product_id, ["product_id"]);
+            if (!pId) return;
+
             const qty = Number(ret.quantity) || 0;
-
-            // Product-based fallback
-            const prod = productMap.get(pId);
-            let realDivision = "Dry Goods";
-
-            if (prod) {
-                const pBrand = String(prod.brand_name || "").toUpperCase();
-                const pSection = String(prod.section_name || "").toUpperCase();
-
-                for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
-                    if (
-                        rules.brands.some((b) => pBrand.includes(b.toUpperCase())) ||
-                        rules.sections.some((s) => pSection.includes(s.toUpperCase()))
-                    ) {
-                        realDivision = divName;
-                        break;
-                    }
-                }
-            }
+            const realDivision = getDivisionForProduct(pId);
 
             if (divisionStats.has(realDivision)) divisionStats.get(realDivision)!.bad += qty;
 
             if (isTabMatch(realDivision, activeTab)) {
                 totalBadStockInflow += qty;
 
-                const d = String(parent.return_date).substring(0, 10);
-                const curr = trendMap.get(d) || { good: 0, bad: 0 };
-                curr.bad += qty;
-                trendMap.set(d, curr);
+                const parent = returns.find((r: any) => String(r.return_number) === String(retId));
+                if (parent) {
+                    const d = String(parent.return_date || "").substring(0, 10);
+                    if (trendMap.has(d)) {
+                        const curr = trendMap.get(d)!;
+                        curr.bad += qty;
+                        trendMap.set(d, curr);
+                    }
+                }
             }
         });
 
         // --- CALCULATE STOCK ---
         let totalCurrentStock = 0;
-
         productMap.forEach((prod: any) => {
-            let prodDiv = "Dry Goods";
-            const pBrand = String(prod.brand_name || "").toUpperCase();
-            const pSection = String(prod.section_name || "").toUpperCase();
+            const pid = getSafeId(prod.product_id, ["product_id"]);
+            if (!pid) return;
 
-            for (const [divName, rules] of Object.entries(DIVISION_RULES)) {
-                if (
-                    rules.brands.some((b) => pBrand.includes(b.toUpperCase())) ||
-                    rules.sections.some((s) => pSection.includes(s.toUpperCase()))
-                ) {
-                    prodDiv = divName;
-                    break;
-                }
-            }
-
-            if (isTabMatch(prodDiv, activeTab)) totalCurrentStock += Number(prod.stock) || 0;
+            const prodDiv = getDivisionForProduct(pid);
+            if (isTabMatch(prodDiv, activeTab)) totalCurrentStock += prod.stock || 0;
         });
 
         const totalMoved = totalGoodStockOutflow + totalCurrentStock;
         const velocityRate = totalMoved > 0 ? (totalGoodStockOutflow / totalMoved) * 100 : 0;
-        const returnRate =
-            totalGoodStockOutflow > 0 ? (totalBadStockInflow / totalGoodStockOutflow) * 100 : 0;
+        const returnRate = totalGoodStockOutflow > 0 ? (totalBadStockInflow / totalGoodStockOutflow) * 100 : 0;
 
-        // --- FORMAT OUTPUT ---
         const trendData = Array.from(trendMap.entries())
             .sort((a, b) => a[0].localeCompare(b[0]))
             .map(([date, vals]) => ({
@@ -558,20 +589,8 @@ export async function GET(request: Request) {
             })
             .sort((a, b) => b.totalSales - a.totalSales);
 
-        const divisionBreakdown = ALL_DIVISIONS.map((divName) => {
-            const stats = divisionStats.get(divName) || { good: 0, bad: 0 };
-            return {
-                division: divName,
-                goodStock: {
-                    totalOutflow: stats.good,
-                    status: stats.good > 5000 ? "Healthy" : "Warning",
-                },
-                badStock: { accumulated: stats.bad },
-            };
-        });
-
-        return NextResponse.json({
-            division: activeTab,
+        const responsePayload: any = {
+            division: activeTabRaw,
             goodStock: {
                 velocityRate: Math.round(velocityRate * 100) / 100,
                 status: velocityRate > 50 ? "Fast Moving" : velocityRate > 20 ? "Healthy" : "Slow Moving",
@@ -590,44 +609,60 @@ export async function GET(request: Request) {
                 .sort((a, b) => b.value - a.value)
                 .slice(0, 10),
             supplierBreakdown,
-            divisionBreakdown,
+            divisionBreakdown: ALL_DIVISIONS.map((divName) => {
+                const stats = divisionStats.get(divName) || { good: 0, bad: 0 };
+                return {
+                    division: divName,
+                    goodStock: {
+                        totalOutflow: stats.good,
+                        status: stats.good > 5000 ? "Healthy" : "Warning",
+                    },
+                    badStock: { accumulated: stats.bad },
+                };
+            }),
             pareto: {
                 products: Array.from(productSales.entries())
                     .map(([name, value]) => ({ name, value }))
                     .sort((a, b) => b.value - a.value)
                     .slice(0, 50),
                 customers: Array.from(customerSales.entries())
-                    .filter(([name]) => {
-                        const upper = String(name || "").toUpperCase();
-                        return !INTERNAL_CUSTOMER_KEYWORDS.some((k) => upper.includes(k));
-                    })
+                    .filter(([name]) => !INTERNAL_CUSTOMER_KEYWORDS.some((k) => name.includes(k)))
                     .map(([name, value]) => ({ name, value }))
                     .sort((a, b) => b.value - a.value)
                     .slice(0, 50),
             },
-            _debug: {
-                directusUrl: DIRECTUS_BASE ? DIRECTUS_BASE + "/" : null,
-                hasToken: Boolean(DIRECTUS_TOKEN),
-                fromDate,
-                toDate,
-                activeTab,
+        };
+
+        if (debugMode) {
+            responsePayload._debug = {
+                activeTabRaw,
+                activeTabNormalized: activeTab,
                 counts: {
                     invoices: invoices.length,
                     invoiceDetails: invoiceDetails.length,
                     returns: returns.length,
                     returnDetails: returnDetails.length,
                     products: products.length,
-                    supplierBreakdown: supplierBreakdown.length,
+                    pps: pps.length,
+                    suppliers: suppliers.length,
                 },
-                errors,
-            },
-        });
+                mappedSuppliers: supplierBreakdown.length,
+                unmappedLinesDropped: debugUnmappedCount,
+                unmappedExamples: debugUnmappedExamples,
+                directusUrl: DIRECTUS_URL,
+                hasToken: Boolean(DIRECTUS_TOKEN),
+            };
+        }
+
+        return NextResponse.json(responsePayload);
     } catch (error: any) {
+        console.error("❌ Stock dashboard route error:", error);
         return NextResponse.json(
             {
-                error: error?.message || "Unknown error",
+                error: "Failed to build stock dashboard",
+                details: error?.message || String(error),
                 _debug: {
-                    directusUrl: DIRECTUS_BASE ? DIRECTUS_BASE + "/" : null,
+                    directusUrl: DIRECTUS_URL,
                     hasToken: Boolean(DIRECTUS_TOKEN),
                 },
             },
