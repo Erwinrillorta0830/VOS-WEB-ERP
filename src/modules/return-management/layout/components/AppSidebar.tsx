@@ -21,23 +21,26 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-    /*
+
     {
         title: "Sales Return",
-        href: "/returns/sales-return",
+        href: "/returns/sales-returnv3",
         icon: FileText,
     },
-    {
-        title: "Inventory Reports",
-        href: "/returns/inventory-reports",
-        icon: ClipboardCheck,
-    },
-    {
-        title: "Return To Supplier",
-        href: "/returns/return-to-supplier",
-        icon: PackageCheck,
-    },
-    */
+    /*
+   {
+       title: "Inventory Reports",
+       href: "/returns/inventory-reports",
+       icon: ClipboardCheck,
+   },
+
+     */
+   {
+       title: "Return To Supplier",
+       href: "/returns/return-to-supplier",
+       icon: PackageCheck,
+   },
+
 
         {
         title: "Sales Return Summary",

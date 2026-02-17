@@ -50,6 +50,7 @@ type Session = {
 
 const INVENTORY_REPORT_URL = "http://192.168.0.143:4000";
 const HELPDESK_URL = "https://support.vertextechcorp.com/";
+const CLAIMS_URL = "http://192.168.0.143:9001/fm/claims-management/ccm-list";
 
 const MODULES: AppModule[] = [
     {
@@ -116,12 +117,12 @@ const MODULES: AppModule[] = [
         available: false,
     },
     {
-        key: "accounting",
-        name: "Accounting",
-        href: "/app/accounting",
+        key: "claims",
+        name: "Claims",
+        href: CLAIMS_URL,
         icon: Calculator,
         accent: "from-indigo-400 to-sky-500",
-        available: false,
+        available: true,
     },
     {
         key: "collection-report",
@@ -158,6 +159,14 @@ const MODULES: AppModule[] = [
 
     },
     {
+        key: "settings",
+        name: "Settings",
+        href: "/app/settings",
+        icon: Settings,
+        accent: "from-zinc-400 to-slate-500",
+        available: false,
+    },
+        {
         key: "settings",
         name: "Settings",
         href: "/app/settings",
