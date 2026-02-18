@@ -9,15 +9,14 @@ import {
     LayoutDashboard,
     ShoppingCart,
     Package,
-    Boxes,
     Truck,
     Users,
-    Calculator,
     FileSpreadsheet,
     BarChart3,
     FileText,
     Headphones,
     Settings,
+    Calculator,
 } from "lucide-react";
 
 type AppModule = {
@@ -27,9 +26,10 @@ type AppModule = {
     icon: LucideIcon;
     accent: string;
     available: boolean;
-
-    // ✅ optional: open external link in new tab
     external?: boolean;
+
+    // ✅ RBAC: if set, user must match to enable/enter
+    allowedUserIds?: number[];
 };
 
 type SessionUser = {
@@ -37,8 +37,7 @@ type SessionUser = {
     user_lname?: string | null;
     user_email?: string | null;
     name?: string | null;
-
-    // ✅ needed for routing rules
+    user_id?: number | null;
     user_department?: number | null;
     isAdmin?: boolean | null;
 };
@@ -52,6 +51,16 @@ const INVENTORY_REPORT_URL = "http://192.168.0.143:4000";
 const HELPDESK_URL = "https://support.vertextechcorp.com/";
 const CLAIMS_URL = "http://192.168.0.143:9001/fm/claims-management/ccm-list";
 
+// ✅ Only this user can access Claims
+const CLAIMS_ALLOWED_USER_IDS = [196, 365, 24, 370];
+
+function isAllowedByUserId(user: SessionUser | null, allowedUserIds?: number[]) {
+    if (!allowedUserIds || allowedUserIds.length === 0) return true;
+    const uid = user?.user_id ?? null;
+    if (uid == null) return false;
+    return allowedUserIds.includes(uid);
+}
+
 const MODULES: AppModule[] = [
     {
         key: "dashboard",
@@ -64,32 +73,21 @@ const MODULES: AppModule[] = [
     {
         key: "invoice-cancellation",
         name: "Invoice Cancellation Management",
-        // ✅ Updated: route depends on department/admin
         href: "/invoice-management",
         icon: ShoppingCart,
         accent: "from-rose-400 to-pink-500",
         available: true,
     },
     {
-        key: "purchase",
+        key: "returns",
         name: "Returns",
         href: "/returns/sales-return-summary",
         icon: Package,
         accent: "from-emerald-400 to-teal-500",
-        available: true
-        ,
+        available: true,
     },
-    /*
-    {
-        key: "inventory",
-        name: "Inventory",
-        href: "/app/inventory",
-        icon: Boxes,
-        accent: "from-teal-400 to-cyan-500",
-        available: false,
-    },
-*/
-    // ✅ NEW: Inventory Report (external)
+
+    // ✅ Inventory Report (external)
     {
         key: "inventory-report",
         name: "Inventory Report",
@@ -116,6 +114,8 @@ const MODULES: AppModule[] = [
         accent: "from-purple-400 to-fuchsia-500",
         available: false,
     },
+
+    // ✅ Claims (external) + RBAC
     {
         key: "claims",
         name: "Claims",
@@ -123,7 +123,10 @@ const MODULES: AppModule[] = [
         icon: Calculator,
         accent: "from-indigo-400 to-sky-500",
         available: true,
+        external: true,
+        allowedUserIds: CLAIMS_ALLOWED_USER_IDS,
     },
+
     {
         key: "collection-report",
         name: "Collection Report",
@@ -156,17 +159,8 @@ const MODULES: AppModule[] = [
         accent: "from-emerald-400 to-lime-500",
         available: true,
         external: true,
-
     },
     {
-        key: "settings",
-        name: "Settings",
-        href: "/app/settings",
-        icon: Settings,
-        accent: "from-zinc-400 to-slate-500",
-        available: false,
-    },
-        {
         key: "settings",
         name: "Settings",
         href: "/app/settings",
@@ -180,24 +174,18 @@ function getInvoiceManagementHref(user?: SessionUser): string {
     const dept = user?.user_department ?? null;
     const isAdmin = Boolean(user?.isAdmin);
 
-    // Your rules (same as sidebar):
-    // - invoice-cancellation: dept 7
-    // - invoice-summary-report: dept 11
-    // - invoice-cancellation-approval: dept 11 and isAdmin true
+    // ✅ Your rules:
     if (dept === 7 || dept === 14) return "/invoice-management/invoice-cancellation";
-    if ((dept === 11 && isAdmin) || dept === 14)    
+    if ((dept === 11 && isAdmin) || dept === 14)
         return "/invoice-management/invoice-cancellation-approval";
     if (dept === 11 || dept === 14) return "/invoice-management/invoice-summary-report";
 
-    // Option B (recommended): keep them on app page.
     return "/app";
 }
 
 export default function AppModulesPage() {
     const router = useRouter();
     const [displayName, setDisplayName] = useState<string | null>(null);
-
-    // ✅ store full session user so we can compute hrefs
     const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
 
     useEffect(() => {
@@ -209,41 +197,44 @@ export default function AppModulesPage() {
         try {
             const session = JSON.parse(raw) as Session;
             const user = session.user;
-
             if (!user) return;
 
             setSessionUser(user);
 
-            const fullName = [user.user_fname, user.user_lname]
-                .filter(Boolean)
-                .join(" ")
-                .trim();
-
+            const fullName = [user.user_fname, user.user_lname].filter(Boolean).join(" ").trim();
             const fallbackName = fullName || user.name || user.user_email || null;
-
-            if (fallbackName) {
-                setDisplayName(fallbackName);
-            }
+            if (fallbackName) setDisplayName(fallbackName);
         } catch (err) {
             console.error("Failed to parse session", err);
         }
     }, []);
 
+    // ✅ Hard block: if someone lands on this page with claims URL in address somehow (or you later add a router.push)
+    // This is mostly future-proofing; right now Claims opens in a new tab.
+    useEffect(() => {
+        if (!sessionUser) return;
+
+        const currentHref =
+            typeof window !== "undefined" ? window.location.href : "";
+
+        const isClaimsContext = currentHref.includes("/fm/claims-management") || currentHref.includes("claims-management");
+        if (isClaimsContext && !isAllowedByUserId(sessionUser, CLAIMS_ALLOWED_USER_IDS)) {
+            router.replace("/app");
+        }
+    }, [router, sessionUser]);
+
     const resolvedModules = useMemo(() => {
         const invoiceHref = getInvoiceManagementHref(sessionUser ?? undefined);
 
         return MODULES.map((m) => {
-            if (m.key === "invoice-cancellation") {
-                return { ...m, href: invoiceHref };
-            }
+            // keep invoice href dynamic
+            if (m.key === "invoice-cancellation") return { ...m, href: invoiceHref };
             return m;
         });
     }, [sessionUser]);
 
     const handleLogout = () => {
-        if (typeof window !== "undefined") {
-            window.localStorage.removeItem("vosSession");
-        }
+        if (typeof window !== "undefined") window.localStorage.removeItem("vosSession");
         router.replace("/login");
     };
 
@@ -255,12 +246,8 @@ export default function AppModulesPage() {
                         <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
                             VOS WEB
                         </p>
-                        <h1 className="mt-2 text-2xl font-semibold">
-                            All your modules in one place
-                        </h1>
-                        <p className="mt-1 text-sm text-slate-300">
-                            Choose a module to get started.
-                        </p>
+                        <h1 className="mt-2 text-2xl font-semibold">All your modules in one place</h1>
+                        <p className="mt-1 text-sm text-slate-300">Choose a module to get started.</p>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -270,9 +257,7 @@ export default function AppModulesPage() {
                                     {displayName.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex flex-col">
-                  <span className="text-xs font-medium text-slate-50">
-                    {displayName}
-                  </span>
+                                    <span className="text-xs font-medium text-slate-50">{displayName}</span>
                                     <span className="text-[10px] text-slate-400">Logged in</span>
                                 </div>
                             </div>
@@ -292,15 +277,16 @@ export default function AppModulesPage() {
                         <h2 className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-300">
                             Apps
                         </h2>
-                        <span className="text-xs text-slate-400">
-              {resolvedModules.length} modules
-            </span>
+                        <span className="text-xs text-slate-400">{resolvedModules.length} modules</span>
                     </div>
 
                     <div className="grid gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
                         {resolvedModules.map((mod) => {
                             const Icon = mod.icon;
-                            const isAvailable = mod.available;
+
+                            // ✅ module availability + RBAC in one place
+                            const allowed = isAllowedByUserId(sessionUser, mod.allowedUserIds);
+                            const isAvailable = mod.available && allowed;
 
                             const card = (
                                 <div
@@ -312,27 +298,24 @@ export default function AppModulesPage() {
                                 >
                                     <div
                                         className={`mb-3 flex h-14 w-14 items-center justify-center rounded-xl ${
-                                            isAvailable
-                                                ? `bg-gradient-to-br ${mod.accent}`
-                                                : "bg-slate-700"
+                                            isAvailable ? `bg-gradient-to-br ${mod.accent}` : "bg-slate-700"
                                         }`}
                                     >
-                                        <Icon
-                                            className={`h-7 w-7 ${
-                                                isAvailable ? "text-white" : "text-slate-300"
-                                            }`}
-                                        />
+                                        <Icon className={`h-7 w-7 ${isAvailable ? "text-white" : "text-slate-300"}`} />
                                     </div>
 
-                                    <p
-                                        className={`text-xs font-semibold ${
-                                            isAvailable ? "text-slate-900" : "text-slate-200"
-                                        }`}
-                                    >
+                                    <p className={`text-xs font-semibold ${isAvailable ? "text-slate-900" : "text-slate-200"}`}>
                                         {mod.name}
                                     </p>
 
-                                    {!isAvailable && (
+                                    {/* ✅ If blocked by RBAC, show a subtle badge */}
+                                    {!allowed && mod.available && (
+                                        <span className="mt-1 inline-flex rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-200">
+                      Restricted
+                    </span>
+                                    )}
+
+                                    {!mod.available && (
                                         <span className="mt-1 inline-flex rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-200">
                       Coming soon
                     </span>
@@ -340,9 +323,8 @@ export default function AppModulesPage() {
                                 </div>
                             );
 
-                            // ✅ Available modules
+                            // ✅ Allowed + Available cards
                             if (isAvailable) {
-                                // ✅ External module link (Inventory Report)
                                 if (mod.external) {
                                     return (
                                         <a
@@ -358,7 +340,6 @@ export default function AppModulesPage() {
                                     );
                                 }
 
-                                // ✅ Internal Next.js navigation
                                 return (
                                     <Link
                                         key={mod.key}
@@ -371,14 +352,14 @@ export default function AppModulesPage() {
                                 );
                             }
 
-                            // ✅ Disabled cards
+                            // ✅ Disabled cards (either unavailable OR restricted)
                             return (
                                 <button
                                     key={mod.key}
                                     type="button"
                                     disabled
                                     className="group cursor-not-allowed focus-visible:outline-none"
-                                    title="Module not available yet"
+                                    title={!allowed ? "You do not have access to this module" : "Module not available yet"}
                                 >
                                     {card}
                                 </button>
