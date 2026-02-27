@@ -340,7 +340,7 @@ export const SalesReturnProvider = {
       // 🟢 FIX: Added check for 'product.unit_of_measurement'
       const unitId =
         product.unit_of_measurement &&
-          typeof product.unit_of_measurement === "object"
+        typeof product.unit_of_measurement === "object"
           ? String(product.unit_of_measurement.unit_id)
           : String(product.unit_of_measurement || "");
 
