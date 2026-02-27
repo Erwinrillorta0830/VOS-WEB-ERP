@@ -75,12 +75,10 @@ export const SalesReturnProvider = {
 
       let url = `${API_BASE}/sales_return?page=${page}&limit=${limit}&meta=filter_count&fields=${allowedFields}&sort=-return_id`;
 
-      if (search) {
-        const term = encodeURIComponent(search);
-        url += `&filter[_or][0][return_number][_contains]=${term}`;
-        url += `&filter[_or][1][invoice_no][_contains]=${term}`;
-        url += `&filter[_or][2][customer_code][_contains]=${term}`;
-      }
+      // NOTE: Search is NOT applied server-side here because the API only stores
+      // customer_code and salesman_id — not names. The hook handles search
+      // client-side after enriching rows with resolved customer/salesman names.
+
       if (filters.salesman && filters.salesman !== "All")
         url += `&filter[salesman_id][_eq]=${filters.salesman}`;
       if (filters.customer && filters.customer !== "All")
@@ -95,7 +93,7 @@ export const SalesReturnProvider = {
       if (!response.ok) return { data: [], total: 0 };
 
       const result = await response.json();
-      let mappedData: SalesReturn[] = (result.data || []).map((item: any) => ({
+      const mappedData: SalesReturn[] = (result.data || []).map((item: any) => ({
         id: item.return_id,
         returnNo: item.return_number,
         invoiceNo: item.invoice_no,
@@ -114,23 +112,6 @@ export const SalesReturnProvider = {
           ? new Date(item.created_at).toLocaleDateString()
           : "-",
       }));
-
-      // Client-Side Strict Filter
-      if (search) {
-        const lowerSearch = search.toLowerCase().trim();
-        mappedData = mappedData.filter((item) => {
-          const matchReturn = item.returnNo
-            ?.toLowerCase()
-            .includes(lowerSearch);
-          const matchInvoice = item.invoiceNo
-            ?.toLowerCase()
-            .includes(lowerSearch);
-          const matchCustomer = item.customerCode
-            ?.toLowerCase()
-            .includes(lowerSearch);
-          return matchReturn || matchInvoice || matchCustomer;
-        });
-      }
 
       return { data: mappedData, total: result.meta?.filter_count || 0 };
     } catch (error) {
