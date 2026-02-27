@@ -175,7 +175,7 @@ export const SalesReturnProvider = {
       fetch(`${API_BASE}/sales_return_type?limit=-1&fields=type_id,type_name`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
-      fetch(`${API_BASE}/line_discount?limit=-1&fields=id,line_discount`, {
+      fetch(`${API_BASE}/line_discount?limit=-1&fields=id,line_discount,percentage`, {
         headers: getHeaders(),
       }).then((r) => (r.ok ? r.json() : { data: [] })),
       fetch(`${API_BASE}/brand?limit=-1&fields=brand_id,brand_name`, {
@@ -204,9 +204,12 @@ export const SalesReturnProvider = {
     (returnTypes.data || []).forEach((t: any) =>
       returnTypeMap.set(String(t.type_id), t),
     );
-    const lineDiscountMap = new Map();
+    const lineDiscountMap = new Map<string, { name: string; percentage: number }>();
     (lineDiscounts.data || []).forEach((d: any) =>
-      lineDiscountMap.set(String(d.id), d.line_discount),
+      lineDiscountMap.set(String(d.id), {
+        name: d.line_discount,
+        percentage: parseFloat(d.percentage) || 0,
+      }),
     );
     const brandMap = new Map();
     (brands.data || []).forEach((b: any) =>
@@ -340,7 +343,7 @@ export const SalesReturnProvider = {
       // 🟢 FIX: Added check for 'product.unit_of_measurement'
       const unitId =
         product.unit_of_measurement &&
-        typeof product.unit_of_measurement === "object"
+          typeof product.unit_of_measurement === "object"
           ? String(product.unit_of_measurement.unit_id)
           : String(product.unit_of_measurement || "");
 
@@ -349,16 +352,15 @@ export const SalesReturnProvider = {
         product.product_category && typeof product.product_category === "object"
           ? String(product.product_category.category_id)
           : String(product.product_category || "");
-      let discountApplied = "No Discount";
-      const mappedType = lineDiscountMap.get(String(d.discount_type));
-      if (mappedType) discountApplied = mappedType;
-      else if (toNum(d.discount_amount) > 0) discountApplied = "Custom / Other";
+      // 🟢 REFACTORED: Use line_discount.percentage to calculate discount
+      const discountData = lineDiscountMap.get(String(d.discount_type));
+      const discountApplied = discountData ? discountData.name : "No Discount";
 
-      // 🟢 CALCULATION
       const qty = toNum(d.quantity);
       const price = toNum(d.unit_price);
       const calculatedGross = qty * price;
-      const discountAmt = toNum(d.discount_amount);
+      const discountPercentage = discountData ? discountData.percentage : 0;
+      const discountAmt = calculatedGross * (discountPercentage / 100);
       const calculatedNet = calculatedGross - discountAmt;
 
       const item: SummaryReturnItem = {

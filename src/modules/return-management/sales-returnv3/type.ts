@@ -97,11 +97,6 @@ export interface ProductSupplierConnection {
 }
 
 // --- API LOOKUPS ---
-export interface API_DiscountType {
-  id: number;
-  discount_type: string;
-}
-
 export interface API_LineDiscount {
   id: number;
   line_discount: string;

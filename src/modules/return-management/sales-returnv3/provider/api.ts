@@ -7,7 +7,6 @@ import {
   Unit,
   Product,
   ProductSupplierConnection,
-  API_DiscountType,
   API_LineDiscount,
   API_SalesReturnType,
   API_SalesReturnDetail,
@@ -371,17 +370,6 @@ export const SalesReturnProvider = {
     }
   },
 
-  async getDiscountTypes(): Promise<API_DiscountType[]> {
-    try {
-      const response = await fetch(`${API_BASE}/discount_type?limit=-1`, {
-        headers: getHeaders(),
-      });
-      const result = await response.json();
-      return result.data || [];
-    } catch (error) {
-      return [];
-    }
-  },
 
   async getLineDiscounts(): Promise<API_LineDiscount[]> {
     try {
@@ -415,8 +403,21 @@ export const SalesReturnProvider = {
           sum + Number(item.quantity) * Number(item.unitPrice),
         0,
       );
+
+      // Fetch line discounts to calculate discount amounts from percentage
+      const lineDiscounts = await SalesReturnProvider.getLineDiscounts();
+      const lineDiscountMap = new Map<number, number>();
+      lineDiscounts.forEach((ld) =>
+        lineDiscountMap.set(ld.id, parseFloat(ld.percentage) || 0),
+      );
+
       const totalDiscount = payload.items.reduce(
-        (sum: number, item: any) => sum + Number(item.discountAmount || 0),
+        (sum: number, item: any) => {
+          const gross = Number(item.quantity) * Number(item.unitPrice);
+          const discId = item.discountType ? Number(item.discountType) : null;
+          const percentage = discId ? (lineDiscountMap.get(discId) || 0) : 0;
+          return sum + gross * (percentage / 100);
+        },
         0,
       );
       const formattedDate = formatDateForAPI(payload.returnDate);
@@ -461,21 +462,24 @@ export const SalesReturnProvider = {
         const typeId = matchedType
           ? matchedType.type_id
           : returnTypes[0]?.type_id || 1;
+
+        const gross = Number(item.quantity) * Number(item.unitPrice);
+        const discId = item.discountType && item.discountType !== ""
+          ? Number(item.discountType)
+          : null;
+        const percentage = discId ? (lineDiscountMap.get(discId) || 0) : 0;
+        const discountAmt = gross * (percentage / 100);
+
         const detailPayload = {
           return_no: finalReturnNo,
           product_id: Number(item.productId || item.product_id || item.id),
           quantity: Number(item.quantity),
           unit_price: Number(item.unitPrice),
-          gross_amount: Number(item.quantity) * Number(item.unitPrice),
-          discount_amount: Number(item.discountAmount || 0),
-          total_amount:
-            Number(item.quantity) * Number(item.unitPrice) -
-            Number(item.discountAmount || 0),
+          gross_amount: gross,
+          discount_amount: discountAmt,
+          total_amount: gross - discountAmt,
           sales_return_type_id: typeId,
-          discount_type:
-            item.discountType && item.discountType !== ""
-              ? Number(item.discountType)
-              : null,
+          discount_type: discId,
           reason: item.reason || null,
         };
         const res = await fetch(`${API_BASE}/sales_return_details`, {
@@ -508,8 +512,25 @@ export const SalesReturnProvider = {
           sum + Number(item.quantity) * Number(item.unitPrice),
         0,
       );
+
+      // Fetch line discounts to calculate discount amounts from percentage
+      const lineDiscounts = await SalesReturnProvider.getLineDiscounts();
+      const lineDiscountMap = new Map<number, number>();
+      lineDiscounts.forEach((ld) =>
+        lineDiscountMap.set(ld.id, parseFloat(ld.percentage) || 0),
+      );
+
       const totalDiscount = payload.items.reduce(
-        (sum: number, item: any) => sum + Number(item.discountAmount || 0),
+        (sum: number, item: any) => {
+          const gross = Number(item.quantity) * Number(item.unitPrice);
+          const discId = item.discountType &&
+            item.discountType !== "No Discount" &&
+            item.discountType !== ""
+            ? Number(item.discountType)
+            : null;
+          const percentage = discId ? (lineDiscountMap.get(discId) || 0) : 0;
+          return sum + gross * (percentage / 100);
+        },
         0,
       );
       const totalNet = totalGross - totalDiscount;
@@ -597,21 +618,24 @@ export const SalesReturnProvider = {
         const typeId = matchedType
           ? matchedType.type_id
           : returnTypes[0]?.type_id || 1;
+
+        const gross = Number(item.quantity) * Number(item.unitPrice);
+        const discId = item.discountType &&
+          item.discountType !== "No Discount" &&
+          item.discountType !== ""
+          ? Number(item.discountType)
+          : null;
+        const percentage = discId ? (lineDiscountMap.get(discId) || 0) : 0;
+        const discountAmt = gross * (percentage / 100);
+
         const detailPayload = {
           quantity: Number(item.quantity),
           unit_price: Number(item.unitPrice),
-          gross_amount: Number(item.quantity) * Number(item.unitPrice),
-          discount_amount: Number(item.discountAmount || 0),
-          total_amount:
-            Number(item.quantity) * Number(item.unitPrice) -
-            Number(item.discountAmount || 0),
+          gross_amount: gross,
+          discount_amount: discountAmt,
+          total_amount: gross - discountAmt,
           sales_return_type_id: typeId,
-          discount_type:
-            item.discountType &&
-            item.discountType !== "No Discount" &&
-            item.discountType !== ""
-              ? Number(item.discountType)
-              : null,
+          discount_type: discId,
           reason: item.reason || null,
         };
 
@@ -685,9 +709,9 @@ export const SalesReturnProvider = {
           typeof detail.product_id === "object" && detail.product_id !== null
             ? detail.product_id
             : {
-                product_code: "N/A",
-                product_name: `Unknown (ID: ${detail.product_id})`,
-              };
+              product_code: "N/A",
+              product_name: `Unknown (ID: ${detail.product_id})`,
+            };
         const unitId =
           typeof product.unit_of_measurement === "object"
             ? product.unit_of_measurement?.unit_id
@@ -711,8 +735,24 @@ export const SalesReturnProvider = {
           discountType: detail.discount_type
             ? Number(detail.discount_type)
             : "",
-          discountAmount: Number(detail.discount_amount),
-          totalAmount: Number(detail.total_amount),
+          discountAmount: (() => {
+            const discId = detail.discount_type ? Number(detail.discount_type) : null;
+            if (!discId) return 0;
+            const disc = lineDiscounts.find((ld: API_LineDiscount) => ld.id === discId);
+            if (!disc) return 0;
+            const percentage = parseFloat(disc.percentage) || 0;
+            const gross = Number(detail.quantity) * Number(detail.unit_price);
+            return gross * (percentage / 100);
+          })(),
+          totalAmount: (() => {
+            const gross = Number(detail.quantity) * Number(detail.unit_price);
+            const discId = detail.discount_type ? Number(detail.discount_type) : null;
+            if (!discId) return gross;
+            const disc = lineDiscounts.find((ld: API_LineDiscount) => ld.id === discId);
+            if (!disc) return gross;
+            const percentage = parseFloat(disc.percentage) || 0;
+            return gross - gross * (percentage / 100);
+          })(),
           reason: detail.reason || "",
           sales_return_type_id: detail.sales_return_type_id
             ? Number(detail.sales_return_type_id)
