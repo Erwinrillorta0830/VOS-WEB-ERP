@@ -61,7 +61,7 @@ export const SalesReturnFilters = ({ logic }: { logic: any }) => {
           <Input
             value={filters.search}
             onChange={(e) => handleFilterChange("search", e.target.value)}
-            placeholder="Return no, invoice, customer code..."
+            placeholder="Search Return no."
             className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 dark:text-slate-100"
           />
         </div>

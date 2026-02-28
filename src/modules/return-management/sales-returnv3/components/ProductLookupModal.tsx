@@ -150,6 +150,7 @@ export function ProductLookupModal({ isOpen, onClose, onConfirm }: Props) {
 
   const filteredCategories = categoriesList.filter(
     (c) =>
+      (c.category_name || "").toLowerCase() !== "all" &&
       (c.category_name || "")
         .toLowerCase()
         .includes((categorySearch || "").toLowerCase()) &&

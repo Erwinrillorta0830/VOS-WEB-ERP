@@ -215,19 +215,19 @@ export const SalesReturnTable = ({
                       {Number(item.quantity).toLocaleString()}
                     </DataCell>
                     <DataCell className="text-slate-700 dark:text-slate-300 text-right">
-                      {Number(item.unitPrice).toLocaleString()}
+                      {Number(item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </DataCell>
                     <DataCell className="text-slate-700 dark:text-slate-300 text-right">
-                      {Number(item.grossAmount).toLocaleString()}
+                      {Number(item.grossAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </DataCell>
                     <DataCell className="text-slate-500 text-right">
                       {item.discountApplied || "-"}
                     </DataCell>
                     <DataCell className="text-slate-500 text-right">
-                      {Number(item.discountAmount).toLocaleString()}
+                      {Number(item.discountAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </DataCell>
                     <DataCell className="font-bold text-blue-600 dark:text-blue-400 text-right">
-                      {Number(item.netAmount).toLocaleString()}
+                      {Number(item.netAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </DataCell>
                     <DataCell className="text-slate-600 dark:text-slate-400">
                       {item.invoiceNo || r.invoiceNo || "-"}
